@@ -116,17 +116,6 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Reasoning:** Implicit m-n is the lowest-friction Prisma-on-SQLite shape for this — no extra model, no order column needed, and the relationship is naturally bidirectional. The Insight Engine's future queries ("most-funded-from Signal types") become a simple aggregate over the join table. The relation name `responds_to` is added to `lib/relation-names.ts` per Two-File Rule.
 - **Resolved by:** Francisco (via the Day-2 step (b) plan).
 
-### Q-017 · Dec-2025 `receivables_timing` Signal — magnitude was banker prose, not structured
-
-- **Date logged:** 2026-04-25 (Day-2 step (c) prep — Francisco's review of step (b))
-- **Question:** The Member profile's History band entry for Jenny's 2025-12-04 conversation paraphrases the situation as "Inquiry about a corporate client paying 45+ days late." The "45+ days" detail is in the conversation's `banker_note` (banker prose), not captured as a `Signal.magnitude` on the `blocker.receivables_timing` Signal anchored to that conversation. The Signal exists with no magnitude. So when the Active Signals band (Band 3) renders the receivables-timing Signal, it has no chip-able captured-value to show, while the banker_note quietly carries a quantitative claim that should arguably be queryable.
-- **Why it matters:** Auditability discipline (the Day-2 Part-I (2) framing): captured field values render as chips, banker prose renders as text. A quantitative fact tucked in `banker_note` is invisible to the Insight Engine and to any cross-Member rollup of receivables-timing severity. It's also a small but real instance of the pattern Francisco flagged as the kind of thing the chip treatment is supposed to expose.
-- **Affects:** Fixture data integrity for Jenny's profile + any Insight Engine view that aggregates receivables-timing magnitudes.
-- **Resolution date:** 2026-04-25
-- **Decision:** Backfill the missing structured capture. Update the seed to set `magnitude: 45, unit: "days"` (and `frequency: null`) on the Dec-2025 `receivables_timing` Signal. The `banker_note` prose stays as the human reading; the structured magnitude becomes the chip-able captured value.
-- **Reasoning:** The alternative — accepting the gap with explicit prose treatment — is the lesser path because it tells future readers (banker, auditor, LLM) that no structured capture exists, when in fact the gap is purely fixture-authoring oversight. Backfilling is true to what the Member said in the conversation and matches the discipline applied elsewhere (e.g., the seasonal-cash-flow Signal carries `magnitude: 12000, unit: "dollars", frequency: "quarterly"` — same pattern). `unit: "days"` is open in the schema (Signal.unit is String? with no enum constraint); only the Size step's `captured_data.unit` is constrained to the enumerated set, and this Signal was captured outside any Size step (no Growth track ran on the Dec-2025 service call).
-- **Resolved by:** Francisco (via the step (c) prep §3 instruction).
-
 ### Q-008 · Demo data persistence model
 
 - **Date logged:** Pre-build (new for build phase)
@@ -139,6 +128,17 @@ Resolved entries are **never deleted** — they form the institutional memory of
 ---
 
 ## Resolved
+
+### Q-017 · Dec-2025 `receivables_timing` Signal — magnitude was banker prose, not structured
+
+- **Date logged:** 2026-04-25 (Day-2 step (c) prep — Francisco's review of step (b))
+- **Question:** The Member profile's History band entry for Jenny's 2025-12-04 conversation paraphrases the situation as "Inquiry about a corporate client paying 45+ days late." The "45+ days" detail is in the conversation's `banker_note` (banker prose), not captured as a `Signal.magnitude` on the `blocker.receivables_timing` Signal anchored to that conversation. The Signal exists with no magnitude. So when the Active Signals band (Band 3) renders the receivables-timing Signal, it has no chip-able captured-value to show, while the banker_note quietly carries a quantitative claim that should arguably be queryable.
+- **Why it matters:** Auditability discipline (the Day-2 Part-I (2) framing): captured field values render as chips, banker prose renders as text. A quantitative fact tucked in `banker_note` is invisible to the Insight Engine and to any cross-Member rollup of receivables-timing severity. It's also a small but real instance of the pattern Francisco flagged as the kind of thing the chip treatment is supposed to expose.
+- **Affects:** Fixture data integrity for Jenny's profile + any Insight Engine view that aggregates receivables-timing magnitudes.
+- **Resolution date:** 2026-04-25
+- **Decision:** Backfill the missing structured capture. Update the seed to set `magnitude: 45, unit: "days"` (and `frequency: null`) on the Dec-2025 `receivables_timing` Signal. The `banker_note` prose stays as the human reading; the structured magnitude becomes the chip-able captured value.
+- **Reasoning:** The alternative — accepting the gap with explicit prose treatment — is the lesser path because it tells future readers (banker, auditor, LLM) that no structured capture exists, when in fact the gap is purely fixture-authoring oversight. Backfilling is true to what the Member said in the conversation and matches the discipline applied elsewhere (e.g., the seasonal-cash-flow Signal carries `magnitude: 12000, unit: "dollars", frequency: "quarterly"` — same pattern). `unit: "days"` is open in the schema (Signal.unit is String? with no enum constraint); only the Size step's `captured_data.unit` is constrained to the enumerated set, and this Signal was captured outside any Size step (no Growth track ran on the Dec-2025 service call).
+- **Resolved by:** Francisco (via the step (c) prep §3 instruction; explicitly re-confirmed in the step (b) approval reply).
 
 ### Q-006 · Banker identities for the demo dropdown
 

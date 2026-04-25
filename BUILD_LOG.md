@@ -352,4 +352,22 @@ The `summarizeMember` template counts active *blockers* — a deliberate compres
 
 ---
 
+## 2026-04-25 (Day 2 step b approval) · Two small notes before step (c) eyeball
+
+**Session type:** Documentation-only entry capturing decisions confirmed in the step-(b) approval, so they're retrievable without rereading the conversation transcript.
+
+**Captured-value chip vs. inline-prose treatment — design decision (rule for the project):**
+
+Captured-value chip pattern applies in **Band 3** (structured Signal display); inline prose treatment applies in **Band 4** (narrative responds-to summary). The visual distinction reflects reading context, not value provenance — both surfaces honor the underlying captured-at-Growth-step audit chain.
+
+Concretely: when the same value appears in Band 3 and again in Band 4 (e.g., Jenny's seasonal-cash-flow magnitude reads `$12K/quarterly` in both bands), Band 3 renders it as a chip with a hover tooltip citing the Size-step capture event, and Band 4 renders it inline as `($12K/quarterly)` in parens within the responds-to line. The provenance is identical in both cases; the visual treatment differs to match the reading context (structured display vs. narrative summary). Apply this rule going forward: chip in any context where the value is the primary content of its line; inline prose in any context where the value is a parenthetical detail inside a larger sentence.
+
+**Q-017 status:** Confirmed Resolved. Moved the entry to the Resolved section of OPEN_QUESTIONS (it had been placed correctly as Resolved by content but accidentally listed under the Open header in the prior turn).
+
+**Goal-phrasing discipline:** Confirmed propagating cleanly across all three Members without per-Member supervision. No per-Member follow-ups needed; the discipline is doing its job.
+
+**Pending Francisco's eyeball:** The seasonal smoothing chart in the Artifact preview modal — does the without-LOC line's negative dips read as obviously concerning, does the with-LOC line + area fill read as obviously protective, is the smoothing story legible in 2 seconds. Step (c) (orange-headed-panel pattern) waits on that confirmation. Step (d) (live `fireRules()` wiring) follows step (c) cleanly. The two remaining Artifact templates (`fleet_roi_composed_chart_v1`, `capital_event_map_v1`) and the `/members/[id]` dynamic generalization stay queued until Jenny's profile is fully feature-complete.
+
+---
+
 *Next session entry will be appended below.*
