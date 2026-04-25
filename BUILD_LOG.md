@@ -593,4 +593,30 @@ The chip pattern is now effectively border-only (chip fill `#F9FBFD` against pag
 
 ---
 
+## 2026-04-25 (Day 2 visual tweaks, fourth pass) · Pinned card refresh
+
+**Session type:** Three small visual refinements to the pinned Suggested-next-step card.
+
+**Changes:**
+
+- **Card background** `#F6EFE5` (warm cream) → **`#FFFFFF`** (pure white). The card is now a clean white box on the cool paper ground; warmth is provided by the orange "Run Growth track" button below the heading.
+- **"Suggested next step" heading** promoted from a small `text-sm` orange-deep label to a section-header-scale heading: **24px / 600 / `--blaze-charcoal` / `tracking-[0.02em]` / `leading-none`** — matching every other section header on the page, but without the orange rectangle mark. The pinned card's white-background + charcoal corner tag carry its distinctiveness without needing the rectangle.
+- **"high confidence" indicator** moved out of the heading line into a **solid charcoal rectangle bound to the top-right corner** with white text. `position: absolute; top: 0; right: 0; rounded-tr-md` so it sits flush against the card's rounded corner. Reads as authoritative metadata rather than inline prose — the tag treatment is the visual move that signals "this is the bank's confidence in the rule that fired."
+- **Growth track name** (the actual recommendation, e.g., "Smooth seasonal cash flow with LOC for small caterer") shifted from `text-xl` orange-deep → `text-xl` `--blaze-charcoal` so the card is monochrome aside from the orange button. The orange punctuation is concentrated in the CTA button alone.
+- **"Dismiss" button** hover bg shifted from `hover:bg-blaze-orange-pale` to `hover:bg-blaze-cream` so the warm-tinted hover plays nicely against the new white card.
+
+**Verified:**
+
+- `GET /members/jenny` returns 200.
+- Pinned card now uses `relative rounded-md bg-white` (replacing the prior `rounded-md bg-[#F6EFE5]`).
+- Charcoal corner tag renders with `rounded-tr-md bg-blaze-charcoal px-3 py-1.5 text-xs font-semibold tracking-wide text-white`.
+- "Suggested next step" h2 renders at `text-2xl font-semibold tracking-[0.02em] text-blaze-charcoal leading-none`.
+
+**Watch for review:**
+
+- Charcoal corner tag may overlap the heading on very narrow viewports. Tag width is ~120px; heading "Suggested next step" runs ~220px at the new size. On a card narrower than ~340px the tag's left edge would touch the heading's right edge. The Member profile's main column is well above that on lg+ viewports; on mobile it's worth a check.
+- If the card's white feels too stark against the cool paper ground, the next dial is a 1px `--blaze-rule` border — but starting borderless to honor the borderless-pattern discipline.
+
+---
+
 *Next session entry will be appended below.*

@@ -538,17 +538,28 @@ export default async function JennyMemberProfilePage() {
           {suggestedTrack && (
             <section
               id="band-suggested"
-              className="rounded-md bg-[#F6EFE5] p-5"
+              className="relative rounded-md bg-white p-5"
             >
-              <p className="text-sm font-semibold text-blaze-orange-deep">
-                Suggested next step ·{" "}
-                <span className="font-medium">
-                  {suggestedTrack.confidence_band} confidence
-                </span>
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-blaze-orange-deep">
-                {suggestedTrack.name}
+              {/* Confidence indicator — solid charcoal rectangle bound to the
+                  top-right corner, white text. The corner-tag treatment makes
+                  the confidence read as authoritative metadata rather than
+                  inline prose. rounded-tr-md matches the card's corner so the
+                  tag sits flush against the rounded edge. */}
+              <span className="absolute right-0 top-0 rounded-tr-md bg-blaze-charcoal px-3 py-1.5 text-xs font-semibold tracking-wide text-white">
+                {suggestedTrack.confidence_band} confidence
+              </span>
+
+              {/* Section heading — same scale as other section headers
+                  (24px / 600 / charcoal / tracking-[0.02em]) but without the
+                  orange rectangle mark per Francisco's spec. The pinned card's
+                  white bg and corner tag carry its distinctiveness. */}
+              <h2 className="text-2xl font-semibold tracking-[0.02em] text-blaze-charcoal leading-none">
+                Suggested next step
               </h2>
+
+              <p className="mt-4 text-xl font-semibold text-blaze-charcoal leading-tight">
+                {suggestedTrack.name}
+              </p>
               <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
                 {suggestedTrack.description}
               </p>
@@ -562,7 +573,7 @@ export default async function JennyMemberProfilePage() {
                 <button className="rounded bg-blaze-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blaze-orange-bright active:bg-blaze-orange-burnt">
                   Run Growth track
                 </button>
-                <button className="rounded bg-transparent px-4 py-2 text-sm font-medium text-blaze-charcoal transition-colors hover:bg-blaze-orange-pale">
+                <button className="rounded bg-transparent px-4 py-2 text-sm font-medium text-blaze-charcoal transition-colors hover:bg-blaze-cream">
                   Dismiss
                 </button>
               </div>
