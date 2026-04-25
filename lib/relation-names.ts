@@ -45,7 +45,10 @@ export type RelationName =
   | "responds_to_blocker" // GrowthTrack → Topic (blocker triggers)
   | "responds_to_trigger" // GrowthTrack → Topic (trigger triggers)
   // Rule relations
-  | "rule_surfaces"; // Rule → GrowthTrack (distinct verb from GrowthStepExecution.surfaced)
+  | "surfaces"; // Rule → GrowthTrack
+  // Note: GrowthStepExecution → Recommendation already uses the distinct verb
+  // "surfaced" (past-tense). The bare "surfaces" verb here on Rule is unambiguous
+  // because the source column always names the entity.
 
 /**
  * The canonical mapping. Read each entry as a sentence: subject + verb-phrase + object.
@@ -82,7 +85,7 @@ export const RELATION_NAMES = [
   { source: "GrowthTrack", verb: "responds_to_blocker", target: "Topic" },
   { source: "GrowthTrack", verb: "responds_to_trigger", target: "Topic" },
 
-  { source: "Rule", verb: "rule_surfaces", target: "GrowthTrack" },
+  { source: "Rule", verb: "surfaces", target: "GrowthTrack" },
 ] as const satisfies ReadonlyArray<{ source: string; verb: RelationName; target: string }>;
 
 /**
