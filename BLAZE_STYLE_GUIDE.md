@@ -65,6 +65,16 @@ For semantic UI states (success, warning, danger, info), prefer Blaze-native tin
 
 These are intentionally muted to live alongside the burnished orange without competing.
 
+### 2.5 Surface accents (narrow purpose tokens)
+
+Tokens reserved for very specific surface treatments, not general use. Adding a token here without a documented purpose dilutes the palette.
+
+| Token | Hex | Usage |
+|---|---|---|
+| `--blaze-frost-edge` | `#CAE8FD` | 1px borders on semi-transparent white panels sitting over a dark warm-grey ground. Echoes the frosted-glass edge treatment on page 12 of the source PDF where panels float over photography. **Do not use this color anywhere except on those specific panel edges** — it is not a general accent, not a link color, not a focus ring. The reframe: this token's job is to make the frosted panel feel like glass and not like flat white-on-dark. |
+
+The frosted-glass pattern itself: `background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); border: 1px solid var(--blaze-frost-edge);` applied to panels on the dark-ground pages (Member profile from Day 2 onward; the Insight Engine surfaces likely follow). On the cream/parchment-ground pages (theme-check page, possibly the Meeting recap surface), the frosted-glass pattern does not apply.
+
 ---
 
 ## 3. The signature gradient

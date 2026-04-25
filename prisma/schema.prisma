@@ -88,6 +88,7 @@
 // Recommendation references_product Product       (Recommendation.product)
 // Recommendation paired_with Product              (Recommendation.paired_product)
 // Recommendation surfaced_by_rule Rule            (Recommendation.rule_that_fired)
+// Recommendation responds_to Signal               (Recommendation.responds_to_signals — Q-016)
 //
 // MemberSummarySnapshot snapshots Member          (MemberSummarySnapshot.member)
 // MemberSummarySnapshot generated_at_save_of Conversation
@@ -637,6 +638,11 @@ model Signal {
   feeling                     String?
   captured_at                 DateTime              @default(now())
 
+  // Recommendations that respond to this Signal (Q-016). Reverse side of
+  // Recommendation.responds_to_signals; populated for the three featured
+  // Recommendations in the seed.
+  responding_recommendations  Recommendation[]      @relation("RecommendationRespondsToSignal")
+
   @@index([member_id, active])
   @@index([conversation_id])
   @@index([topic_id])
@@ -701,6 +707,14 @@ model Recommendation {
   rule_that_fired             Rule?                   @relation(fields: [rule_id_that_fired], references: [id])
   their_words                 String?
   created_at                  DateTime                @default(now())
+
+  // The active Signals this Recommendation responds to (Q-016). Implicit m-n
+  // join table _RecommendationRespondsToSignal. Populated for the three
+  // featured Recommendations in the seed: Jenny's LOC responds to her seasonal
+  // cash flow blocker + cash flow smoothing goal; Northland's Fleet Loan
+  // responds to capacity blocker + fleet expansion goal; Cygnus's CRE responds
+  // to the two triggers + the customer growth goal.
+  responds_to_signals         Signal[]                @relation("RecommendationRespondsToSignal")
 
   @@index([member_id])
 }

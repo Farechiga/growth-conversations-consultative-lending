@@ -106,6 +106,32 @@ The six Growth step shapes (Ask, Size, Show, Propose, Resolve, Connect) are inte
 
 They do **not** appear in any banker-facing UI string. Bankers see step content; they do not see step shape labels.
 
+### Member-facing language (the third register)
+
+A third linguistic register applies anywhere the system surfaces banker-to-member follow-through — `ActionCard.suggested_opening` text, takeaway descriptions, email/SMS preview content, anything the member would actually read or hear. The discipline is: **code names → banker-facing labels → member-facing language**, with each tier obeying its own rules.
+
+Banker-facing terms that **must not appear** in member-facing strings:
+
+- "Growth track" — never use member-facing. The track is internal scaffolding the banker uses; the member experiences a conversation, not a track.
+- "Artifact" — replace with "the projection," "the analysis," "the visualization," or simply name the artifact ("the seasonal smoothing chart"). "Parameterized chart" likewise becomes "custom projections for [your/her/their] business" or "the projection we walked through."
+- "Topic" / "canonical_tag" / "Signal" — these are system-internal and do not appear in member-facing language.
+- "Their words" — never appears in member-facing prose; just the quote itself does, in italics with proper typographic quotes.
+- "Recommendation" — when surfacing to the member, prefer "what we proposed" or "the line of credit we discussed" — anchor on the product or the moment, not the system label.
+
+Captured fields that **render differently** depending on register:
+
+| Field | Code | Banker-facing | Member-facing |
+|---|---|---|---|
+| `Recommendation.size_proposed` | `75000` | "$75K" | "around seventy-five thousand" |
+| `Recommendation.response = leaning_yes` | `leaning_yes` | "leaning yes" | (don't surface this back; the banker knows where they landed) |
+| `Signal.severity = painful` | `painful` | "painful" | (don't surface; the member already knows it hurts) |
+| `Signal.their_words` | string | shown verbatim in pull-quote | shown verbatim if echoed back, never as "their words" framing |
+| Growth step `content` | string | the script the banker reads | the substance of the question, not the script |
+
+Apply this in code: any field that flows into `ActionCard.suggested_opening`, into a takeaway email body, or into any string the member sees, must pass through the member-facing register lens. `ActionCard.rationale` (banker-only, drives the operational queue) stays banker-facing; `ActionCard.suggested_opening` (read by the member if the banker copy-pastes it) is member-facing.
+
+When a fixture or template surfaces a banker-facing term in a member-facing field, that's a real defect, not a stylistic preference. Treat it the same as misspelling the member's name.
+
 ---
 
 ## 6. The Two-File Rule

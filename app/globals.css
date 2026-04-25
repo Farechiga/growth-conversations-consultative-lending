@@ -83,6 +83,11 @@
   --color-blaze-warning: #b47424;
   --color-blaze-danger: #9c3325;
   --color-blaze-info: #3d5a6c;
+
+  /* Surface accent — narrow purpose: 1px borders on semi-transparent white
+     panels over a dark warm-grey ground (frosted-glass pattern). Per
+     BLAZE_STYLE_GUIDE.md §2.5. Do not use this color anywhere else. */
+  --color-blaze-frost-edge: #cae8fd;
 }
 
 /*

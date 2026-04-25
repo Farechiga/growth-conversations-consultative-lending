@@ -313,6 +313,21 @@ async function seedTopics() {
     },
   });
 
+  // Added 2026-04-25 to surface goal-side intent on Jenny's record (the LOC
+  // proposal needs to read as "responding to a stated objective", not just to a
+  // blocker). The Topic is canonical; seed for any other Member with similar
+  // seasonal-cash-flow objectives.
+  const goalCashFlowSmoothing = await prisma.topic.create({
+    data: {
+      canonical_tag: "goal.cash_flow_smoothing",
+      display_name: "Smooth lumpy cash flow into manageable shape",
+      description:
+        "Member's intent to smooth lumpy revenue into manageable cash flow, typically through working capital instruments. Common in event-driven services, hospitality, and seasonal businesses where the underlying need is operational stability rather than growth capital. Distinct from goal.facility_ownership or goal.facility_expansion (which are capital events) — this is an ongoing-operations objective.",
+      topic_type: "goal",
+      status: "canonical",
+    },
+  });
+
   const indecisionAuthority = await prisma.topic.create({
     data: {
       canonical_tag: "indecision.authority",
@@ -359,6 +374,7 @@ async function seedTopics() {
     goalFacility,
     goalCustomerGrowth,
     goalFacilityOwnership,
+    goalCashFlowSmoothing,
     indecisionAuthority,
     indecisionInformation,
     indecisionOutcome,
@@ -1514,8 +1530,11 @@ async function seedJennyConversations(
     },
   });
 
-  // 2024-03-12 check_in — Jenny mentioned 'winter was tough' but didn't elaborate
-  await prisma.conversation.create({
+  // 2024-03-12 check_in — Jenny mentioned 'winter was tough'. Banker also
+  // captured an underlying goal Signal here (cash flow smoothing intent),
+  // inferred rather than directly stated by Jenny — early surface of the
+  // objective the seasonal-smoothing track addresses two years later.
+  const mar2024 = await prisma.conversation.create({
     data: {
       member_id: m.id,
       banker_id: bankers.scott.id,
@@ -1523,9 +1542,24 @@ async function seedJennyConversations(
       channel: "call",
       sentiment: "receptive",
       moment_quote: "winter was tough",
-      banker_note: "Year-end review; Jenny mentioned 'winter was tough' but didn't elaborate. In hindsight this was the first surface of seasonal cash flow stress; not formally captured as a Signal at the time.",
+      banker_note: "Year-end review; Jenny mentioned 'winter was tough' but didn't elaborate. In hindsight this was the first surface of seasonal cash flow stress; not formally captured as a Signal at the time. A goal Signal (cash flow smoothing) was banker_inferred from the comment and added retroactively when reviewing the relationship for the April 2026 meeting.",
       created_at: iso("2024-03-12"),
       closed_at: iso("2024-03-12"),
+    },
+  });
+
+  const jennyCashFlowSmoothingGoalSignal = await prisma.signal.create({
+    data: {
+      conversation_id: mar2024.id,
+      member_id: m.id,
+      type: "goal",
+      topic_id: topics.goalCashFlowSmoothing.id,
+      severity: "manageable",
+      their_words: "I just want to be able to sleep through January",
+      recency: "ongoing",
+      confidence: "banker_inferred",
+      active: true,
+      captured_at: iso("2024-03-12"),
     },
   });
 
@@ -1682,12 +1716,18 @@ async function seedJennyConversations(
       size_proposed: 75000,
       structure: "standard",
       rationale_text:
-        "Member showed acute seasonal cash flow stress quantified at approximately $12K per quarter. A $75K LOC sized at roughly one quarter of the slow-season revenue gap provides smoothing capacity with comfortable headroom. Member's existing Visa demonstrates payment discipline; primary guarantee from the owner is appropriate given the size.",
+        "Member showed acute seasonal cash flow stress quantified at approximately $12K per quarter, against a long-running goal of smoothing lumpy cash flow into manageable shape. A $75K LOC sized at roughly one quarter of the slow-season revenue gap provides smoothing capacity with comfortable headroom. Member's existing Visa demonstrates payment discipline; primary guarantee from the owner is appropriate given the size.",
       confidence_band: "high",
       response: "leaning_yes",
       primary_concern: "spouse",
       status: "surfaced",
       rule_id_that_fired: rules.rule1Id,
+      responds_to_signals: {
+        connect: [
+          { id: seasonalSignal.id },
+          { id: jennyCashFlowSmoothingGoalSignal.id },
+        ],
+      },
       their_words: "this is exactly what I needed to see — wow",
       created_at: iso("2026-04-08"),
     },
@@ -1800,17 +1840,36 @@ async function seedNorthlandConversations(
     },
   });
 
-  // 2025-02-22 opportunity
-  await prisma.conversation.create({
+  // 2025-02-22 opportunity — Visa limit increase approved; Dan also mentioned
+  // wanting another truck. Captured as a goal Signal (fleet expansion) on
+  // this conversation; the capacity-constraint blocker isn't explicitly
+  // captured here yet because Dan framed it as wanting more capacity, not as
+  // declining work.
+  const feb2025 = await prisma.conversation.create({
     data: {
       member_id: m.id,
       banker_id: bankers.scott.id,
       meeting_type: "opportunity",
       channel: "in_person",
       sentiment: "receptive",
-      banker_note: "Visa limit increase approved; Dan mentioned needing one more truck — second informal surface of capacity constraint.",
+      banker_note: "Visa limit increase approved; Dan mentioned needing one more truck. Captured as a goal Signal (fleet expansion). The capacity-constraint blocker comes through as the structural counterpart in the April 2026 conversation when Dan reframes the same situation as 'turning people away'.",
       created_at: iso("2025-02-22"),
       closed_at: iso("2025-02-22"),
+    },
+  });
+
+  const northlandFleetGoalSignal = await prisma.signal.create({
+    data: {
+      conversation_id: feb2025.id,
+      member_id: m.id,
+      type: "goal",
+      topic_id: topics.goalFleet.id,
+      severity: "manageable",
+      their_words: "we're going to need another truck before next summer",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2025-02-22"),
     },
   });
 
@@ -1925,7 +1984,7 @@ async function seedNorthlandConversations(
       size_proposed: 180000,
       structure: "standard",
       rationale_text:
-        "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season, representing roughly $49K of annual lost revenue. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
+        "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season (roughly $49K of annual lost revenue), against a stated objective of fleet expansion. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
       confidence_band: "high",
       response: "leaning_yes",
       primary_concern: "cpa",
@@ -1933,6 +1992,12 @@ async function seedNorthlandConversations(
       rule_id_that_fired: rules.rule2Id,
       their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
       created_at: iso("2026-04-15"),
+      responds_to_signals: {
+        connect: [
+          { id: capSignal.id },
+          { id: northlandFleetGoalSignal.id },
+        ],
+      },
     },
   });
 
@@ -2028,7 +2093,7 @@ async function seedCygnusConversations(
     },
   });
 
-  await prisma.signal.create({
+  const cygnusCustomerGrowthGoalSignal = await prisma.signal.create({
     data: {
       conversation_id: nov2024.id,
       member_id: m.id,
@@ -2135,7 +2200,7 @@ async function seedCygnusConversations(
     },
   });
 
-  await prisma.signal.create({
+  const cygnusCapacityEvalSignal = await prisma.signal.create({
     data: {
       conversation_id: apr21.id,
       growth_step_execution_id: ask1Exec.id,
@@ -2170,7 +2235,7 @@ async function seedCygnusConversations(
     },
   });
 
-  await prisma.signal.create({
+  const cygnusVolumeSignal = await prisma.signal.create({
     data: {
       conversation_id: apr21.id,
       growth_step_execution_id: ask2Exec.id,
@@ -2218,7 +2283,7 @@ async function seedCygnusConversations(
       size_proposed: null,
       structure: "standard",
       rationale_text:
-        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments. Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. CRE specialist Marcus Webb engaged; relationship coordination by Scott Brynjolffson.",
+        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. CRE specialist Marcus Webb engaged; relationship coordination by Scott Brynjolffson.",
       confidence_band: "medium",
       response: "leaning_yes",
       primary_concern: "bank_capability",
@@ -2226,6 +2291,13 @@ async function seedCygnusConversations(
       rule_id_that_fired: rules.rule3Id,
       their_words: "this is the conversation I've been wanting to have with you",
       created_at: iso("2026-04-21"),
+      responds_to_signals: {
+        connect: [
+          { id: cygnusCapacityEvalSignal.id },
+          { id: cygnusVolumeSignal.id },
+          { id: cygnusCustomerGrowthGoalSignal.id },
+        ],
+      },
     },
   });
 

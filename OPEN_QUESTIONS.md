@@ -101,6 +101,21 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default for now:** Snapshots are written by the seed (and by Conversation save in production) but are not rendered in any Member profile, Insight Engine, or admin view in the demo. This proves out the persistence architecture without committing to UX semantics that need stakeholder input.
 - **Status:** Open / Deferred to post-demo discussion. Reopen with leadership and compliance before any production rollout of user-facing snapshot views.
 
+### Q-016 · `Recommendation.responds_to_signals` — surfacing the Signal→Recommendation link
+
+- **Date logged:** 2026-04-25 (Day-2 step (b))
+- **Question:** The original schema captures provenance via `Recommendation.growth_step_execution_id` (the execution that surfaced the recommendation) and `Recommendation.rule_id_that_fired` (the rule that triggered the suggestion), but does not directly capture *which active Signals* a recommendation responds to. Francisco's review surfaced this as a real gap: the Member profile UI needs to render "Working Capital LOC at $75K — responds to: seasonal cash flow stress (blocker), cash flow smoothing (goal)" inline on each Recommendation. This is not derivable cleanly from the existing relations — Rule.conditions reference Topic IDs but not the specific Signal instances that satisfied the rule at fire time.
+- **Why it matters:** Without an explicit relation, the UI either invents the linkage at render time (brittle, doesn't survive future Signal/Topic edits) or fails to surface a relationship that's central to the demo's narrative ("the recommendation responds to specific things you've heard from this Member"). The relationship is also a queryable property the Insight Engine will want when it ships ("which Signals most often produce funded outcomes?").
+- **Affects:** Schema (one new m-n relation), seed (populate for the three featured Recommendations), Member profile UI (render the linkage), `lib/relation-names.ts` registry.
+- **Resolution date:** 2026-04-25
+- **Decision:** Add `Recommendation.responds_to_signals Signal[]` as an implicit Prisma m-n relation (`@relation("RecommendationRespondsToSignal")`). Reverse side on `Signal` is `recommendations_responding_to_this Recommendation[]` under the same relation name. Stored under SQLite as a single hidden join table `_RecommendationRespondsToSignal`.
+- **Migration approach:** A clean Prisma `migrate dev` since the join table is new and no existing rows depend on it. Backfill happens in the seed (`prisma/seed.ts`) for the three featured Recommendations:
+  - Jenny's $75K LOC → `[blocker.cash_flow_seasonal, goal.cash_flow_smoothing]`
+  - Northland's $180K Fleet Loan → `[blocker.capacity_constrained, goal.fleet_expansion]`
+  - Cygnus's CRE Term Loan → `[trigger.capacity_expansion_evaluation, trigger.customer_volume_commitment, goal.customer_growth]`
+- **Reasoning:** Implicit m-n is the lowest-friction Prisma-on-SQLite shape for this — no extra model, no order column needed, and the relationship is naturally bidirectional. The Insight Engine's future queries ("most-funded-from Signal types") become a simple aggregate over the join table. The relation name `responds_to` is added to `lib/relation-names.ts` per Two-File Rule.
+- **Resolved by:** Francisco (via the Day-2 step (b) plan).
+
 ### Q-008 · Demo data persistence model
 
 - **Date logged:** Pre-build (new for build phase)

@@ -234,4 +234,62 @@ The `summarizeMember` template counts active *blockers* — a deliberate compres
 
 ---
 
+## 2026-04-25 (Day 2 step b) · Member profile — substantive + visual pass
+
+**Session type:** Day-2 step (b), executed as the four substeps b.1 → b.4 in a single turn per the plan in Francisco's review.
+
+**Schema and fixture (b.1):**
+
+- **Q-016 Resolved**: added `Recommendation.responds_to_signals Signal[]` (implicit Prisma m-n under the relation `RecommendationRespondsToSignal`). Migration `20260425160637_recommendation_responds_to_signals` applied. Reverse side `Signal.responding_recommendations` available. Named Relationships block in `prisma/schema.prisma` updated; `lib/relation-names.ts` registry gains `Recommendation responds_to Signal`.
+- **New Topic** `goal.cash_flow_smoothing` added to canonical taxonomy with full Semantic Discipline description ("...member's intent to smooth lumpy revenue into manageable cash flow..."). Topic count is now 16.
+- **New goal Signals on prior conversations** — the user's read was right: the LOC and Fleet Loan recommendations needed to read as *responding to a stated objective*, not just a blocker.
+  - Jenny's `goal.cash_flow_smoothing` Signal added on the 2024-03-12 conversation (banker_inferred from "winter was tough", verbatim quote captured as "I just want to be able to sleep through January"). Signal count is now 11.
+  - Northland's `goal.fleet_expansion` Signal added on the 2025-02-22 conversation (member_stated, verbatim "we're going to need another truck before next summer").
+  - Cygnus's existing `goal.customer_growth` (Nov 2024) needed no addition.
+- **`responds_to_signals` populated** on all three Recommendations:
+  - Jenny's $75K LOC → `[blocker.cash_flow_seasonal, goal.cash_flow_smoothing]`
+  - Northland's $180K Fleet Loan → `[blocker.capacity_constrained, goal.fleet_expansion]`
+  - Cygnus's CRE Term Loan → `[trigger.capacity_expansion_evaluation, trigger.customer_volume_commitment, goal.customer_growth]`
+- **Recommendation `rationale_text` strings updated** to reference the goal Signal alongside the blocker / triggers ("…against a long-running goal of smoothing lumpy cash flow…").
+- **Member-facing register audit on `suggested_opening` fields**: all four already-passing — no banker-facing terms ("Growth track", "Artifact", "parameterized chart") leaked into member-facing language. Discipline upheld.
+- **CLAUDE.md §5** gains a fourth subsection — "Member-facing language (the third register)" — documenting the code → banker-facing → member-facing tier with explicit forbidden terms and a per-field rendering table.
+
+**Visual identity (b.3):**
+
+- **Page background** for `/members/jenny` switches to `bg-blaze-grey-darker` (`#262626`) per BLAZE_STYLE_GUIDE §2.2 — surfaces invert.
+- **Frosted-glass panel pattern** applied to all six bands + sidebar + header: `rounded-lg border border-blaze-frost-edge bg-white/92 backdrop-blur p-5`.
+- **`--blaze-frost-edge` (`#CAE8FD`)** added to BLAZE_STYLE_GUIDE.md §2.5 (new subsection "Surface accents — narrow purpose tokens"). The token has a single documented use (1px borders on semi-transparent white panels over the dark ground); a comment in `app/globals.css` repeats the constraint.
+- All body prose remains on white panel surfaces — verified visually. The dark-grey ground only shows in the negative space between panels, exactly per the source PDF page-12 reference.
+
+**UI substantive treatments (b.2):**
+
+- **Trace pattern**: every Signal, Recommendation, ActionCard, Conversation history row, and Artifact share record carries a `<details>`/`<summary>` block citing the originating Conversation + Growth-step execution. Implementation uses native HTML disclosure — no client-side JS needed. The verb-phrase prose inside each expansion (e.g., "Recommendation produced_by GrowthStepExecution (show-shape) · surfaced_by_rule …") reads from the relation-name registry vocabulary.
+- **Captured-value chips**: Recommendation `size_proposed` / `response` / `primary_concern` / `confidence_band` / `structure`, Signal `severity` / `recency` / `confidence` / magnitude, and ActionCard `type` / `due_at` / `member_reaction` all render as visually distinct chips (orange-deep border, orange-pale tint, monospace, smaller-than-body) with `title=` tooltips citing the capture event ("Captured · Signal.severity · check in · Apr 8, 2026 · Surface seasonal cash flow stress"). Hover-to-reveal works in every desktop browser.
+- **Recommendation responds_to_signals inline**: each Recommendation in Band 4 renders its responding Signals as anchor links to the corresponding `<li id="signal-…">` in Band 3. `scroll-mt-24` on the target preserves the band header when scrolling.
+- **Active-state summary tokens are clickable** per §I (6)(a): the summarizeMember prose has the "N active blocker(s)", "N open ActionCard(s)", and "$NK proposal for {Product}" tokens replaced with anchor links to Band 3, Band 5, and Band 4 respectively. Implementation: `injectLinks(text, [{ token, node }])` — first-occurrence string replacement that never duplicates the canonical lib/summaries.ts wording. Defers the richer (b)-treatment chips-in-prose to step (c) per the user's instruction.
+
+**Artifact preview modal (b.4):**
+
+- New Client Component `app/members/jenny/artifact-preview-dialog.tsx` wrapping the native `<dialog>` element. Click on the artifact name in Band 6's share record opens a centered modal with the artifact metadata (title, description, type), the parameters used in *that* rendering, the share record (member reaction + sent-as-takeaway), and a dashed-border "Chart rendering — Day 3" placeholder. ESC closes; outside-click closes. The `::backdrop` pseudo-element uses the `blaze-grey-darker/70` overlay for a frosted darkroom effect that matches the page's dark-ground identity.
+
+**Verified at the b.4 checkpoint:**
+
+- Row counts after re-seed: 16 topics (was 15 — `goal.cash_flow_smoothing` added) · 11 signals (was 9 — Jenny's cash-flow-smoothing goal + Northland's fleet-expansion goal) · everything else unchanged.
+- Sanity-query confirms `responds_to_signals` correctly populated for all three Recommendations.
+- HTTP 200 on `GET /members/jenny`; rendered HTML contains all four signal-type buckets (Goals(1) · Blockers(2) · Triggers(0) · Indecisions(1)), captured chips with their tooltip titles, the trace details, the responds-to inline links, the dialog scaffolding, and the "Suggested opening" member-facing-register block on the open ActionCard.
+
+**What's deferred:**
+
+- Step (c) — orange-headed-panel pattern from §4 of the style guide — is the next visual pass.
+- Step (d) — live `fireRules()` call wiring up the suggested-next-step panel — comes after the visual pass settles.
+- Day 3 — the actual Recharts seasonal-smoothing chart inside the modal — is the natural moment to validate Recharts × Blaze chart palette × parameter binding (Q-007 likely closes here).
+- Northland and Cygnus surfaces — currently `/members/jenny` is a static route; generalizing to `/members/[id]` is a small lift once the visual pattern is finalized.
+
+**Future-cost / hygiene notes:**
+
+- The page's Prisma client construction is per-request (`getPrisma()` inside the Server Component). Fine for the demo. Production needs a singleton (Next.js dev mode hot reload tends to leak connections otherwise).
+- The Artifact share derivation reads from `captured_data` jsonb on Show executions. The brief's preferred shape is a dedicated `ArtifactShareRecord` row, deferred for now to avoid a second persistence path. Revisit if a future query needs to filter or aggregate share records independently of executions.
+
+---
+
 *Next session entry will be appended below.*
