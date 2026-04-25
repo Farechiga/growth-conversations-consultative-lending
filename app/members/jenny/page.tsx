@@ -1,35 +1,41 @@
 /*
- * Day-2 step (b) — Member profile, live data.
+ * Day-2 — Member profile, live data + dominant orange-headed-panel pattern.
  *
  * Server Component that fetches Jenny's record from Prisma with deep includes
  * and renders the six-band layout per Module and Data Flow §4.2 plus the
  * banker-only sidebar (§4.3) and the above-the-fold pinned suggested-next-step
  * panel (§4.4).
  *
- * Substantive treatments per the b.2 plan:
- *   - Trace pattern: <details>/<summary> blocks on Recommendations, ActionCards,
- *     and Artifact share records, expanding to the originating Conversation +
- *     Growth-step execution.
- *   - Captured-value chips: Recommendation.size_proposed, response, primary_concern,
- *     Signal magnitude, ActionCard due date — visually distinct chips with
- *     title-attribute tooltips citing the capture event.
- *   - Recommendation.responds_to_signals rendered inline with anchor links to
- *     the corresponding Signal in Band 3.
- *   - Active state summary tokens are clickable anchor links to the relevant
- *     bands (the minimal v1 of the §I (6)(a) treatment).
+ * Visual identity (BLAZE_STYLE_GUIDE):
+ *   - Page background: blaze-grey-darker (the dark warm-grey ground).
+ *   - All structural panels follow the §4 orange-headed pattern: 1px
+ *     blaze-frost-edge outer border, blaze-orange header strip with white
+ *     uppercase-tracked label, white/92 backdrop-blur body. No drop shadows
+ *     on default state (§14). Orange used as accent only, never as flood.
+ *   - Inner items inside bands (Signal entries, Recommendation cards,
+ *     ActionCard rows, history entries) keep their existing soft cream-
+ *     tinted treatment so the orange-headed strip stays anchored at the
+ *     band level and doesn't read as visually doubled.
  *
- * Visual identity per b.3:
- *   - Page background = blaze-grey-darker; panels = frosted-glass white-on-dark
- *     with --blaze-frost-edge borders. All body prose stays on white panel
- *     surfaces, never on the dark ground directly.
+ * Substantive treatments retained from prior steps:
+ *   - Trace pattern via <details>/<summary> on Signals, Recommendations,
+ *     ActionCards, and Conversation history rows.
+ *   - Captured-value chips with title-attribute tooltips citing the capture
+ *     event. Chips in Band 3 (structured display); inline prose in Band 4
+ *     (narrative responds-to summary). Same audit chain, different reading
+ *     context.
+ *   - Recommendation.responds_to_signals sorted goal → blocker → trigger →
+ *     indecision with verb-prefix labels.
+ *   - Active state summary tokens are anchor links to the relevant bands.
  *
- * Live rule-engine wiring of the suggested-step panel is step (d). For now the
- * panel reads from Member.member_type.default_growth_tracks[0], which matches
- * what fireRules() returns at #1 for Jenny (verified at the Day-1 checkpoint).
+ * Suggested next step (step d): live fireRules() against the Member's active
+ * Signals + products held. Top-ranked rule's first output Growth track
+ * populates the pinned panel; falls back to hidden if no rule fires (defensive,
+ * not expected for the seeded fixture).
  *
- * Live fetch is parameterless — Jenny is keyed by legal name. Step-(b) extension
- * to dynamic /members/[id] routing comes later when Northland and Cygnus surfaces
- * are added to the demo.
+ * Live fetch is parameterless — Jenny is keyed by legal name. The /members/[id]
+ * dynamic generalization for Northland and Cygnus surfaces lands in a follow-up
+ * once this profile is reviewed feature-complete.
  */
 
 import "dotenv/config";
@@ -40,6 +46,7 @@ import {
   summarizeMember,
   type MemberSummaryInput,
 } from "@/lib/summaries";
+import { fireRules, type RuleConditions } from "@/lib/rule-engine";
 import {
   ArtifactPreviewDialog,
   type ArtifactPreviewData,
@@ -162,6 +169,58 @@ function CapturedChip({
 }
 
 // ============================================================
+// Band wrapper — the dominant orange-headed-panel pattern from
+// BLAZE_STYLE_GUIDE §4. Each band is a 1px-bordered container with a slim
+// blaze-orange header strip carrying the band label in white, and a
+// white/92 backdrop-blur body.
+//
+// §14 anti-patterns honored:
+//   - No drop shadows on default state (the dialog modal is exempt; modals
+//     are an active state, not default).
+//   - Orange used as accent only — never flood. The strip is 40-44px tall
+//     on a multi-hundred-pixel-tall band.
+//   - Hairline (1px) borders only.
+//
+// `tone` lets specific bands (e.g., the pinned suggested-step) carry a
+// slightly differentiated treatment without breaking the pattern.
+// ============================================================
+
+function Band({
+  id,
+  label,
+  labelMeta,
+  tone = "default",
+  children,
+}: {
+  id?: string;
+  label: string;
+  labelMeta?: ReactNode;
+  tone?: "default" | "highlight";
+  children: ReactNode;
+}) {
+  const headerCls =
+    tone === "highlight"
+      ? "bg-blaze-orange-deep" // pinned suggested-step gets the deeper accent
+      : "bg-blaze-orange";
+  return (
+    <section
+      id={id}
+      className="overflow-hidden rounded-lg border border-blaze-frost-edge"
+    >
+      <div
+        className={`${headerCls} flex items-baseline justify-between gap-3 px-5 py-2.5 text-white`}
+      >
+        <span className="text-sm font-medium uppercase tracking-wide">{label}</span>
+        {labelMeta && (
+          <span className="text-xs font-normal text-white/85">{labelMeta}</span>
+        )}
+      </div>
+      <div className="bg-white/92 p-5 backdrop-blur">{children}</div>
+    </section>
+  );
+}
+
+// ============================================================
 // Page
 // ============================================================
 
@@ -223,7 +282,81 @@ export default async function JennyMemberProfilePage() {
     },
   });
 
+  // Step (d): live rule-engine call. Evaluate every Rule against the Member's
+  // current active Signals + products held; the top-ranked result populates
+  // the pinned suggested-next-step panel. For Jenny the engine returns
+  // "Smooth seasonal cash flow with LOC for small caterer" at #1 with high
+  // confidence (verified at the Day-1 checkpoint).
+  const rules = await prisma.rule.findMany({
+    include: {
+      output_growth_tracks: {
+        select: { id: true, name: true, description: true },
+      },
+    },
+  });
+
+  // Resolve products held → their subcategories so the rule engine's
+  // product_not_held / product_held operands evaluate correctly.
+  const productsHeldRaw =
+    (member.core_sync_state as { products_held: { product_id: string }[] })
+      .products_held ?? [];
+  const productsHeld = (
+    await Promise.all(
+      productsHeldRaw.map(async (p) => {
+        const pr = await prisma.product.findUnique({
+          where: { id: p.product_id },
+          select: { subcategory: true },
+        });
+        return pr ? { product_subcategory: pr.subcategory } : null;
+      }),
+    )
+  ).filter((x): x is { product_subcategory: string } => x !== null);
+
   await prisma.$disconnect();
+
+  type SuggestedTrack = {
+    name: string;
+    description: string;
+    rule_name: string;
+    confidence_band: "low" | "medium" | "high";
+  };
+
+  const ranked = fireRules(
+    rules.map((r) => ({
+      id: r.id,
+      name: r.name,
+      conditions: r.conditions as RuleConditions,
+      confidence_band: r.confidence_band,
+      output_growth_tracks: r.output_growth_tracks.map((t) => ({
+        id: t.id,
+        name: t.name,
+      })),
+    })),
+    {
+      member: { id: member.id, member_type_id: member.member_type_id },
+      activeSignals: member.signals.map((s) => ({ topic_id: s.topic_id })),
+      productsHeld,
+    },
+  );
+
+  // Top-ranked result + lookup the description from the original rules array
+  // (fireRules's output type narrows to id + name only).
+  const top = ranked[0];
+  const topTrackId = top?.growth_tracks[0]?.id;
+  const topTrackFull = topTrackId
+    ? rules
+        .flatMap((r) => r.output_growth_tracks)
+        .find((t) => t.id === topTrackId)
+    : null;
+  const suggestedTrack: SuggestedTrack | null =
+    top && topTrackFull
+      ? {
+          name: topTrackFull.name,
+          description: topTrackFull.description,
+          rule_name: top.rule.name,
+          confidence_band: top.rule.confidence_band,
+        }
+      : null;
 
   // Group signals by type for Band 3 (do not inherit the summary's blocker-only
   // compression — render all four types).
@@ -266,10 +399,6 @@ export default async function JennyMemberProfilePage() {
   );
 
   const summaryText = summaryResult.ok ? summaryResult.value : "";
-
-  // Suggested next step: hardcoded to MemberType.default_growth_tracks[0] for
-  // step (b). Live rule-engine call lands in step (d).
-  const defaultTrack = member.member_type.default_growth_tracks[0] ?? null;
 
   // Derive Artifact share records from Show-shape executions whose captured_data
   // includes shared_afterward = true. The brief's preferred storage shape is a
@@ -373,9 +502,6 @@ export default async function JennyMemberProfilePage() {
   // Render
   // ----------------------------------------------------------
 
-  const PANEL_CLS =
-    "rounded-lg border border-blaze-frost-edge bg-white/92 backdrop-blur p-5";
-
   return (
     <div className="min-h-screen w-full bg-blaze-grey-darker">
       {/* §3 signature gradient band */}
@@ -400,54 +526,44 @@ export default async function JennyMemberProfilePage() {
       {/* Main content + sidebar */}
       <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-8 py-8 lg:grid-cols-[minmax(0,1fr)_280px]">
         <main className="space-y-6">
-          {/* Pinned: Suggested next step (above the fold). On dark ground we
-              keep the orange-pale tint but raise the contrast with a white
-              underlay so prose stays readable. */}
-          {defaultTrack && (
-            <section
-              aria-labelledby="suggested-heading"
-              className="rounded-lg border border-blaze-orange/40 bg-blaze-orange-pale/85 p-5"
+          {/* Pinned: Suggested next step (above the fold). Live result from
+              fireRules(); the panel is hidden if no rule fires (defensive —
+              not expected for the seeded fixture). The header strip uses the
+              orange-deep tone so this band reads as the highest-priority
+              call-to-action on the page without breaking the panel pattern. */}
+          {suggestedTrack && (
+            <Band
+              id="band-suggested"
+              tone="highlight"
+              label="Suggested next step"
+              labelMeta={`${suggestedTrack.confidence_band} confidence`}
             >
-              <p className="text-xs font-medium uppercase tracking-wide text-blaze-orange-deep">
-                Suggested next step ·{" "}
-                <CapturedChip capturedBy="rule firing">high confidence</CapturedChip>
-              </p>
-              <h2
-                id="suggested-heading"
-                className="mt-1 text-xl font-semibold text-blaze-grey-darker"
-              >
-                {defaultTrack.name}
+              <h2 className="text-xl font-semibold text-blaze-grey-darker">
+                {suggestedTrack.name}
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-blaze-grey-body">
-                {defaultTrack.description}
+                {suggestedTrack.description}
               </p>
               <p className="mt-2 text-xs text-blaze-grey-soft">
-                Surfaced from{" "}
-                <code className="rounded bg-white/60 px-1 py-px text-[0.85em]">
-                  Member Type.default_growth_tracks
-                </code>
-                . Live rule-engine call wires up in step (d).
+                Surfaced by rule:{" "}
+                <span className="font-medium text-blaze-grey-body">
+                  {suggestedTrack.rule_name}
+                </span>
               </p>
-              <div className="mt-3 flex gap-3">
+              <div className="mt-4 flex flex-wrap gap-3">
                 <button className="rounded bg-blaze-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blaze-orange-bright active:bg-blaze-orange-burnt">
                   Run Growth track
                 </button>
-                <button className="rounded border border-blaze-grey-soft bg-white/60 px-4 py-2 text-sm font-medium text-blaze-grey-dark transition-colors hover:bg-white/80">
+                <button className="rounded border border-blaze-grey-soft bg-white px-4 py-2 text-sm font-medium text-blaze-grey-dark transition-colors hover:bg-blaze-cream">
                   Dismiss
                 </button>
               </div>
-            </section>
+            </Band>
           )}
 
           {/* Band 1 — Identity strip */}
-          <section aria-labelledby="identity-heading" id="band-identity" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              Member · Band 1
-            </p>
-            <h1
-              id="identity-heading"
-              className="mt-1 text-2xl font-semibold text-blaze-grey-darker"
-            >
+          <Band id="band-identity" label="Member">
+            <h1 className="text-2xl font-semibold text-blaze-grey-darker">
               {member.doing_business_as ?? member.legal_name}
             </h1>
             <p className="text-sm text-blaze-grey-body">Legal: {member.legal_name}</p>
@@ -512,17 +628,11 @@ export default async function JennyMemberProfilePage() {
                 );
               })()}
             </dl>
-          </section>
+          </Band>
 
           {/* Band 2 — Active state summary, with clickable tokens. */}
-          <section aria-labelledby="summary-heading" id="band-summary" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              Active state · Band 2
-            </p>
-            <h2 id="summary-heading" className="mt-1 text-base font-semibold text-blaze-grey-dark">
-              Where things stand
-            </h2>
-            <p className="mt-3 text-sm leading-relaxed text-blaze-grey-darker">{summaryNodes}</p>
+          <Band id="band-summary" label="Active state" labelMeta="where things stand">
+            <p className="text-sm leading-relaxed text-blaze-grey-darker">{summaryNodes}</p>
             <p className="mt-3 text-xs text-blaze-grey-soft">
               Generated from the Member summary template (
               <code className="rounded bg-blaze-cream px-1 py-px text-[0.85em]">
@@ -530,17 +640,17 @@ export default async function JennyMemberProfilePage() {
               </code>
               ). Tokens above link to the relevant band.
             </p>
-          </section>
+          </Band>
 
           {/* Band 3 — Active signals, grouped by all four types */}
-          <section aria-labelledby="signals-heading" id="band-signals" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              Active signals · Band 3
-            </p>
-            <h2 id="signals-heading" className="mt-1 text-base font-semibold text-blaze-grey-dark">
-              What we know about {member.doing_business_as ?? member.legal_name} right now
-            </h2>
-            <div className="mt-4 space-y-5">
+          <Band
+            id="band-signals"
+            label="Active signals"
+            labelMeta={`what we know about ${
+              member.doing_business_as ?? member.legal_name
+            } right now`}
+          >
+            <div className="space-y-5">
               {(["goal", "blocker", "trigger", "indecision"] as const).map((type) => {
                 const items = signalsByType[type];
                 return (
@@ -641,20 +751,15 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </div>
-          </section>
+          </Band>
 
           {/* Band 4 — Active proposals with responds_to_signals inline */}
-          <section aria-labelledby="proposals-heading" id="band-proposals" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              Active proposals · Band 4
-            </p>
-            <h2
-              id="proposals-heading"
-              className="mt-1 text-base font-semibold text-blaze-grey-dark"
-            >
-              Recommendations on the table
-            </h2>
-            <ul className="mt-3 space-y-3">
+          <Band
+            id="band-proposals"
+            label="Active proposals"
+            labelMeta="recommendations on the table"
+          >
+            <ul className="space-y-3">
               {member.recommendations.map((r) => {
                 const conv = r.growth_step_execution.conversation;
                 const captureRef = `Recommendation · Show step in ${conv.meeting_type.replace(
@@ -764,17 +869,17 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </ul>
-          </section>
+          </Band>
 
           {/* Band 5 — Open work */}
-          <section aria-labelledby="work-heading" id="band-work" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              Open work · Band 5
-            </p>
-            <h2 id="work-heading" className="mt-1 text-base font-semibold text-blaze-grey-dark">
-              ActionCards for {member.doing_business_as ?? member.legal_name}
-            </h2>
-            <ul className="mt-3 space-y-3">
+          <Band
+            id="band-work"
+            label="Open work"
+            labelMeta={`ActionCards for ${
+              member.doing_business_as ?? member.legal_name
+            }`}
+          >
+            <ul className="space-y-3">
               {member.action_cards.map((c) => {
                 const days = daysBetween(c.due_at, NOW);
                 const overdue = days < 0;
@@ -846,20 +951,15 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </ul>
-          </section>
+          </Band>
 
           {/* Band 6 — History */}
-          <section aria-labelledby="history-heading" id="band-history" className={PANEL_CLS}>
-            <p className="text-xs font-medium uppercase tracking-wide text-blaze-grey-soft">
-              History · Band 6
-            </p>
-            <h2
-              id="history-heading"
-              className="mt-1 text-base font-semibold text-blaze-grey-dark"
-            >
-              Conversations and Artifact share record
-            </h2>
-            <ol className="mt-4 space-y-3 border-l-2 border-blaze-dust pl-4">
+          <Band
+            id="band-history"
+            label="History"
+            labelMeta="conversations and Artifact share record"
+          >
+            <ol className="space-y-3 border-l-2 border-blaze-dust pl-4">
               {member.conversations.map((c) => (
                 <li key={c.id} className="relative">
                   <span className="absolute -left-[1.42rem] top-1.5 inline-block h-2 w-2 rounded-full bg-blaze-orange-deep" />
@@ -936,26 +1036,22 @@ export default async function JennyMemberProfilePage() {
                 </ul>
               )}
             </div>
-          </section>
+          </Band>
         </main>
 
-        {/* Sidebar — banker-only context */}
+        {/* Sidebar — banker-only context. The mini-bands carry the same
+            orange-headed pattern as the main bands so the visual identity is
+            consistent across the page. */}
         <aside className="space-y-4">
-          <section aria-labelledby="notes-heading" className={PANEL_CLS.replace("p-5", "p-4")}>
-            <h3
-              id="notes-heading"
-              className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft"
-            >
-              Private notes
-            </h3>
+          <Band label="Private notes">
             {(() => {
               const notes = (member.private_notes ?? []) as { content: string; created_at?: string }[];
               return notes.length === 0 ? (
-                <p className="mt-2 text-sm italic text-blaze-grey-soft">
+                <p className="text-sm italic text-blaze-grey-soft">
                   No private notes captured yet.
                 </p>
               ) : (
-                <ul className="mt-2 space-y-2">
+                <ul className="space-y-2">
                   {notes.map((n, i) => (
                     <li key={i} className="text-sm text-blaze-grey-darker">
                       {n.content}
@@ -964,19 +1060,13 @@ export default async function JennyMemberProfilePage() {
                 </ul>
               );
             })()}
-          </section>
+          </Band>
 
-          <section aria-labelledby="forward-heading" className={PANEL_CLS.replace("p-5", "p-4")}>
-            <h3
-              id="forward-heading"
-              className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft"
-            >
-              Forward signals
-            </h3>
-            <p className="mt-2 text-sm italic text-blaze-grey-soft">
+          <Band label="Forward signals">
+            <p className="text-sm italic text-blaze-grey-soft">
               No forward intent captured yet. Check back after the next Connect step.
             </p>
-          </section>
+          </Band>
 
           <p className="px-1 text-xs text-blaze-cream/70">
             Sidebar visibility is banker-only. Private notes never aggregate to dashboards.

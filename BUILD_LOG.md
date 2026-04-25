@@ -370,4 +370,56 @@ Concretely: when the same value appears in Band 3 and again in Band 4 (e.g., Jen
 
 ---
 
+## 2026-04-25 (Day 2 chart approval) · Seasonal smoothing chart lands; design notes for retrieval
+
+**Session type:** Documentation-only entry capturing the chart approval, an observation worth preserving, and three knobs we considered and did not apply.
+
+**Chart approval:** The seasonal smoothing chart in the Artifact preview modal passes the 2-second test cleanly: "without LOC you dip negative in winter and fall; with LOC you stay positive throughout." Working specifically: y-axis auto-scale gives the negative dips real visual weight (not a footnote at the bottom); the orange line dominates correctly; the area fill connects the two lines visually; the seasonal pattern reads as realistic for an event-driven business (slow winter, wedding-season peak, fall dip, modest December recovery); the legend names the financing instrument by amount.
+
+**Convergence-in-strong-months observation (preserve, do not change):** The two lines converge in May–August because the LOC isn't drawn when revenue is high. This is technically correct and is actually a *positive* part of the story — the LOC costs nothing when not needed. A demo viewer might pause briefly on the convergence; a banker can explain it in five seconds. Adding visual separation to "fix" the convergence would trade accuracy for visual differentiation, and accuracy is more valuable here. Leave the lines as they are.
+
+**Considered, not applied** (preserved for retrieval if future banker testing reports the rhetoric softening):
+
+1. **`<ReferenceLine y={0}>` with a slightly heavier stroke.** Would visually anchor the zero baseline so dips below it read as transgression rather than range. Not currently needed — auto-scale already gives the dips weight.
+2. **`<ReferenceArea y1={-20000} y2={0}>` with a faint `rgba(156, 51, 37, 0.05)` fill.** Would tint the danger zone subtly without changing the lines themselves, reinforcing "this is a problem region." Not currently needed.
+3. **Bumping the without-LOC line a notch darker** (e.g., `#2B2B29` `blaze-grey-dark` instead of `#4F5052` `blaze-grey-body`). Would make the dips read as more attention-grabbing. Not currently needed; the orange line should dominate, and a darker grey risks reversing that ranking.
+
+If real banker testing produces feedback like "the dips don't feel concerning enough," the cheapest first move is knob 1 (zero reference line). Knob 2 if it still doesn't carry. Knob 3 last, because it touches the visual ranking between the two lines.
+
+---
+
+## 2026-04-25 (Day 2 steps c + d) · Orange-headed pattern + live rule engine — Jenny profile feature-complete
+
+**Session type:** Step (c) and (d) executed in a single turn per Francisco's plan ("After (c) and (d), the Jenny profile is feature-complete for v1"). The next move is the `/members/[id]` dynamic generalization, with a checkpoint between.
+
+**Step (c) — orange-headed-panel pattern:**
+
+- New `Band` wrapper component in `app/members/jenny/page.tsx` encapsulates the dominant pattern from `BLAZE_STYLE_GUIDE.md` §4: 1px `blaze-frost-edge` outer border, `blaze-orange` (or `blaze-orange-deep` for the pinned-suggested-step "highlight" tone) header strip with a white uppercase-tracked label and an optional `labelMeta` right-aligned in white/85, white/92 backdrop-blur body with the existing internal padding.
+- Applied to all band-level surfaces, top to bottom: pinned Suggested next step, Band 1 Member, Band 2 Active state, Band 3 Active signals, Band 4 Active proposals, Band 5 Open work, Band 6 History, plus the sidebar mini-bands Private notes and Forward signals. Nine orange-headed strips total per page. Each band's prior in-body label caption was removed since the strip now carries the band identity.
+- Inner items inside bands (Signal entries, Recommendation cards, ActionCard rows, history entries) keep their existing soft cream-tinted treatment so the orange header stays anchored at the band level and doesn't read as visually doubled.
+- §14 anti-patterns honored: no drop shadows on default state (the modal dialog's shadow is exempt — it's an active state, not default); orange used as accent only — never flood (the strip is ~40px tall on a multi-hundred-pixel-tall band); hairline (1px) borders only.
+- One mid-flight visual fix: the original `Suggested next step` `labelMeta` carried a `CapturedChip` for "high confidence", but the chip's deep-orange-on-pale-orange treatment got muddy when overlaid on the burnished-orange header strip itself (the chip's contrast depends on a white/cream backdrop). Per the chip-vs-prose rule recorded in the prior BUILD_LOG entry — "chip in any context where the value is the primary content of its line; inline prose in any context where the value is a parenthetical detail inside a larger sentence" — the band header is parenthetical-detail context, so plain white/85 text is correct here. Fixed.
+
+**Step (d) — live `fireRules()` wiring:**
+
+- The pinned Suggested-next-step panel previously read from `Member.member_type.default_growth_tracks[0]` (a hardcoded shortcut introduced in step b). Replaced with a live call to `fireRules()` from `lib/rule-engine.ts`, evaluating every Rule against `(member, activeSignals, productsHeld)` per Data Framework §6.7's AST shape.
+- The page now fetches rules with `output_growth_tracks: { id, name, description }` included; resolves `core_sync_state.products_held` to subcategories before passing into the engine; and uses the top-ranked result's first output Growth track to populate the panel.
+- Verified: `GET /members/jenny` returns 200 (~98 KB). The pinned panel renders **"Smooth seasonal cash flow with LOC for small caterer"** with **"high confidence"** in the header `labelMeta` — exactly the rule-engine result Francisco called for. The "Surfaced by rule:" caption names the rule that fired ("Surface seasonal cash flow track for small caterers"), so the provenance from active Signal → Rule → Growth track is traceable on-page.
+- Defensive fall-through: if `fireRules()` returns 0 results, the pinned panel is hidden rather than showing a stale fallback. Not expected to fire in the seeded fixture; just hygiene.
+
+**Verified at the close of step (d):**
+
+- Page renders cleanly: 9 `bg-blaze-orange` header strips (pinned + 6 bands + 2 sidebar mini-bands), 20 `backdrop-blur` panel bodies, 21 `<details>` trace expansions, 44 captured-value tooltips, the Q-017 "45 days" chip in Band 3, the goal-first verb-prefix-labeled responds-to lines in Band 4, and the seasonal smoothing chart inside the Artifact preview modal.
+- Rule engine fires the expected rule for Jenny.
+
+**Jenny profile is feature-complete for v1.**
+
+**Queued, not started:**
+
+- `/members/[id]` dynamic generalization — parameterize the route so Northland and Cygnus render against the same component with their own data. Stop and check in once Jenny is reviewed feature-complete; we'll review before generalizing.
+- The two remaining Artifact templates (`fleet_roi_composed_chart_v1` for Northland, `capital_event_map_v1` for Cygnus) stay queued for after generalization confirms the component handles all three Members cleanly.
+- The Insight Engine surfaces (the third major module per Module and Data Flow §5) are not yet started; that's a Day 3+ concern.
+
+---
+
 *Next session entry will be appended below.*
