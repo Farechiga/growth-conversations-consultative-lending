@@ -167,22 +167,22 @@ The discipline: structure comes from typography, whitespace, and small semantic 
 
 ### Section structure
 
-Every section opens with a **section label** consisting of an orange rectangle mark followed by uppercase tracked label text:
+Every section opens with a **section label** consisting of an orange rectangle mark followed by **title-case** label text. The orange rectangle is doing enough visual work that we don't need typographic shouting alongside it; uppercase reads as legacy enterprise software, title case reads as modern professional.
 
 ```jsx
 <div className="flex items-baseline gap-3">
-  <span aria-hidden className="inline-block h-4 w-2 bg-[#B45F26]" />
-  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[#1A1A1A]">
+  <span aria-hidden className="inline-block h-6 w-[27px] bg-[#B45F26]" />
+  <span className="text-2xl font-semibold tracking-[0.02em] text-[#1A1A1A] leading-none">
     Active state
   </span>
   {meta && (
-    <span className="text-xs font-medium text-[#4F5052]">{meta}</span>
+    <span className="text-sm font-medium text-[#4F5052]">{meta}</span>
   )}
 </div>
 ```
 
 - **Mark dimensions:** 27×24px solid `--blaze-orange`, 12px right margin (default); 18×16px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin. The default mark width is the proportionally-scaled 3:4 baseline (18px) widened by 50% to give the mark deliberate brand-element weight; compact preserves the smaller original sizing for quieter contexts.
-- **Label text:** 24px / 600 / `letter-spacing 0.08em` / uppercase / `leading-none`, color `--blaze-charcoal` (default); 19px / 600 in compact contexts. The default is ~80% of the 30px Member identity heading — the section label has real presence without competing with the Member name at the top of the page.
+- **Label text:** 24px / 600 / `letter-spacing 0.02em` / **title case** / `leading-none`, color `--blaze-charcoal` (default); 19px / 600 in compact contexts. Title case throughout — no uppercase. The default is ~80% of the 30px Member identity heading.
 - **Optional meta:** 13-14px / 500, color `--blaze-grey-body`. Used for descriptive context ("where things stand", "what we know about Jenny right now").
 
 ### Body text hierarchy
@@ -229,16 +229,42 @@ Replaces the prior orange-tinted chip. Marks structured field values captured in
 - **Quote text:** italic, color `--blaze-grey-body` (softer than body charcoal — reads as voice, not statement).
 - **Spacing:** 12px between line and text; 4px padding above and below the text.
 
-### Section dividers
+### Section dividers and band spacing
 
-Between bands, a 1px horizontal rule in `--blaze-rule` (`#E8EAEC`):
+Between bands, a 1px horizontal rule in `--blaze-rule` (`#D5D8DB`), centered in a generous ~80px gap:
 
 ```jsx
-<hr className="my-12 border-0 border-t border-[#E8EAEC]" />
+<hr className="my-10 border-0 border-t border-[#D5D8DB]" />
 ```
 
-- ~56px total gap between bands; rule sits centered in that gap (`my-12` = 48px above + below; total ≈ 100px including line height — adjust to taste).
-- The cool-grey rule should disappear into the page until the eye is looking for it. If you can perceive it at first glance, it's too prominent.
+- **~80px total gap between bands** (`my-10` = 40px above + 40px below + 1px line). Generous between-band spacing is what makes borderless designs read as elegant rather than cramped — the whitespace becomes the structuring tool that panels used to be.
+- Within bands, tighter spacing (16-24px) keeps related elements visually associated.
+- The cool-grey rule should disappear into the page until the eye is looking for it.
+
+### Body text hierarchy (explicit weights)
+
+Modern professional dashboards use weight as the primary hierarchy tool. Three weights, three colors:
+
+| Element | Size | Weight | Color |
+|---|---|---|---|
+| Section title (under the section label, e.g. "Where things stand") | 18px | **600** | `#000000` |
+| Member identity heading (Band 1 only) | 28-30px | 600 | `#000000` |
+| Item titles within a band (Signal topic, Recommendation product, ActionCard type+owner) | 14px | **600** | `--blaze-charcoal` |
+| Primary body text | 14px | 400 | `--blaze-charcoal` |
+| Supporting prose / metadata | 13px | 400 | `--blaze-grey-body` |
+| Small labels (sublabels like "Goals (1)" / "Blockers (2)") | 12px | **600** | `--blaze-grey-body` (sentence case, not uppercase) |
+
+The discipline: weight handles importance, color handles secondary/tertiary status, size handles the truly small elements. Restrained palette, clear hierarchy.
+
+### Hover states
+
+Conversation history entries and open ActionCard rows get a subtle warm tint on hover, signaling responsiveness without adding click handlers (drill-in interactions are out of scope for v1):
+
+```jsx
+<li className="cursor-pointer transition-colors duration-150 hover:bg-[rgba(180,95,38,0.04)]">
+```
+
+The bg shift is `rgba(180, 95, 38, 0.04)` — a 4%-alpha burnished orange. On the cool paper ground this reads as a faint warm wash; on cream or other warm grounds it reads as a slight saturation lift. The cursor changes to pointer; transition lasts 150ms.
 
 ### Hyperlinks and inline navigation
 

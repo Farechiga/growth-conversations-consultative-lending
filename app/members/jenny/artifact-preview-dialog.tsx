@@ -32,10 +32,12 @@ function ModalSectionLabel({ label }: { label: string }) {
   // Modal sub-sections use the compact-size mark (18×16) and label text
   // (19px) — proportionally smaller than the main page's section labels
   // so the modal feels of-a-piece without competing with the main column.
+  // Title case per BLAZE_STYLE_GUIDE §4.5; orange rectangle does the
+  // anchoring work without typographic shouting.
   return (
     <div className="flex items-baseline">
       <span aria-hidden className="inline-block h-4 w-[18px] mr-2 bg-blaze-orange" />
-      <span className="text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
+      <span className="text-[19px] font-semibold tracking-[0.02em] text-blaze-charcoal leading-none">
         {label}
       </span>
     </div>
@@ -72,7 +74,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
       >
         <div className="flex items-start justify-between border-b border-blaze-rule px-6 py-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blaze-grey-body">
+            <p className="text-xs font-medium text-blaze-grey-body">
               Artifact preview · {artifact.type}
             </p>
             <h2 className="mt-1 text-lg font-semibold text-black">{artifact.title}</h2>
@@ -141,7 +143,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
                 <SeasonalSmoothingChart />
               ) : (
                 <div className="border border-dashed border-blaze-rule p-6 text-center">
-                  <p className="text-xs uppercase tracking-[0.08em] text-blaze-grey-body">
+                  <p className="text-xs font-semibold text-blaze-grey-body">
                     Chart rendering
                   </p>
                   <p className="mt-1 text-sm text-blaze-grey-body">

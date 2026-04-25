@@ -281,8 +281,16 @@ export function summarizeGrowthTrack(
 // ============================================================
 // summarizeRecommendation
 // ============================================================
+//
+// Version 2 (Q-018): when `rationale_summary` is provided, prefer it over
+// `rationale_text` in the output. The summary is the scan-friendly read;
+// the full prose is the auditable detail and stays accessible via the
+// Member profile's "View full rationale" expand. Snapshot generation
+// (when this template is wired in) can rely on the summary for compact
+// auditable text without the wall-of-prose feel.
+// ============================================================
 
-export const SUMMARIZE_RECOMMENDATION_TEMPLATE_VERSION = 1;
+export const SUMMARIZE_RECOMMENDATION_TEMPLATE_VERSION = 2;
 const SUMMARIZE_RECOMMENDATION_TEMPLATE = "summarizeRecommendation";
 
 export type RecommendationSummaryInput = {
@@ -292,6 +300,7 @@ export type RecommendationSummaryInput = {
   response: "accepted" | "leaning_yes" | "neutral" | "leaning_no" | "declined" | "deferred";
   confidence_band: "low" | "medium" | "high";
   rationale_text: string;
+  rationale_summary: string | null;
   primary_concern: keyof typeof RECOMMENDATION_PRIMARY_CONCERN_LABELS | null;
 };
 
@@ -304,7 +313,10 @@ export function summarizeRecommendation(
   if (isMissing(input.structure)) missing.push("structure");
   if (isMissing(input.response)) missing.push("response");
   if (isMissing(input.confidence_band)) missing.push("confidence_band");
-  if (isMissing(input.rationale_text)) missing.push("rationale_text");
+  // At least one of rationale_summary OR rationale_text must be populated.
+  if (isMissing(input.rationale_text) && isMissing(input.rationale_summary)) {
+    missing.push("rationale_text|rationale_summary");
+  }
   // primary_concern: nullable
   if (missing.length > 0) {
     return err({
@@ -326,5 +338,6 @@ export function summarizeRecommendation(
   const concernSentence = input.primary_concern
     ? ` Primary concern: ${describePrimaryConcern(input.primary_concern)}`
     : "";
-  return ok(`${head} Member is ${responseLabel}.${concernSentence} Rationale: ${input.rationale_text}`);
+  const rationaleBody = input.rationale_summary ?? input.rationale_text;
+  return ok(`${head} Member is ${responseLabel}.${concernSentence} Rationale: ${rationaleBody}`);
 }

@@ -116,6 +116,22 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Reasoning:** Implicit m-n is the lowest-friction Prisma-on-SQLite shape for this — no extra model, no order column needed, and the relationship is naturally bidirectional. The Insight Engine's future queries ("most-funded-from Signal types") become a simple aggregate over the join table. The relation name `responds_to` is added to `lib/relation-names.ts` per Two-File Rule.
 - **Resolved by:** Francisco (via the Day-2 step (b) plan).
 
+### Q-018 · `Recommendation.rationale_summary` — progressive disclosure of the dense rationale
+
+- **Date logged:** 2026-04-25 (step-(c)-prep visual refinements)
+- **Question:** The `Recommendation.rationale_text` field carries dense banker prose (3-5 sentences explaining why the proposal is sized and structured the way it is). On the Member profile's Active proposals band, the full prose reads as a wall of text. Bankers scan; they only need full rationale when drilling in. The page needs a one-line summary visible by default and the full prose available on demand.
+- **Why it matters:** Visual density on a Member profile is the difference between "scanned in 5 seconds" and "demanded a 30-second read." Progressive disclosure preserves the auditable detail without forcing it on every page load. This is the same pattern used elsewhere on the page (the trace `<details>` blocks); applying it consistently to the rationale carries the design language.
+- **Affects:** Schema (one new optional String field), seed (three Recommendations need summaries authored), Member profile rendering (default-summary + expandable-detail), `lib/summaries.ts` (the `summarizeRecommendation` template can prefer the summary when present).
+- **Resolution date:** 2026-04-25
+- **Decision:** Add `Recommendation.rationale_summary String?` (nullable for now; production capture could enforce required at the next schema review). Cap at ~200 characters by convention; not enforced at the database layer for SQLite simplicity. Populated for the three demo Recommendations in the seed.
+- **Migration approach:** Clean Prisma `migrate dev`. Backfill happens in the seed only — no production data exists.
+- **Authored summaries (proposed; Francisco to review):**
+  - Jenny's $75K LOC: *"$75K LOC sized at one quarter of the slow-season revenue gap. Existing Visa demonstrates payment discipline."* (provided by Francisco verbatim)
+  - Northland's $180K Fleet Loan: *"Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season. Existing Equipment Loan demonstrates payment discipline."*
+  - Cygnus's CRE Term Loan: *"$4M-$7M CRE financing for the anchor-customer-driven capacity expansion. CRE specialist Marcus Webb engaged early; coordination by Scott."*
+- **Reasoning:** A rendered field is the right home for this — it's content the Growth lead curates per recommendation, not derivable mechanically from `rationale_text`. Storing it lets the Insight Engine aggregate "median summary length per Member Type" or similar quality signals later. Keeping it nullable lets us roll out without a coordinated edit to all rationale templates.
+- **Resolved by:** Francisco (via the step-(c)-prep §4 instruction).
+
 ### Q-008 · Demo data persistence model
 
 - **Date logged:** Pre-build (new for build phase)

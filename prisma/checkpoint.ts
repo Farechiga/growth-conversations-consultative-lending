@@ -111,6 +111,7 @@ async function memberProfile(id: string) {
         response: r.response,
         confidence_band: r.confidence_band,
         rationale_text: r.rationale_text,
+        rationale_summary: r.rationale_summary,
         primary_concern: r.primary_concern,
       });
       return {

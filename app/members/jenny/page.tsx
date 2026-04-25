@@ -163,7 +163,7 @@ function CapturedChip({
 }) {
   return (
     <span
-      className="inline-flex items-baseline border-[1.5px] border-blaze-orange bg-blaze-data-cool px-1 py-0.5 font-mono text-[0.85em] text-blaze-charcoal align-baseline"
+      className="inline-flex items-baseline border-[1.5px] border-blaze-orange bg-blaze-data-cool px-1 py-0.5 font-mono text-[0.78em] text-blaze-charcoal align-baseline"
       title={`Captured · ${capturedBy}`}
     >
       {children}
@@ -191,18 +191,15 @@ function SectionLabel({
   meta?: ReactNode;
   size?: "default" | "compact";
 }) {
-  // Dimensions per BLAZE_STYLE_GUIDE §2.7:
-  //   default — 27×24 mark (h-6 = 24px height matches the 24px label text;
-  //             width = 24 × 3/4 = 18 proportional to the old 12:16 ratio,
-  //             then +50% wider = 27)
-  //   compact — 18×16 mark (proportionally smaller for sidebar / modal
-  //             contexts; matches what the old "default" was)
+  // Dimensions per BLAZE_STYLE_GUIDE §2.7. Title-case treatment per §4.5 —
+  // the orange rectangle is doing enough visual work that we don't need
+  // typographic shouting alongside it.
   const markCls =
     size === "compact" ? "h-4 w-[18px] mr-2" : "h-6 w-[27px] mr-3";
   const labelCls =
     size === "compact"
-      ? "text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none"
-      : "text-2xl font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none";
+      ? "text-[19px] font-semibold tracking-[0.02em] text-blaze-charcoal leading-none"
+      : "text-2xl font-semibold tracking-[0.02em] text-blaze-charcoal leading-none";
   return (
     <div className="flex items-baseline">
       <span aria-hidden className={`inline-block bg-blaze-orange ${markCls}`} />
@@ -223,7 +220,10 @@ function SectionLabel({
 // ============================================================
 
 function Rule() {
-  return <hr className="my-12 border-0 border-t border-blaze-rule" aria-hidden />;
+  // ~80px between bands per BLAZE_STYLE_GUIDE §4.5: my-10 = 40px each side
+  // + 1px line ≈ 81px total gap. Generous between-band whitespace is what
+  // makes borderless designs read as elegant rather than cramped.
+  return <hr className="my-10 border-0 border-t border-blaze-rule" aria-hidden />;
 }
 
 // ============================================================
@@ -540,7 +540,7 @@ export default async function JennyMemberProfilePage() {
               id="band-suggested"
               className="rounded-md bg-[#F6EFE5] p-5"
             >
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-orange-deep">
+              <p className="text-sm font-semibold text-blaze-orange-deep">
                 Suggested next step ·{" "}
                 <span className="font-medium">
                   {suggestedTrack.confidence_band} confidence
@@ -582,21 +582,21 @@ export default async function JennyMemberProfilePage() {
             </p>
             <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-blaze-grey-body md:grid-cols-4">
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Member Type</dt>
+                <dt className="text-xs font-medium text-blaze-grey-body">Member Type</dt>
                 <dd className="font-medium text-blaze-charcoal">{member.member_type.name}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Industry</dt>
+                <dt className="text-xs font-medium text-blaze-grey-body">Industry</dt>
                 <dd className="font-medium text-blaze-charcoal">{member.industry_family.name}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Primary banker</dt>
+                <dt className="text-xs font-medium text-blaze-grey-body">Primary banker</dt>
                 <dd className="font-medium text-blaze-charcoal">
                   {member.primary_banker.display_name}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Member since</dt>
+                <dt className="text-xs font-medium text-blaze-grey-body">Member since</dt>
                 <dd className="font-medium text-blaze-charcoal">
                   {fmtDate(member.tenure_started_at)}
                 </dd>
@@ -615,25 +615,25 @@ export default async function JennyMemberProfilePage() {
                   <>
                     {f.owner_name && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Owner</dt>
+                        <dt className="text-xs font-medium text-blaze-grey-body">Owner</dt>
                         <dd className="font-medium text-blaze-charcoal">{f.owner_name}</dd>
                       </div>
                     )}
                     {f.location && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Location</dt>
+                        <dt className="text-xs font-medium text-blaze-grey-body">Location</dt>
                         <dd className="font-medium text-blaze-charcoal">{f.location}</dd>
                       </div>
                     )}
                     {f.employees !== undefined && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Employees</dt>
+                        <dt className="text-xs font-medium text-blaze-grey-body">Employees</dt>
                         <dd className="font-medium text-blaze-charcoal">{f.employees}</dd>
                       </div>
                     )}
                     {f.revenue_ttm_band && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Revenue (TTM)</dt>
+                        <dt className="text-xs font-medium text-blaze-grey-body">Revenue (TTM)</dt>
                         <dd className="font-medium text-blaze-charcoal">{f.revenue_ttm_band}</dd>
                       </div>
                     )}
@@ -676,7 +676,7 @@ export default async function JennyMemberProfilePage() {
                 const items = signalsByType[type];
                 return (
                   <div key={type}>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-body">
+                    <h3 className="text-xs font-semibold text-blaze-grey-body">
                       {SIGNAL_TYPE_LABELS[type]} ({items.length})
                     </h3>
                     {items.length === 0 ? (
@@ -709,7 +709,7 @@ export default async function JennyMemberProfilePage() {
                                   aria-label={`severity: ${s.severity}`}
                                 />
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-blaze-charcoal">
+                                  <p className="text-sm font-semibold text-blaze-charcoal leading-tight">
                                     {s.topic.display_name}
                                   </p>
                                   <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs text-blaze-grey-body">
@@ -795,7 +795,7 @@ export default async function JennyMemberProfilePage() {
                     className="py-2"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium text-blaze-charcoal">
+                      <p className="text-sm font-semibold text-blaze-charcoal">
                         {r.product.name}{" "}
                         {r.size_proposed !== null ? (
                           <>
@@ -871,9 +871,26 @@ export default async function JennyMemberProfilePage() {
                       .
                     </p>
 
+                    {/* Progressive disclosure per Q-018: show one-line summary
+                        by default; full rationale_text behind an expand. The
+                        summary is the scan-friendly read; the full prose is
+                        the auditable detail. */}
                     <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
-                      {r.rationale_text}
+                      {r.rationale_summary ?? r.rationale_text}
                     </p>
+                    {r.rationale_summary && (
+                      <details className="group mt-2 text-xs">
+                        <summary className="cursor-pointer font-medium text-blaze-orange-deep underline-offset-2 hover:underline list-none">
+                          <span className="mr-1 inline-block transition-transform group-open:rotate-90">
+                            ›
+                          </span>
+                          View full rationale
+                        </summary>
+                        <p className="mt-2 ml-4 border-l border-blaze-rule pl-3 text-sm leading-relaxed text-blaze-charcoal">
+                          {r.rationale_text}
+                        </p>
+                      </details>
+                    )}
 
                     <details className="group mt-3 text-xs">
                       <summary className="cursor-pointer text-blaze-grey-body transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
@@ -919,14 +936,14 @@ export default async function JennyMemberProfilePage() {
                 return (
                   <li
                     key={c.id}
-                    className={
+                    className={`-mx-2 px-2 cursor-pointer transition-colors duration-150 hover:bg-[rgba(180,95,38,0.04)] ${
                       overdue
                         ? "border-l-[3px] border-blaze-danger py-1 pl-3"
                         : "py-2"
-                    }
+                    }`}
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium text-blaze-charcoal">
+                      <p className="text-sm font-semibold text-blaze-charcoal">
                         <CapturedChip capturedBy={`ActionCard.type · ${captureRef}`}>
                           {c.type.replace(/_/g, " ")}
                         </CapturedChip>{" "}
@@ -949,7 +966,7 @@ export default async function JennyMemberProfilePage() {
                     </p>
                     {c.suggested_opening && (
                       <div className="mt-3 border-l-[3px] border-blaze-orange py-1 pl-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blaze-orange-deep">
+                        <p className="text-xs font-semibold text-blaze-orange-deep">
                           Suggested opening · member-facing
                         </p>
                         <p className="mt-1 text-sm italic text-blaze-grey-body">
@@ -986,11 +1003,26 @@ export default async function JennyMemberProfilePage() {
               label="History"
               meta="conversations and Artifact share record"
             />
-            <ol className="mt-5 space-y-3 border-l border-blaze-rule pl-4">
+            <ol className="relative mt-5 space-y-3 pl-6">
+              {/* Continuous timeline thread — connects the orange dots into a
+                  single chronology read. Sits at left-2 (8px) so the dot
+                  centers (4px wide / -left-[20px] from li content at x=24)
+                  land at exactly x=8. Per BLAZE_STYLE_GUIDE §4.5. */}
+              <span
+                aria-hidden
+                className="absolute left-2 top-3 bottom-3 w-px bg-blaze-rule"
+              />
               {member.conversations.map((c) => (
-                <li key={c.id} className="relative">
-                  <span className="absolute -left-[1.42rem] top-1.5 inline-block h-2 w-2 rounded-full bg-blaze-orange-deep" />
-                  <p className="text-xs uppercase tracking-wide text-blaze-grey-body">
+                <li
+                  key={c.id}
+                  className="relative -mx-2 px-2 py-1 cursor-pointer transition-colors duration-150 hover:bg-[rgba(180,95,38,0.04)]"
+                >
+                  {/* dot center at x=8 (matching thread): with li -mx-2 px-2,
+                      li's padding-box-left sits at x=16 from ol; thread is at
+                      left-2 (=8). Dot is 8px wide; dot.left = -12 places dot
+                      at x=4..12, centered at 8. */}
+                  <span className="absolute -left-[12px] top-2.5 inline-block h-2 w-2 rounded-full bg-blaze-orange-deep" />
+                  <p className="text-xs font-medium text-blaze-grey-body">
                     {fmtDate(c.created_at)} · {c.meeting_type.replace(/_/g, " ")} ·{" "}
                     {c.channel.replace(/_/g, " ")} · {c.sentiment}
                     {c.duration_min ? ` · ${c.duration_min}m` : ""}
@@ -1024,7 +1056,7 @@ export default async function JennyMemberProfilePage() {
             </ol>
 
             <div className="mt-6 border-t border-blaze-rule pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-body">
+              <p className="text-xs font-semibold text-blaze-grey-body">
                 Artifact share record
               </p>
               {artifactShareRows.length === 0 ? (

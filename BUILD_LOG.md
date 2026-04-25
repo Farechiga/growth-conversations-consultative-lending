@@ -538,4 +538,59 @@ The chip pattern is now effectively border-only (chip fill `#F9FBFD` against pag
 
 ---
 
+## 2026-04-25 (Day 2 visual refinements, third pass) · Title case, weight hierarchy, progressive disclosure, hover states, timeline thread
+
+**Session type:** Six targeted refinements to the borderless typography-led pattern, plus the chip-font cramping fix Francisco surfaced.
+
+**Schema:**
+
+- **Q-018 Resolved.** New nullable `Recommendation.rationale_summary` field added (~200-char convention; not enforced at the DB layer for SQLite simplicity). Migration `20260425230050_add_recommendation_rationale_summary` applied. Backfilled in the seed for all three Recommendations:
+  - Jenny's $75K LOC: *"$75K LOC sized at one quarter of the slow-season revenue gap. Existing Visa demonstrates payment discipline."* (provided by Francisco verbatim)
+  - Northland's $180K Fleet Loan: *"Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season. Existing Equipment Loan demonstrates payment discipline."* (proposed; awaiting Francisco's review)
+  - Cygnus's CRE Term Loan: *"$4M-$7M CRE financing for the anchor-customer-driven capacity expansion. CRE specialist Marcus Webb engaged early; coordination by Scott."* (proposed; awaiting Francisco's review)
+
+**Chip font (Francisco's pre-list note):**
+
+- `text-[0.85em]` → `text-[0.78em]`. Slightly smaller font in the same 4px×2px padding gives the chip contents breathing room.
+
+**Six refinements:**
+
+(1) **Section labels in title case.** Removed `uppercase` everywhere — main `SectionLabel` (`Active state`, `Active signals`, etc.), modal `ModalSectionLabel`, pinned suggested-step intro line, identity-strip `<dt>` labels, ActionCard "Suggested opening · member-facing" sub-label, history metadata row, share-record sub-heading. Letter-spacing tightened from `0.08em` to `0.02em` on the main labels (uppercase tracking is wider; title case prefers tighter). The orange rectangle does enough visual work; uppercase reads as legacy enterprise software, title case reads as modern professional.
+
+(2) **Between-band whitespace ~80px.** `Rule` margin `my-12` → **`my-10`** (40px each side + 1px line ≈ 81px total gap).
+
+(3) **Stronger font-weight hierarchy.** Item titles (Signal topic display name, Recommendation product name, ActionCard type+owner line) bumped from `font-medium` (500) → **`font-semibold`** (600), color stays `--blaze-charcoal`. Section title at 18px / 600 / `#000000` retained. Sub-labels (Goals/Blockers/Triggers/Indecisions) dropped `uppercase tracking-wide`, kept 12px / 600 / `--blaze-grey-body` in sentence case ("Goals (1)", not "GOALS (1)").
+
+(4) **Recommendation progressive disclosure.** Band 4 now shows `rationale_summary` by default with a **"View full rationale"** `<details>`/`<summary>` expand revealing the full `rationale_text` in an indented bordered block. The expansion uses `border-l border-blaze-rule pl-3` to visually distinguish the auditable detail from the surrounding summary. Falls back to `rationale_text` when no summary exists.
+
+(5) **Hover states on History + Open Work entries.** Each `<li>` carries `cursor-pointer transition-colors duration-150 hover:bg-[rgba(180,95,38,0.04)]` plus a `-mx-2 px-2` extension so the hover region feels generous. No click handlers wired (drill-in interactions are out of scope for v1); the hover is signaling responsiveness.
+
+(6) **History timeline thread.** Replaced the `<ol>`'s `border-l border-blaze-rule pl-4` with an explicitly positioned thread: `<span aria-hidden className="absolute left-2 top-3 bottom-3 w-px bg-blaze-rule" />` inside a `<ol className="relative pl-6">`. Dots positioned at `-left-[12px]` (compensating for the `-mx-2 px-2` hover extend on each `<li>`) so dot center sits at exactly x=8, matching the thread. Continuous chronology read.
+
+**Library + governance:**
+
+- `summarizeRecommendation` in `lib/summaries.ts` updated to v2 — prefers `rationale_summary` when present, falls back to `rationale_text`. Bumped `SUMMARIZE_RECOMMENDATION_TEMPLATE_VERSION` from 1 to 2 per the template-versioning discipline.
+- `prisma/checkpoint.ts` updated to pass `rationale_summary` into `summarizeRecommendation`.
+- `BLAZE_STYLE_GUIDE.md §4.5` updated: section structure now documents title case + `tracking-[0.02em]`; added explicit body-text-hierarchy table (three weights × three colors) and hover-state pattern.
+
+**Verified:**
+
+- `GET /members/jenny` returns 200 (~98 KB).
+- 0 `uppercase` instances in the rendered HTML.
+- 44 chips at the new `text-[0.78em]` size.
+- 12 `hover:bg-[rgba(180,95,38,0.04)]` instances (history + open work entries).
+- 12 `my-10 border` instances (8 Rule dividers between bands × RSC double + a few extras).
+- 2 "View full rationale" expandable details.
+- Timeline thread `absolute left-2 top-3 bottom-3 w-px` rendered in History band.
+- 20 instances of the new `tracking-[0.02em]` on title-case section labels.
+- Re-seed clean: 3 Recommendations now carry `rationale_summary`. Row counts unchanged otherwise.
+
+**Watch list for review:**
+
+- **Northland and Cygnus rationale summaries** are proposed by me, not authored by Francisco. Surfaced in the OPEN_QUESTIONS Q-018 entry for review; happy to revise wording on either based on Francisco's read.
+- **Title-case + `tracking-[0.02em]` on the section labels:** if the visual rhythm now feels slightly too "soft" without the all-caps anchor, the lever is to bump the weight from 600 to 700 — but try the current treatment first.
+- **80px between-band gap:** if it now feels too generous on a tall page, drop to `my-8` (~64px). If it feels right, leave alone.
+
+---
+
 *Next session entry will be appended below.*

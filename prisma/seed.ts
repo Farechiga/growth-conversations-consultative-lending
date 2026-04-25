@@ -1725,6 +1725,8 @@ async function seedJennyConversations(
       product_id: products.workingCapitalLOC.id,
       size_proposed: 75000,
       structure: "standard",
+      rationale_summary:
+        "$75K LOC sized at one quarter of the slow-season revenue gap. Existing Visa demonstrates payment discipline.",
       rationale_text:
         "Member showed acute seasonal cash flow stress quantified at approximately $12K per quarter, against a long-running goal of smoothing lumpy cash flow into manageable shape. A $75K LOC sized at roughly one quarter of the slow-season revenue gap provides smoothing capacity with comfortable headroom. Member's existing Visa demonstrates payment discipline; primary guarantee from the owner is appropriate given the size.",
       confidence_band: "high",
@@ -2003,6 +2005,8 @@ async function seedNorthlandConversations(
       product_id: products.fleetLoan.id,
       size_proposed: 180000,
       structure: "standard",
+      rationale_summary:
+        "Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season. Existing Equipment Loan demonstrates payment discipline.",
       rationale_text:
         "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season (roughly $49K of annual lost revenue), against a stated objective of fleet expansion. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
       confidence_band: "high",
@@ -2309,6 +2313,8 @@ async function seedCygnusConversations(
       product_id: products.creTermLoan.id,
       size_proposed: null,
       structure: "standard",
+      rationale_summary:
+        "$4M-$7M CRE financing for the anchor-customer-driven capacity expansion. CRE specialist Marcus Webb engaged early; coordination by Scott.",
       rationale_text:
         "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. CRE specialist Marcus Webb engaged; relationship coordination by Scott Brynjolffson.",
       confidence_band: "medium",

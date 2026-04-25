@@ -706,6 +706,11 @@ model Recommendation {
   rule_id_that_fired          String?
   rule_that_fired             Rule?                   @relation(fields: [rule_id_that_fired], references: [id])
   their_words                 String?
+  // One-line summary for progressive disclosure on the Member profile (Q-018).
+  // Authored alongside rationale_text at proposal-creation time; the full
+  // rationale_text remains available via the "View full rationale" expand.
+  // Convention: ~200 chars. Not enforced at the DB layer.
+  rationale_summary           String?
   created_at                  DateTime                @default(now())
 
   // The active Signals this Recommendation responds to (Q-016). Implicit m-n
