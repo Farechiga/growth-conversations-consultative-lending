@@ -207,4 +207,31 @@ The `summarizeMember` template counts active *blockers* — a deliberate compres
 
 ---
 
+## 2026-04-25 (later still) · GitHub remote added
+
+**Session type:** Repo hosting setup. No code changes — just adding the project to GitHub between Day 1's clean state and Day 2's UI work.
+
+**What was done:**
+
+- **Repo created** at `https://github.com/Farechiga/blaze-member-signals-demo`. Visibility: **private**. Description: "Blaze Member Signals — banker enablement demo. Standalone Next.js + Prisma + SQLite. Demo phase only; not connected to any production Blaze systems."
+- **Origin configured** in the local repo via `gh repo create --source=. --remote=origin`. `git remote -v` shows `origin` pointing at the new repo for both fetch and push.
+- **History pushed** with `git push -u origin main`. All seven commits through Day 1 are now visible on the remote: c338f00 (scaffold) · fcdbe66 (BUILD_LOG scaffold entry) · cacc02c (theming + Q-006 + scope expansion) · c834b47 (Prisma schema + steps 1-2) · 381981d (steps 3-6 + Q-013/14/11) · 238741d (structural enforcement layer) · 32219bb (Day-1 close follow-ups). `main` tracks `origin/main`.
+- **`.gitignore` verified clean** by listing the remote tree via `gh api repos/.../contents`. None of the gitignored artefacts (`node_modules/`, `.next/`, `dev.db`, `.env`, `.DS_Store`, `next-env.d.ts`, `.claude/settings.local.json`, `app/generated/prisma/`) leaked. Spot-checked `app/` and `prisma/` subdirectories explicitly.
+
+**Setup notes captured for posterity:**
+
+- `gh` (GitHub CLI) was installed via Homebrew at `/opt/homebrew/bin/gh` (version 2.91.0). Auth used the device-flow web login (`gh auth login --web`); token is stored in macOS Keychain with scopes `gist · read:org · repo`.
+- Homebrew itself was installed during this session (it wasn't on the machine at the start of Day 1). `/opt/homebrew/bin` may need to be added to `~/.zshrc` for non-fresh shells; the standard `eval "$(/opt/homebrew/bin/brew shellenv)"` line covers this.
+- `~/.config/gh/hosts.yml` was created on first successful auth; `gh` reads from there + Keychain on subsequent runs.
+
+**Implications for the rest of the build:**
+
+- The Q-015 background agent scheduled earlier (`trig_01Pzd6hPo1Wq4emfqB9fguVm`, fires 2026-06-05) is **unaffected** — it was configured as a self-contained reminder agent with no `sources`, so the absence of a GitHub remote at schedule time doesn't matter. The agent will fire and produce its status paragraph regardless.
+- Future scheduled agents can now be configured with `sources: [{git_repository: {url: "https://github.com/Farechiga/blaze-member-signals-demo"}}]` if they need to read project files. They'll need access — the repo is private, so each agent will need either (a) the GitHub App installed on the repo, or (b) credentials passed via `mcp_connections` / equivalent. Set this up when the first repo-aware agent is created, not preemptively.
+- Day-2 commits will land on `main` and push cleanly. No per-commit push step is implied unless we want the remote to track in-progress work; default is to push at natural milestones.
+
+**Risks:** none introduced by this step. The remote is private and contains no PII or secrets (`.env` excluded by `.env*` rule).
+
+---
+
 *Next session entry will be appended below.*
