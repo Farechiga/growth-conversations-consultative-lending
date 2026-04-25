@@ -272,9 +272,9 @@ async function seedTopics() {
   const goalFleet = await prisma.topic.create({
     data: {
       canonical_tag: "goal.fleet_expansion",
-      display_name: "Fleet expansion",
+      display_name: "Add fleet capacity to capture declined work",
       description:
-        "Member intends to add vehicles or expand fleet capacity, typically driven by service-area expansion, capacity constraints, or modernization needs.",
+        "Member's intent to add fleet capacity — typically vehicles or specialized equipment — in order to take on work that capacity has forced them to decline. Action-forward and lending-relevant: the goal is the structural counterpart to a capacity-constrained blocker, and it is the proposition a fleet-financing recommendation responds to.",
       topic_type: "goal",
       status: "canonical",
     },
@@ -294,9 +294,9 @@ async function seedTopics() {
   const goalCustomerGrowth = await prisma.topic.create({
     data: {
       canonical_tag: "goal.customer_growth",
-      display_name: "Customer base growth",
+      display_name: "Grow alongside customer expansion",
       description:
-        "Member has indicated intent to grow their customer base, either by adding new customers or deepening existing ones. Often surfaces in routine relationship conversations as forward-looking commentary.",
+        "Member's intent to grow capacity, capability, or footprint in step with anchor-customer or new-customer demand signals. Action-forward framing: the goal is to keep pace with — or get ahead of — customer-side expansion rather than to defend current share. Surfaces in established commercial relationships when customers communicate volume forecasts, qualifications, or platform consolidations that imply more work for the supplier.",
       topic_type: "goal",
       status: "canonical",
     },
@@ -320,9 +320,9 @@ async function seedTopics() {
   const goalCashFlowSmoothing = await prisma.topic.create({
     data: {
       canonical_tag: "goal.cash_flow_smoothing",
-      display_name: "Smooth lumpy cash flow into manageable shape",
+      display_name: "Smooth seasonal revenue with working capital",
       description:
-        "Member's intent to smooth lumpy revenue into manageable cash flow, typically through working capital instruments. Common in event-driven services, hospitality, and seasonal businesses where the underlying need is operational stability rather than growth capital. Distinct from goal.facility_ownership or goal.facility_expansion (which are capital events) — this is an ongoing-operations objective.",
+        "Member's intent to smooth seasonal or event-driven revenue swings using working capital instruments — most commonly a Working Capital Line of Credit. Action-forward and lending-focused framing: the verb acts on revenue and the instrument is named, so the goal ties directly to the recommendation it justifies. Distinct from goal.facility_ownership or goal.facility_expansion (which are capital events); this is an ongoing-operations objective common in event-driven services, hospitality, and seasonal businesses.",
       topic_type: "goal",
       status: "canonical",
     },
@@ -1603,6 +1603,16 @@ async function seedJennyConversations(
       confidence: "member_stated",
       active: true,
       captured_at: iso("2025-12-04"),
+      // Magnitude backfilled per Q-017. The 45-days-late detail was originally
+      // captured only as banker_note prose on the conversation; making it a
+      // structured field on the Signal lets the Insight Engine aggregate
+      // receivables-timing severity across Members and lets the chip-pattern
+      // surface the value in the active-Signals band.
+      magnitude: 45,
+      unit: "days",
+      // No frequency: this is a one-time observation about a specific late
+      // payment, not a recurring rhythm.
+      frequency: null,
     },
   });
 
@@ -1751,7 +1761,7 @@ async function seedJennyConversations(
     },
   });
 
-  await prisma.signal.create({
+  const jennyIndecisionSignal = await prisma.signal.create({
     data: {
       conversation_id: apr8.id,
       growth_step_execution_id: resolveExec.id,
@@ -1765,6 +1775,16 @@ async function seedJennyConversations(
       active: true,
       captured_at: iso("2026-04-08"),
     },
+  });
+
+  // Wire the freshly-created indecision Signal back into the Recommendation's
+  // responds_to_signals. The Resolve step runs after the Show step, so the
+  // Recommendation already exists; update it now that the indecision Signal
+  // is queryable. The growth_step_execution_id is @unique, so this is a safe
+  // single-row lookup.
+  await prisma.recommendation.update({
+    where: { growth_step_execution_id: showExec.id },
+    data: { responds_to_signals: { connect: [{ id: jennyIndecisionSignal.id }] } },
   });
 
   await prisma.actionCard.create({
@@ -2019,7 +2039,7 @@ async function seedNorthlandConversations(
     },
   });
 
-  await prisma.signal.create({
+  const northlandIndecisionSignal = await prisma.signal.create({
     data: {
       conversation_id: apr15.id,
       growth_step_execution_id: resolveExec.id,
@@ -2033,6 +2053,13 @@ async function seedNorthlandConversations(
       active: true,
       captured_at: iso("2026-04-15"),
     },
+  });
+
+  // Wire the indecision Signal into the Recommendation's responds_to_signals
+  // (same pattern as Jenny — the Resolve step runs after the Show step).
+  await prisma.recommendation.update({
+    where: { growth_step_execution_id: showExec.id },
+    data: { responds_to_signals: { connect: [{ id: northlandIndecisionSignal.id }] } },
   });
 
   await prisma.actionCard.create({

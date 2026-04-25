@@ -98,6 +98,25 @@ const SIGNAL_TYPE_LABELS = {
   indecision: "Indecisions",
 } as const;
 
+// Verb-prefix labels per Signal type, used in the Recommendation responds-to
+// list. Goal first reflects that recommendations exist to *serve* goals;
+// blockers and triggers are the conditions that bring the goal into focus;
+// indecisions are the member's hesitation about committing to the
+// recommendation that addresses them. Order: goal → blocker → trigger →
+// indecision.
+const SIGNAL_TYPE_VERBS: Record<"goal" | "blocker" | "trigger" | "indecision", string> = {
+  goal: "serves goal",
+  blocker: "addresses blocker",
+  trigger: "responds to trigger",
+  indecision: "responds to indecision",
+};
+const SIGNAL_TYPE_ORDER: Record<"goal" | "blocker" | "trigger" | "indecision", number> = {
+  goal: 0,
+  blocker: 1,
+  trigger: 2,
+  indecision: 3,
+};
+
 // Replace the first occurrence of `token` in `text` with React node `replacement`.
 // Used to retrofit anchor links onto the templated summary prose without
 // duplicating summarizeMember's wording in the page (Semantic Discipline §3.4
@@ -260,6 +279,7 @@ export default async function JennyMemberProfilePage() {
     artifact_title: string;
     artifact_description: string;
     artifact_type: "chart" | "comparison" | "calculator";
+    artifact_template: string;
     parameters_used: Record<string, unknown>;
     member_reaction: string;
     shared_afterward: boolean;
@@ -281,6 +301,7 @@ export default async function JennyMemberProfilePage() {
         artifact_title: artifact.title,
         artifact_description: artifact.description,
         artifact_type: artifact.type,
+        artifact_template: artifact.template,
         parameters_used: captured.parameters_used ?? {},
         member_reaction: captured.member_reaction ?? "—",
         shared_afterward: captured.shared_afterward ?? false,
@@ -671,21 +692,38 @@ export default async function JennyMemberProfilePage() {
                     </div>
 
                     {r.responds_to_signals.length > 0 && (
-                      <p className="mt-2 text-xs text-blaze-grey-body">
-                        <span className="text-blaze-grey-soft">responds to:</span>{" "}
-                        {r.responds_to_signals.map((s, i) => (
-                          <span key={s.id}>
-                            <a
-                              href={`#signal-${s.id}`}
-                              className="text-blaze-orange-deep underline-offset-2 hover:underline"
-                            >
-                              {s.topic.display_name}
-                            </a>{" "}
-                            <span className="text-blaze-grey-soft">({s.type})</span>
-                            {i < r.responds_to_signals.length - 1 ? ", " : ""}
-                          </span>
-                        ))}
-                      </p>
+                      <ul className="mt-3 space-y-0.5 text-xs text-blaze-grey-body">
+                        {[...r.responds_to_signals]
+                          .sort((a, b) => SIGNAL_TYPE_ORDER[a.type] - SIGNAL_TYPE_ORDER[b.type])
+                          .map((s) => {
+                            // Magnitude rendered inline as plain text in this compact context.
+                            // Chip treatment is reserved for the standalone Signal entry in Band 3.
+                            const magnitudeText =
+                              s.magnitude !== null && s.unit
+                                ? ` (${
+                                    s.unit === "dollars"
+                                      ? dollars(s.magnitude)
+                                      : `${s.magnitude} ${s.unit.replace(/_/g, " ")}`
+                                  }${s.frequency ? `/${s.frequency}` : ""})`
+                                : "";
+                            return (
+                              <li key={s.id} className="leading-relaxed">
+                                <span className="text-blaze-grey-soft">
+                                  → {SIGNAL_TYPE_VERBS[s.type]}:
+                                </span>{" "}
+                                <a
+                                  href={`#signal-${s.id}`}
+                                  className="text-blaze-orange-deep underline-offset-2 hover:underline"
+                                >
+                                  {s.topic.display_name}
+                                </a>
+                                {magnitudeText && (
+                                  <span className="text-blaze-grey-body">{magnitudeText}</span>
+                                )}
+                              </li>
+                            );
+                          })}
+                      </ul>
                     )}
 
                     <p className="mt-2 text-xs text-blaze-grey-body">
@@ -873,6 +911,7 @@ export default async function JennyMemberProfilePage() {
                       title: row.artifact_title,
                       description: row.artifact_description,
                       type: row.artifact_type,
+                      template: row.artifact_template,
                       parameters_used: row.parameters_used,
                       shared_on_iso: row.conversation_date_iso,
                       member_reaction: row.member_reaction,

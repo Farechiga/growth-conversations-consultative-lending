@@ -292,4 +292,64 @@ The `summarizeMember` template counts active *blockers* — a deliberate compres
 
 ---
 
+## 2026-04-25 (Day 2 step c prep) · Goal phrasing, responds-to ordering, Q-017, chart
+
+**Session type:** Five small-but-substantive updates between the step-(b) review and step (c). The biggest is bringing the seasonal-smoothing chart forward from Day-3 deferral into a working Recharts implementation inside the modal.
+
+**Fixture refinements:**
+
+- **Goal Topic phrasings tightened to action-forward / lending-focused** wording:
+  - `goal.cash_flow_smoothing` display name "Smooth lumpy cash flow into manageable shape" → "Smooth seasonal revenue with working capital". Description rewritten to align (the verb acts on revenue and the instrument is named, so the goal ties directly to the LOC recommendation that responds to it).
+  - `goal.fleet_expansion` display name "Fleet expansion" → "Add fleet capacity to capture declined work". Description now reads as the structural counterpart to a capacity-constrained blocker.
+  - `goal.customer_growth` display name "Customer base growth" → "Grow alongside customer expansion". Description rewritten to highlight the action-forward intent of keeping pace with anchor-customer growth.
+- **Q-017 Resolved** — backfilled `magnitude: 45, unit: "days", frequency: null` on Jenny's Dec-2025 `blocker.receivables_timing` Signal. The "45+ days late" detail had been carried only in `banker_note` prose; making it a structured field lets the Insight Engine aggregate receivables-timing severity and lets the chip pattern surface the value in Band 3.
+- **Indecision Signals added to `Recommendation.responds_to_signals`** for Jenny and Northland. The Resolve step runs after the Show step, so the Recommendation is created first; the seed now does a `prisma.recommendation.update({ where: { growth_step_execution_id: showExec.id }, data: { responds_to_signals: { connect: [...] } } })` after the indecision Signal exists. Cygnus has no indecision; unchanged.
+
+**UI substantive (b.2 follow-on):**
+
+- **Band 4 responds-to list** now renders sorted by Signal type (goal → blocker → trigger → indecision) with verb-prefix labels per type:
+  - "→ serves goal: Smooth seasonal revenue with working capital"
+  - "→ addresses blocker: Seasonal cash flow stress ($12K/quarterly)"
+  - "→ responds to indecision: Needs another decision-maker's input"
+  This makes the Goals→Recommendation thread visible — the recommendation reads as serving a stated objective, not just patching a blocker. Magnitude is rendered inline as plain text in this compact context (chip treatment is reserved for the standalone Signal entry in Band 3 to avoid visual noise).
+
+**Chart implementation (Day-3 work brought forward into step (c)):**
+
+- New Client Component `app/members/jenny/seasonal-smoothing-chart.tsx` using Recharts 3.8 `ComposedChart`. Renders a 12-month two-series cash-position chart per Francisco's spec:
+  - "Cash position without LOC": #4F5052 line, 2px stroke, dips below zero in Jan-Mar and Sep-Oct.
+  - "Cash position with $75K LOC": #B45F26 line, 2.5px stroke, stays positive throughout. Subtle `rgba(180, 95, 38, 0.12)` area fill below the with-LOC line indicating LOC utilization.
+  - Grid lines: faint warm parchment (`rgba(232, 224, 212, 0.6)` dashed).
+  - Axes: Inter 12px / #4F5052; Y-axis ticks formatted as `$NK`.
+  - Tooltip: Inter 12px, formatted dollar values, white-with-frost-edge styling.
+  - Legend: top-right, Inter.
+  - All data hardcoded for Jenny's parameters per the spec (revenue band $500K-$1M, monthly_low 35000, monthly_high 95000, proposed_loc_size 75000); no parameterization yet.
+- **Dialog dispatches on artifact template**: `ArtifactPreviewData` gains a `template` field. When `template === "seasonal_smoothing_chart_v1"` the dialog renders the new chart; otherwise the dashed-border placeholder remains for templates that haven't been built yet (`fleet_roi_composed_chart_v1`, `capital_event_map_v1`).
+- The `parameters_used` block above the chart in the dialog already shows the parameters that drove the rendering — banker can see `{ monthly_low: 35000, monthly_high: 95000, proposed_loc_size: 75000 }` directly above the chart they produced.
+
+**Member-facing register confirmation (no change):**
+
+- ActionCard rationale (banker-facing) and `suggested_opening` (member-facing) discipline confirmed working. No edits needed.
+
+**Verified:**
+
+- Re-seed clean. Row counts: 16 topics, 11 signals, 3 recommendations (now each with their indecision Signal in responds_to_signals where applicable), 16 conversations, 4 action cards, 3 snapshots.
+- Sanity-query confirms responds_to_signals: Jenny has goal + indecision + blocker; Northland has goal + indecision + blocker; Cygnus has goal + 2 triggers.
+- Q-017 backfill confirmed: Dec 2025 receivables Signal magnitude reads `45 days`.
+- `GET /members/jenny` returns 200 (94 KB). Verb-prefixed responds-to lines render ("serves goal", "addresses blocker", "responds to indecision"). New goal display names render. Q-017 chip "45 days" renders in Band 3.
+- Chart rendering will be visible client-side once the modal opens; the bundle includes Recharts and the chart component is dispatched on artifact template.
+
+**Risks / future-cost notes:**
+
+- Recharts 3.8's `ComposedChart` API matches earlier versions; no surprises encountered. If chart performance becomes an issue at scale (unlikely at 12 data points), `isAnimationActive={false}` is already set.
+- The chart data is hardcoded; the production version would compute the 12 monthly values from the Member's actual cash flow history modulated by the artifact's parameters. That parameterization lands when real members surface — out of scope for the demo.
+
+**What's deferred:**
+
+- Step (c) — orange-headed-panel pattern from BLAZE_STYLE_GUIDE §4 — still ahead.
+- Step (d) — live `fireRules()` wiring on the pinned suggestion.
+- `fleet_roi_composed_chart_v1` and `capital_event_map_v1` chart implementations for Northland and Cygnus when their surfaces come online.
+- `/members/[id]` dynamic generalization.
+
+---
+
 *Next session entry will be appended below.*

@@ -15,11 +15,13 @@
  */
 
 import { useRef } from "react";
+import { SeasonalSmoothingChart } from "./seasonal-smoothing-chart";
 
 export type ArtifactPreviewData = {
   title: string;
   description: string;
   type: "chart" | "comparison" | "calculator";
+  template: string;
   parameters_used: Record<string, unknown>;
   shared_on_iso: string;
   member_reaction: string;
@@ -125,12 +127,28 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
             </p>
           </section>
 
-          <section className="rounded border-2 border-dashed border-blaze-frost-edge bg-blaze-cream/40 p-6 text-center">
-            <p className="text-xs uppercase tracking-wide text-blaze-grey-soft">Chart rendering</p>
-            <p className="mt-1 text-sm text-blaze-grey-body">
-              Recharts component plugs in here on Day 3. The modal frame, the parameters above,
-              and the share record are already wired through.
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
+              Chart
             </p>
+            <div className="mt-2">
+              {artifact.template === "seasonal_smoothing_chart_v1" ? (
+                <SeasonalSmoothingChart />
+              ) : (
+                <div className="rounded border-2 border-dashed border-blaze-frost-edge bg-blaze-cream/40 p-6 text-center">
+                  <p className="text-xs uppercase tracking-wide text-blaze-grey-soft">
+                    Chart rendering
+                  </p>
+                  <p className="mt-1 text-sm text-blaze-grey-body">
+                    Renderer for template{" "}
+                    <code className="rounded bg-white px-1 py-px text-[0.85em]">
+                      {artifact.template}
+                    </code>{" "}
+                    plugs in alongside the seasonal smoothing chart on a future day.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
         </div>
 
