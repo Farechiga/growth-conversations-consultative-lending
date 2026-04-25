@@ -18,8 +18,11 @@ The demo phase is complete when **all** of the following are true:
 
 1. A deployed URL exists (Vercel) that any invited Blaze stakeholder can visit in a browser.
 2. The three modules — Meeting recap, Member profile, Insight Engine — are all built and working against the seed fixture.
-3. The Jenny's Catering fixture is fully populated and renders end-to-end without errors.
-4. At least four additional supporting Members exist with enough data that Insight Engine views feel populated rather than empty.
+3. **Three full-fidelity Members**, one per growth stage, are fully populated and render end-to-end without errors:
+   - **Jenny's Catering** — Small Caterer · Starting (canonical; already designed)
+   - **An HVAC company** — Trades & Construction · Growing (design brief pending from Francisco before fixture authoring)
+   - **A biotech component manufacturer** — Manufacturing · Established (design brief pending from Francisco before fixture authoring)
+4. Because the three full-fidelity Members span three stages, Insight Engine views are populated enough to read as real (not empty). Additional low-fidelity supporting Members are out of scope unless time permits at the end (see §3.2).
 5. A banker-identity dropdown lets the demo viewer switch between roles (primary banker, specialist, growth lead) and see the appropriate views.
 6. The demo can be reset to its original seed state via a single admin action.
 7. All banker-facing strings use the locked vocabulary from `CLAUDE.md` Section 5.
@@ -55,46 +58,57 @@ The demo phase is complete when **all** of the following are true:
 
 ### 3.2 Data and fixtures
 
-**Jenny's Catering — fully fleshed Member fixture**
+The demo ships with **three full-fidelity Members**, one per growth stage. Each carries the complete data set listed under "Per-Member deliverables" below. Low-fidelity supporting Members are deferred to a stretch item (§3.2 bottom).
+
+**Member 1 — Jenny's Catering · Small Caterer · Starting** *(canonical; designed)*
+- Growth stage: Starting
+- Member Type: Small Caterer · Starting
+- Primary Growth track: "Smooth seasonal cash flow with LOC for small caterer"
+- Artifact: seasonal cash flow smoothing chart
+- Worked-example arc from Module and Data Flow §9 reproducible end-to-end
+
+**Member 2 — HVAC company · Trades & Construction · Growing** *(design brief pending)*
+- Growth stage: Growing
+- Member Type: Trades & Construction · Growing (to be designed with Francisco before fixture authoring)
+- Primary Growth track: TBD from design brief
+- Artifact: TBD from design brief
+- Conversation history: TBD from design brief
+- **Do not author fixture data for this Member until the design brief arrives.**
+
+**Member 3 — Biotech component manufacturer · Manufacturing · Established** *(design brief pending)*
+- Growth stage: Established
+- Member Type: Manufacturing · Established (to be designed with Francisco before fixture authoring)
+- Primary Growth track: TBD from design brief
+- Artifact: TBD from design brief
+- Conversation history: TBD from design brief
+- **Do not author fixture data for this Member until the design brief arrives.**
+
+**Per-Member deliverables** (applies to each of the three above)
 - Complete Member record with description, Member Type assignment, products held
-- Three or more historical Conversations with realistic Growth step executions
+- Three or more historical Conversations with realistic Growth step executions appropriate to the Member's stage
 - Active and resolved Signals demonstrating each Signal type (goal, blocker, trigger, indecision)
-- At least one ActionCard in each lifecycle state (open, in_progress, completed, declined)
+- At least one ActionCard in each lifecycle state (open, in_progress, completed, declined) across the three Members combined — not necessarily all four per Member
 - At least one Artifact shown and shared
-- The complete worked-example arc from Module and Data Flow document §9 reproducible end-to-end
+- Member Type fully described per Semantic Discipline (characteristic blockers, triggers, goals, typical products)
+- At least one fully authored Growth track with full Growth steps (description, content, capture schema, target Member Types)
+- Artifact carries parameter schema, renders as a real interactive chart, compliance status approved
 
-**One fully fleshed Member Type**
-- Small Caterer · Starting
-- Complete description per Semantic Discipline
-- Characteristic blockers, triggers, goals, typical products populated
-
-**One fully fleshed Growth track**
-- "Smooth seasonal cash flow with LOC for small caterer"
-- Four Growth steps (Ask → Size → Show → Resolve, or similar)
-- Each Growth step has full description, content, capture schema, target Member Types
-
-**One fully built Artifact**
-- Seasonal cash flow smoothing chart
-- Parameter schema accepting member-specific revenue band
-- Renders as an actual interactive chart in the demo
-- Compliance status set to approved
-
-**Three to five supporting Members at lower fidelity**
-- Different Member Types (e.g., a dental practice, a manufacturer, a contractor)
-- Enough Signals and conversations to populate Insight Engine views
-- Demonstrates that Jenny is not the only Member in the system
+**Stretch (only if time permits at end of build):** two to three low-fidelity supporting Members in additional Member Types, to further populate the Insight Engine's cross-member views. **Default assumption: do not build these.** The three full-fidelity Members across three growth stages should give the Insight Engine enough volume to read as real.
 
 ### 3.3 Reference data
 
-- Member Types: Small Caterer · Starting (full), three to five others at minimum viable detail
-- Topic taxonomy: blockers, triggers, goals, indecisions sufficient to support fixture data
-- Industry Family: enough entries to cover the fixtures
-- Product catalog: at minimum the products referenced by Jenny's fixture (LOC, Business Visa, Business Checking, etc.)
-- Rules: enough rules to make Growth track suggestions surface correctly for the fixtures
+- **Member Types** (three, all at full fidelity):
+  - Small Caterer · Starting (for Jenny's Catering)
+  - Trades & Construction · Growing (for the HVAC company; design pending)
+  - Manufacturing · Established (for the biotech component manufacturer; design pending)
+- **Topic taxonomy:** blockers, triggers, goals, indecisions sufficient to support the three Members' fixture data
+- **Industry Family:** three entries covering Food & Beverage, Trades & Construction, and Manufacturing, plus any parent taxonomy needed
+- **Product catalog:** at minimum the products referenced by the three Members' fixtures (LOC, Business Visa, Business Checking, and whichever larger-ticket products show up in Growing and Established tracks — equipment loan, treasury services, etc., per design briefs)
+- **Rules:** enough rules to make Growth track suggestions surface correctly for each of the three Members
 
 ### 3.4 Banker identity
 
-- Dropdown to select banker identity (e.g., "Sarah Chen — Primary banker", "Marcus Webb — CRE specialist", "Priya Patel — Growth lead")
+- Dropdown to select banker identity: "Scott Brynjolffson — Primary banker", "Marcus Webb — CRE specialist", "Priya Patel — Growth lead" (per Q-006 resolution)
 - Switching identity changes what the user sees (e.g., specialist sees only their own ActionCards plus Members where they have active handoffs)
 - No real authentication; selection persists in the browser session only
 
@@ -176,7 +190,7 @@ A demo viewer (the EVP, a banker, a stakeholder) should be able to:
 4. **Save the Meeting recap** and see the new Conversation, Signals, and ActionCards immediately reflect on Jenny's Member profile.
 5. **Switch banker identity** to a CRE specialist and see only the ActionCards where they are the owner, plus Members with active handoffs to them.
 6. **Switch banker identity** to the Growth lead and see (in the Insight Engine) the six analytical views populated with cross-member data.
-7. **Open the Insight Engine** as any banker, filter by "Small Caterer · Starting", and see Jenny's Catering plus other supporting Members contributing to rolled-up patterns.
+7. **Open the Insight Engine** as any banker, filter by Member Type or growth stage, and see the three full-fidelity Members (Jenny's Catering, the HVAC company, the biotech manufacturer) contributing to rolled-up patterns across stages.
 8. **Click any Member Type, Topic, Growth track, or Growth step** and see a tooltip or detail view showing its description (per Semantic Discipline).
 9. **Reset the demo** via the admin route and have all data return to the seed state.
 10. **Refresh the browser** and see all state preserved (banker identity selection persists; data does not get reset by refresh).

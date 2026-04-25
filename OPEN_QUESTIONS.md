@@ -70,15 +70,6 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default for demo phase:** Build Small Caterer · Starting at full fidelity (per `SCOPE.md`). Build the other supporting Members at minimum-viable detail using the proposed types as defaults.
 - **Status:** Demo proceeds with default; production selection awaits Blaze input.
 
-### Q-006 · Banker identities for the demo dropdown
-
-- **Date logged:** Pre-build (new for build phase)
-- **Question:** What specific banker identities should the demo's "log in as" dropdown include? Each identity should illustrate a distinct role and access pattern.
-- **Why it matters:** The demo's value depends partly on showing how different roles see different views. Too few identities means we can't show the role variation; too many overwhelms the demo viewer.
-- **Affects:** Demo build only.
-- **Conservative default:** Three identities for v1 of the demo: Sarah Chen (Primary banker — owns Jenny's Catering and other Members), Marcus Webb (CRE specialist — receives handoffs), Priya Patel (Growth lead — sees the editor-facing Insight Engine views). Add a fourth (manager identity) only if there's clear stakeholder demand.
-- **Status:** Open. Decision before Day 1 of build.
-
 ### Q-007 · Artifact rendering technology
 
 - **Date logged:** Pre-build (new for build phase)
@@ -120,6 +111,21 @@ Resolved entries are **never deleted** — they form the institutional memory of
 ---
 
 ## Resolved
+
+### Q-006 · Banker identities for the demo dropdown
+
+- **Date logged:** Pre-build (new for build phase)
+- **Question:** What specific banker identities should the demo's "log in as" dropdown include? Each identity should illustrate a distinct role and access pattern.
+- **Why it matters:** The demo's value depends partly on showing how different roles see different views. Too few identities means we can't show the role variation; too many overwhelms the demo viewer.
+- **Affects:** Demo build only.
+- **Resolution date:** 2026-04-24
+- **Decision:** Three identities for v1 of the demo:
+  - **Scott Brynjolffson** — Primary banker. Owns Jenny's Catering and the other two full-fidelity Members. Sees Meeting recap and Member profile.
+  - **Marcus Webb** — CRE specialist. Receives handoffs from primary bankers; sees the handoff-inbox view and a narrower Member profile cut.
+  - **Priya Patel** — Growth lead. Sees the editor-facing Insight Engine views (Topic patterns, Growth step performance, authoring tools).
+  A fourth (manager) identity is deferred unless stakeholder demand surfaces during the demo.
+- **Reasoning:** Three is the minimum that shows the role variation the design relies on (Primary banker vs. specialist vs. Growth lead). Each name is distinctive enough to read quickly in the dropdown without being distracting. No fourth identity because a manager view is not a designed module in the demo phase.
+- **Resolved by:** Francisco. Scott Brynjolffson replaces the earlier placeholder (Sarah Chen); Marcus Webb and Priya Patel unchanged.
 
 ### Q-009 · Next.js major version for the demo (15 vs 16)
 

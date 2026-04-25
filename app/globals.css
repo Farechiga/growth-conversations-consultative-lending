@@ -4,6 +4,10 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Mira shadcn plumbing. Maps Tailwind color utilities (bg-primary, text-foreground, etc.)
+ * to the semantic CSS variables set in :root / .dark below.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -48,73 +52,135 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+/*
+ * Blaze brand palette — first-class Tailwind color utilities.
+ * Hex values sampled directly from the Blaze source PDF per BLAZE_STYLE_GUIDE §2.
+ * Usage: bg-blaze-orange, text-blaze-grey-darker, border-blaze-dust, etc.
+ */
+@theme {
+  /* Burnished orange — accent-only, never flood */
+  --color-blaze-orange: #b45f26;
+  --color-blaze-orange-bright: #bc5d1d;
+  --color-blaze-orange-deep: #ad571c;
+  --color-blaze-orange-burnt: #8e3f0e;
+  --color-blaze-orange-pale: #f2d9c2;
+
+  /* Deep warm grey — structural neutral */
+  --color-blaze-grey-dark: #2b2b29;
+  --color-blaze-grey-darker: #262626;
+  --color-blaze-grey-body: #4f5052;
+  --color-blaze-grey-mid: #636468;
+  --color-blaze-grey-soft: #888780;
+
+  /* Warm parchment — soft surfaces */
+  --color-blaze-cream: #f5efe5;
+  --color-blaze-parchment: #e8e0d4;
+  --color-blaze-dust: #d7d3d0;
+  --color-blaze-white: #feffff;
+
+  /* Functional, intentionally muted */
+  --color-blaze-success: #5c7a3f;
+  --color-blaze-warning: #b47424;
+  --color-blaze-danger: #9c3325;
+  --color-blaze-info: #3d5a6c;
 }
 
+/*
+ * shadcn semantic tokens remapped to the Blaze palette per BLAZE_STYLE_GUIDE §13.
+ * The :root block is the light theme (the demo's primary mode; banker tools run in daylight).
+ * Chart token sequence matches BLAZE_STYLE_GUIDE §9.1.
+ */
+:root {
+  --background: #feffff;
+  --foreground: #262626;
+  --card: #feffff;
+  --card-foreground: #262626;
+  --popover: #feffff;
+  --popover-foreground: #262626;
+  --primary: #b45f26;
+  --primary-foreground: #feffff;
+  --secondary: #f5efe5;
+  --secondary-foreground: #262626;
+  --muted: #e8e0d4;
+  --muted-foreground: #888780;
+  --accent: #b45f26;
+  --accent-foreground: #feffff;
+  --destructive: #9c3325;
+  --border: #d7d3d0;
+  --input: #d7d3d0;
+  --ring: #b45f26;
+
+  /* Recharts series palette — primary orange leads, greys and functional tones follow */
+  --chart-1: #b45f26;
+  --chart-2: #4f5052;
+  --chart-3: #5c7a3f;
+  --chart-4: #9c3325;
+  --chart-5: #3d5a6c;
+
+  --radius: 0.5rem;
+
+  /* Sidebar surfaces: cream ground, orange primary, pale-orange hover accent */
+  --sidebar: #f5efe5;
+  --sidebar-foreground: #262626;
+  --sidebar-primary: #b45f26;
+  --sidebar-primary-foreground: #feffff;
+  --sidebar-accent: #f2d9c2;
+  --sidebar-accent-foreground: #8e3f0e;
+  --sidebar-border: #d7d3d0;
+  --sidebar-ring: #b45f26;
+
+  /* Signature horizontal gradient — use as background-image on thin bands only (see §3) */
+  --blaze-gradient: linear-gradient(
+    to right,
+    #000000 0%,
+    #291305 18%,
+    #441f05 32%,
+    #6c300b 48%,
+    #b45f26 70%,
+    #bc5d1d 78%,
+    #2b2b29 100%
+  );
+}
+
+/*
+ * Dark mode — secondary for this demo since banker tools run in daylight, but kept coherent
+ * with the Blaze palette (warm greys, not cool slate) so the switch does not feel like a
+ * different product.
+ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #2b2b29;
+  --foreground: #f5efe5;
+  --card: #262626;
+  --card-foreground: #f5efe5;
+  --popover: #262626;
+  --popover-foreground: #f5efe5;
+  --primary: #bc5d1d;
+  --primary-foreground: #feffff;
+  --secondary: #4f5052;
+  --secondary-foreground: #f5efe5;
+  --muted: #4f5052;
+  --muted-foreground: #d7d3d0;
+  --accent: #bc5d1d;
+  --accent-foreground: #feffff;
+  --destructive: #9c3325;
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 15%);
+  --ring: #bc5d1d;
+
+  --chart-1: #bc5d1d;
+  --chart-2: #888780;
+  --chart-3: #5c7a3f;
+  --chart-4: #9c3325;
+  --chart-5: #3d5a6c;
+
+  --sidebar: #262626;
+  --sidebar-foreground: #f5efe5;
+  --sidebar-primary: #bc5d1d;
+  --sidebar-primary-foreground: #feffff;
+  --sidebar-accent: #4f5052;
+  --sidebar-accent-foreground: #f5efe5;
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: #bc5d1d;
 }
 
 @layer base {
