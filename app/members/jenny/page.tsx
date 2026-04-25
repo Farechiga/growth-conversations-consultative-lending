@@ -191,16 +191,19 @@ function SectionLabel({
   meta?: ReactNode;
   size?: "default" | "compact";
 }) {
+  // Dimensions per BLAZE_STYLE_GUIDE §2.7: 12×16 default (3:4 proportion);
+  // 9×12 compact. Both 50% wider than the original 8×16/6×12 — the wider
+  // proportion reads as a deliberate brand mark rather than a passive bullet.
   const markCls =
-    size === "compact" ? "h-3 w-1.5 mr-2" : "h-4 w-2 mr-3";
+    size === "compact" ? "h-3 w-[9px] mr-2" : "h-4 w-3 mr-3";
   return (
     <div className="flex items-baseline">
       <span aria-hidden className={`inline-block bg-blaze-orange ${markCls}`} />
-      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-charcoal">
+      <span className="text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
         {label}
       </span>
       {meta && (
-        <span className="ml-3 text-xs font-medium text-blaze-grey-body">
+        <span className="ml-3 text-sm font-medium text-blaze-grey-body">
           {meta}
         </span>
       )}
@@ -501,7 +504,7 @@ export default async function JennyMemberProfilePage() {
   // ----------------------------------------------------------
 
   return (
-    <div className="min-h-screen w-full bg-blaze-cream">
+    <div className="min-h-screen w-full bg-blaze-paper">
       {/* §3 signature gradient band */}
       <div className="h-8 w-full" style={{ backgroundImage: "var(--blaze-gradient)" }} aria-hidden />
 
@@ -530,7 +533,7 @@ export default async function JennyMemberProfilePage() {
           {suggestedTrack && (
             <section
               id="band-suggested"
-              className="rounded-md bg-blaze-orange-pale/85 p-5"
+              className="rounded-md bg-[#F6EFE5] p-5"
             >
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-orange-deep">
                 Suggested next step ·{" "}

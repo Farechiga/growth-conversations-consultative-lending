@@ -93,15 +93,24 @@
      text on cream/parchment grounds. Per BLAZE_STYLE_GUIDE §2.6. */
   --color-blaze-charcoal: #1a1a1a;
 
-  /* Captured-value chip fill — very light cool grey. Reads as "structured
-     field" by contrasting with the warm cream page ground. Used only as the
-     chip background for captured field values. Per BLAZE_STYLE_GUIDE §2.6. */
+  /* Captured-value chip fill — very light cool grey. Used as the chip
+     background for captured field values. Effectively identical to
+     --blaze-paper on the page; the chip's "structured field" signal comes
+     from its 1.5px orange border + monospace text, not from a fill contrast.
+     Per BLAZE_STYLE_GUIDE §2.6. */
   --color-blaze-data-cool: #f9fbfd;
 
-  /* Section divider — very light cool grey. Used only for the thin horizontal
+  /* Page ground — cool near-white. The dominant background on dense banker-
+     facing surfaces (Member profile, Insight Engine views). Subtly cooler
+     than --blaze-cream, which now appears only on the pinned Suggested-
+     next-step card and similar warm-toned exceptions. Per BLAZE_STYLE_GUIDE
+     §2.6. */
+  --color-blaze-paper: #f9fcfd;
+
+  /* Section divider — light cool grey. Used only for the thin horizontal
      rule between bands in the borderless typography-led layout. Per
      BLAZE_STYLE_GUIDE §2.6. */
-  --color-blaze-rule: #e8eaec;
+  --color-blaze-rule: #d5d8db;
 }
 
 /*

@@ -487,4 +487,38 @@ If real banker testing produces feedback like "the dips don't feel concerning en
 
 ---
 
+## 2026-04-25 (Day 2 visual tweaks) · Cool paper ground · darker rule · larger marks · cream pinned card
+
+**Session type:** Four targeted visual refinements to the borderless typography-led pattern after Francisco's eyeball.
+
+**Token changes:**
+
+- **New token `--blaze-paper` `#F9FCFD`** — page ground for dense banker-facing surfaces. Cool near-white. The temperature shift away from the warm cream palette lets warm-toned exceptions (the pinned suggested-step card, banker-facing photography, future Meeting recap surfaces) carry weight by contrast rather than chrome.
+- **`--blaze-rule` darkened** from `#E8EAEC` to `#D5D8DB`. Slightly more visible without being prominent — the rule now registers without disappearing entirely.
+- `--blaze-data-cool` (chip fill) is now effectively identical to `--blaze-paper` on the page; preserved as a separate token for component code that needs to swap chip fills on warm surfaces. The chip's "structured field" signal comes from its 1.5px orange border + monospace text + square edges, **not** from a fill contrast.
+- BLAZE_STYLE_GUIDE §2.6 / §2.7 updated to reflect the new token structure and the wider 3:4-proportion mark dimensions.
+
+**Component changes:**
+
+- **`SectionLabel` mark dimensions** widened 50% — default 8×16 → **12×16**; compact 6×12 → **9×12**. The wider 3:4 proportion reads as a deliberate brand mark rather than a passive bullet.
+- **Section label text** scaled from `text-xs` (12px) → **`text-[19px]`** — roughly 80% of the page-header wordmark (24px). Section labels now have real presence without competing with the Member identity heading at the top of Band 1 (which stays at 28-30px).
+- **Page background** switched from `bg-blaze-cream` (`#F5EFE5` warm) → **`bg-blaze-paper`** (`#F9FCFD` cool near-white).
+- **Pinned Suggested-next-step card** background switched from `bg-blaze-orange-pale/85` (`#F2D9C2` orange-pale) → **`bg-[#F6EFE5]`** (warm cream). The card is now a warm-toned rectangle on the cool ground — temperature contrast carries it as the deliberate exception, while the orange-deep heading and burnished-orange "Run Growth track" button keep the orange punctuation.
+- **Modal body background** also switched to `bg-blaze-paper` so the modal feels of-a-piece with the page. Compact section marks inside the modal also widened to 9×12.
+
+**Verified:**
+
+- `GET /members/jenny` returns 200 (~96 KB).
+- 12 default-size (12×16) marks + 8 compact-size (9×12) marks = 20 total instances of the wider rectangles.
+- 16 instances of the new `text-[19px]` section label rendering.
+- Page wrapper + modal both use `bg-blaze-paper`.
+- Pinned card uses `bg-[#F6EFE5]`.
+- Compiled CSS contains `--color-blaze-paper: #f9fcfd` and `--color-blaze-rule: #d5d8db`.
+
+**Note for review:**
+
+The chip pattern is now effectively border-only (chip fill `#F9FBFD` against page bg `#F9FCFD` — sub-perceptible difference). The orange border + monospace + square edges still carry the "structured field" signal, but if Francisco wants chips to retain a fill contrast against the new page ground, the move is to bump `--blaze-data-cool` to a slightly more visible cool grey (e.g., `#EEF2F4` or similar) — call it explicitly and I'll adjust.
+
+---
+
 *Next session entry will be appended below.*

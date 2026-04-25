@@ -81,19 +81,20 @@ Tokens used by the borderless typography-led pattern (§4.5). These are dominant
 
 | Token | Hex | Usage |
 |---|---|---|
-| `--blaze-charcoal` | `#1A1A1A` | Primary body text on cream/parchment grounds. Slightly darker than `--blaze-grey-darker` (`#262626`); reads as black on cream without being true black. |
-| `--blaze-data-cool` | `#F9FBFD` | Background fill for captured-value chips. Deliberate temperature shift — cool grey contrasts with the warm cream page ground to signal "structured field." **Do not use elsewhere** — chip fills only. |
-| `--blaze-rule` | `#E8EAEC` | 1px horizontal rules between bands in the borderless layout. **Do not use as a general border color** — section separators only. The cool-grey temperature matches `--blaze-data-cool` so structural elements read as a coherent set distinct from warm content. |
+| `--blaze-charcoal` | `#1A1A1A` | Primary body text on the page ground. Slightly darker than `--blaze-grey-darker` (`#262626`); reads as black on cool near-white without being true black. |
+| `--blaze-paper` | `#F9FCFD` | Page ground for dense banker-facing surfaces. Cool near-white — a deliberate temperature shift from the warm `--blaze-cream`/`--blaze-parchment` family. The cool ground lets warm-toned exceptions (the pinned Suggested-next-step card, banker-facing photography, future Meeting recap surfaces) carry visual weight by temperature contrast rather than chrome. |
+| `--blaze-data-cool` | `#F9FBFD` | Background fill for captured-value chips. Effectively identical to `--blaze-paper` on the page; the chip's "structured field" signal comes from its 1.5px orange border + monospace text + square edges, **not** from a fill contrast. The token is preserved as distinct from `--blaze-paper` so component code can swap chip backgrounds (e.g., on warm-card surfaces) without touching page-level tokens. |
+| `--blaze-rule` | `#D5D8DB` | 1px horizontal rules between bands in the borderless layout. **Do not use as a general border color** — section separators only. Slightly darker than the page ground so the rule registers without competing with content. |
 
-All three are deliberate temperature shifts away from the warm palette: `--blaze-charcoal` is functionally neutral (a touch warmer than slate, but readable as black); `--blaze-data-cool` and `--blaze-rule` are the only cool-grey tokens in the entire palette, used precisely because they need to read as "structural" rather than "decorative" against warm content. Resist using them for general-purpose surfaces — that's how cool greys creep in and dilute the warm identity.
+All four are deliberate temperature shifts away from the warm palette: `--blaze-charcoal` is functionally neutral; `--blaze-paper`, `--blaze-data-cool`, and `--blaze-rule` are the only cool-grey tokens in the entire palette, used precisely because they need to read as "structural" rather than "decorative" against the rest of the warm content. Resist using them for general-purpose surfaces — that's how cool greys creep in and dilute the warm identity.
 
 ### 2.7 Section-mark dimensions
 
 The orange rectangle mark used at the start of every section label in the borderless pattern (§4.5):
 
-- **Default size:** 8px wide × 16px tall, solid `--blaze-orange` (`#B45F26`), 12px right margin before label text.
-- **Compact contexts** (sidebar mini-bands, dense lists, modal sub-sections): 6px wide × 12px tall, same color, 8px right margin.
-- The mark is decorative-semantic — it functions as a wordmark/bullet, not a status indicator. If it starts to read as a warning flag or active-state badge, drop to the compact size.
+- **Default size:** 12px wide × 16px tall, solid `--blaze-orange` (`#B45F26`), 12px right margin before label text. The 12-wide proportion (3:4 width-to-height) reads as a deliberate brand mark rather than a passive bullet.
+- **Compact contexts** (sidebar mini-bands, dense lists, modal sub-sections): 9px wide × 12px tall, same color, 8px right margin. Maintains the 3:4 proportion.
+- Section-label text sits at 19px / 600 / `letter-spacing 0.08em` / uppercase next to the mark — this is roughly 80% of the wordmark size at the page header, giving the section label real presence without competing with the Member identity heading at the top of Band 1.
 
 ---
 
@@ -176,11 +177,9 @@ Every section opens with a **section label** consisting of an orange rectangle m
 </div>
 ```
 
-- **Mark dimensions:** 8×16px solid `--blaze-orange`, 12px right margin (default); 6×12px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin.
-- **Label text:** 12px / 600 / `letter-spacing 0.08em` / uppercase, color `--blaze-charcoal`.
-- **Optional meta:** 12px / 500, color `--blaze-grey-body`. Used for descriptive context ("where things stand", "what we know about Jenny right now").
-
-The mark is decorative-semantic — it functions as a wordmark/bullet, not a status indicator. If it starts to read as a warning flag or active-state badge, drop to the compact 6×12 size.
+- **Mark dimensions:** 12×16px solid `--blaze-orange`, 12px right margin (default); 9×12px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin. Maintains a 3:4 width-to-height ratio so the mark reads as a deliberate brand element.
+- **Label text:** 19px / 600 / `letter-spacing 0.08em` / uppercase, color `--blaze-charcoal`. ~80% of the page-header wordmark size — the section label has real presence without competing with the Member identity heading.
+- **Optional meta:** 13-14px / 500, color `--blaze-grey-body`. Used for descriptive context ("where things stand", "what we know about Jenny right now").
 
 ### Body text hierarchy
 

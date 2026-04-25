@@ -31,8 +31,8 @@ export type ArtifactPreviewData = {
 function ModalSectionLabel({ label }: { label: string }) {
   return (
     <div className="flex items-baseline">
-      <span aria-hidden className="inline-block h-3 w-1.5 mr-2 bg-blaze-orange" />
-      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-charcoal">
+      <span aria-hidden className="inline-block h-3 w-[9px] mr-2 bg-blaze-orange" />
+      <span className="text-base font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
         {label}
       </span>
     </div>
@@ -61,7 +61,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
 
       <dialog
         ref={dialogRef}
-        className="m-auto bg-blaze-cream p-0 shadow-2xl backdrop:bg-blaze-grey-darker/70 max-w-2xl w-full"
+        className="m-auto bg-blaze-paper p-0 shadow-2xl backdrop:bg-blaze-grey-darker/70 max-w-2xl w-full"
         // Native <dialog> uses ::backdrop; close on outside-click as a fallback.
         onClick={(e) => {
           if (e.target === dialogRef.current) close();
