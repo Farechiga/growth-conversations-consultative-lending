@@ -99,6 +99,15 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default:** Keep the Prisma 7 scaffolded default (`app/generated/prisma`) for now. It is gitignored. Revisit if Next.js picks it up as routes, or if imports feel awkward.
 - **Status:** Open. Low priority; resolve naturally the first time we import the client.
 
+### Q-013 · `Recommendation.primary_concern` — closed enum vs free-form
+
+- **Date logged:** 2026-04-25 (Day-1 schema authoring)
+- **Question:** Data Framework §4.4 specifies `primary_concern` as a closed enum: `none | rate | speed | commitment | spouse | cpa | partner | timing | other`. The fixture brief introduces the value `blaze_capacity_for_deal_size` for Cygnus's Recommendation — this value is meaningful for the demo display ("does Margaret think Blaze can handle a $4-7M deal?") but is not in the canonical enum.
+- **Why it matters:** If we enforce the closed enum, we lose the demo-meaningful Cygnus value and have to map to `other` plus a side-channel free-text field. If we widen the enum, we drift from the Data Framework's canonical type. If we relax to free-form, we lose the validation benefit but match the brief verbatim.
+- **Affects:** Schema design and Cygnus fixture rendering on the Member profile.
+- **Conservative default for now:** Stored `primary_concern` as `String` (free-form), with the Data Framework's canonical values usable verbatim. Application-layer validation can enforce the canonical enum + the one fixture extension. The Cygnus value is preserved as `blaze_capacity_for_deal_size`.
+- **Status:** Open. Awaiting Francisco's call: extend the canonical enum, use `other` + free-text, or accept the free-form String approach.
+
 ### Q-008 · Demo data persistence model
 
 - **Date logged:** Pre-build (new for build phase)

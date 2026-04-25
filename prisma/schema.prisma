@@ -1,13 +1,604 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Blaze Member Signals — demo-phase schema.
+// Translated from docs/design/03_Data_Framework.docx.
+//
+// Conventions (per CLAUDE.md §5):
+//   - Model names PascalCase (Prisma convention).
+//   - Field names snake_case (matches Data Framework as authoritative source).
+//   - The internal `step_shape` enum uses lowercase values; bankers never see it.
+//
+// SQLite-specific adaptations from the Data Framework's PostgreSQL-leaning spec:
+//   - jsonb → Json (Prisma stores as TEXT under SQLite)
+//   - array<T> → either an explicit join model or a Json column. Join models are used
+//     where order matters or where we'll query the relation; Json is used where the
+//     value is read-mostly display data.
+//   - decimal(p,s) → Float (SQLite has no decimal type; demo precision is sufficient)
+//   - timestamp / date → DateTime (SQLite stores as ISO-8601 text)
+//   - Multi-value enums (e.g., Banker.roles) → Json (SQLite has no native arrays)
 
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
 }
 
+// URL lives in prisma.config.ts (Prisma 7 convention, not schema.prisma).
 datasource db {
   provider = "sqlite"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum Stage {
+  starting
+  growing
+  established
+  transitional
+}
+
+enum SizeBand {
+  solo
+  small
+  mid
+  larger
+}
+
+enum MeetingType {
+  onboarding
+  check_in
+  opportunity
+  service
+  unplanned
+}
+
+enum Channel {
+  in_person
+  call
+  video
+}
+
+enum Sentiment {
+  receptive
+  cautious
+  uncertain
+  tense
+}
+
+enum SignalType {
+  goal
+  blocker
+  trigger
+  indecision
+}
+
+enum Severity {
+  manageable
+  painful
+  threatening
+}
+
+enum Recency {
+  acute_recent
+  ongoing
+  chronic
+  hypothetical_future
+}
+
+enum SignalConfidence {
+  member_stated
+  banker_inferred
+  unclear
+}
+
+enum ActionCardType {
+  follow_up
+  handoff
+  nurture
+  research
+  escalation
+}
+
+enum ActionCardStatus {
+  open
+  in_progress
+  completed
+  declined
+  deferred
+  superseded
+}
+
+enum ActionCardOutcome {
+  funded
+  declined
+  not_pursued
+  referred
+}
+
+enum StepShape {
+  ask
+  size
+  show
+  propose
+  resolve
+  connect
+}
+
+enum CanonicalStatus {
+  draft
+  canonical
+  retired
+}
+
+enum ArtifactType {
+  chart
+  comparison
+  calculator
+}
+
+enum ComplianceStatus {
+  draft
+  in_review
+  approved
+  requires_re_review
+}
+
+enum TopicStatus {
+  canonical
+  proposed
+  retired
+}
+
+enum ProductCategory {
+  business
+  personal
+  wealth
+}
+
+enum ProductSubcategory {
+  real_estate
+  equipment
+  cash_flow
+  credit
+  transaction_services
+  savings
+  investment
+}
+
+enum RoutingOwnerRole {
+  commercial_re
+  sba
+  treasury
+  cards
+  consumer
+  wealth
+  financial_wellness
+}
+
+enum ProductStatus {
+  active
+  discontinued
+}
+
+enum ConfidenceBand {
+  low
+  medium
+  high
+}
+
+enum BankerStatus {
+  active
+  inactive
+}
+
+enum RecommendationStructure {
+  standard
+  phased
+  conservative_first
+  paired_with
+}
+
+enum RecommendationResponse {
+  accepted
+  leaning_yes
+  neutral
+  leaning_no
+  declined
+  deferred
+}
+
+enum RecommendationStatus {
+  surfaced
+  accepted
+  dismissed
+  converted_to_card
+  deferred
+}
+
+// ============================================================
+// Reference data
+// ============================================================
+
+// Banker — first-class entity per Data Framework §5.5.
+// roles is multi-valued; SQLite has no native arrays so we use Json.
+model Banker {
+  id               String       @id @default(uuid())
+  external_user_id String       @unique
+  display_name     String
+  roles            Json
+  status           BankerStatus @default(active)
+  created_at       DateTime     @default(now())
+
+  // Reverse relations
+  primary_for_members         Member[]              @relation("MemberPrimaryBanker")
+  conversations_led           Conversation[]
+  action_cards_owned          ActionCard[]
+  authored_growth_steps       GrowthStep[]          @relation("GrowthStepAuthor")
+  promoted_growth_steps       GrowthStep[]          @relation("GrowthStepPromoter")
+  authored_growth_tracks      GrowthTrack[]         @relation("GrowthTrackAuthor")
+  promoted_growth_tracks      GrowthTrack[]         @relation("GrowthTrackPromoter")
+  reviewed_artifacts          Artifact[]
+  promoted_rules              Rule[]
+  authored_private_notes      Json?
+}
+
+// IndustryFamily — Data Framework §5.2. Banker-facing label is "Business type".
+model IndustryFamily {
+  id                    String       @id @default(uuid())
+  name                  String       @unique
+  description           String
+  naics_codes           Json
+  size_band_thresholds  Json
+  created_at            DateTime     @default(now())
+
+  member_types          MemberType[]
+  members               Member[]
+}
+
+// Topic — controlled vocabulary for canonical_tag values used by Signal records.
+// Banker-facing label is "Topic"; internal field name is canonical_tag.
+model Topic {
+  id              String       @id @default(uuid())
+  canonical_tag   String       @unique
+  display_name    String
+  description     String
+  topic_type      SignalType
+  parent_topic_id String?
+  parent_topic    Topic?       @relation("TopicHierarchy", fields: [parent_topic_id], references: [id])
+  child_topics    Topic[]      @relation("TopicHierarchy")
+  status          TopicStatus  @default(canonical)
+  created_at      DateTime     @default(now())
+
+  signals                          Signal[]
+  member_type_blocker_relations    MemberType[] @relation("MemberTypeBlockers")
+  member_type_trigger_relations    MemberType[] @relation("MemberTypeTriggers")
+  member_type_goal_relations       MemberType[] @relation("MemberTypeGoals")
+  growth_step_trigger_signals      GrowthStep[] @relation("GrowthStepTriggerSignals")
+  growth_track_blocker_topics      GrowthTrack[] @relation("GrowthTrackBlockerTopics")
+  growth_track_trigger_topics      GrowthTrack[] @relation("GrowthTrackTriggerTopics")
+
+  @@index([canonical_tag])
+  @@index([topic_type])
+}
+
+// Product — Data Framework §5.3.
+model Product {
+  id                  String              @id @default(uuid())
+  name                String              @unique
+  description         String
+  category            ProductCategory
+  subcategory         ProductSubcategory
+  routing_owner_role  RoutingOwnerRole
+  compliance_tags     Json
+  status              ProductStatus       @default(active)
+  created_at          DateTime            @default(now())
+
+  funded_action_cards         ActionCard[]
+  recommendations             Recommendation[]
+  paired_recommendations      Recommendation[] @relation("PairedProduct")
+  member_types_typical_for    MemberType[]     @relation("MemberTypeTypicalProducts")
+  // Self-relation (complementary products) skipped for demo simplicity; restore via Json on the Product if needed.
+}
+
+// Rule — Data Framework §5.4. Surfaces Growth tracks via inspectable conditions.
+model Rule {
+  id                 String          @id @default(uuid())
+  name               String
+  description        String
+  conditions         Json
+  output_growth_tracks GrowthTrack[] @relation("RuleOutputGrowthTracks")
+  confidence_band    ConfidenceBand
+  compliance_gates   Json
+  status             CanonicalStatus @default(canonical)
+  version            Int             @default(1)
+  promoted_at        DateTime?
+  promoted_by_id     String?
+  promoted_by        Banker?         @relation(fields: [promoted_by_id], references: [id])
+  created_at         DateTime        @default(now())
+
+  recommendations    Recommendation[]
+}
+
+// MemberType — Data Framework §3.8. The aggregation frame for the Insight Engine.
+model MemberType {
+  id                       String         @id @default(uuid())
+  name                     String         @unique
+  description              String
+  industry_family_id       String
+  industry_family          IndustryFamily @relation(fields: [industry_family_id], references: [id])
+  stage                    Stage
+  size_band                SizeBand
+  characteristic_blockers  Topic[]        @relation("MemberTypeBlockers")
+  characteristic_triggers  Topic[]        @relation("MemberTypeTriggers")
+  characteristic_goals     Topic[]        @relation("MemberTypeGoals")
+  typical_products         Product[]      @relation("MemberTypeTypicalProducts")
+  typical_sequences        Json?
+  default_growth_tracks    GrowthTrack[]  @relation("MemberTypeDefaultGrowthTracks")
+  segment_notes            String?
+  created_at               DateTime       @default(now())
+
+  members                  Member[]
+  applicable_growth_tracks GrowthTrack[]  @relation("GrowthTrackTargetMemberType")
+  applicable_growth_steps  GrowthStep[]   @relation("GrowthStepTargetMemberTypes")
+
+  @@index([industry_family_id, stage, size_band])
+}
+
+// GrowthTrack — Data Framework §3.7.
+model GrowthTrack {
+  id                       String          @id @default(uuid())
+  name                     String          @unique
+  description              String
+  target_member_type_id    String
+  target_member_type       MemberType      @relation("GrowthTrackTargetMemberType", fields: [target_member_type_id], references: [id])
+  target_blocker_topics    Topic[]         @relation("GrowthTrackBlockerTopics")
+  target_trigger_topics    Topic[]         @relation("GrowthTrackTriggerTopics")
+  growth_step_sequence     GrowthTrackStep[]
+  author_id                String
+  author                   Banker          @relation("GrowthTrackAuthor", fields: [author_id], references: [id])
+  status                   CanonicalStatus @default(canonical)
+  promoted_at              DateTime?
+  promoted_by_id           String?
+  promoted_by              Banker?         @relation("GrowthTrackPromoter", fields: [promoted_by_id], references: [id])
+  performance_counts       Json?
+  review_due               DateTime?
+  created_at               DateTime        @default(now())
+
+  default_for_member_types MemberType[]    @relation("MemberTypeDefaultGrowthTracks")
+  surfacing_rules          Rule[]          @relation("RuleOutputGrowthTracks")
+}
+
+// GrowthTrackStep — explicit join model for GrowthTrack ↔ GrowthStep so the order
+// of Growth steps in a Growth track is preserved (per Data Framework §3.7).
+model GrowthTrackStep {
+  id                String      @id @default(uuid())
+  growth_track_id   String
+  growth_track      GrowthTrack @relation(fields: [growth_track_id], references: [id], onDelete: Cascade)
+  growth_step_id    String
+  growth_step       GrowthStep  @relation(fields: [growth_step_id], references: [id])
+  position          Int
+
+  @@unique([growth_track_id, position])
+  @@index([growth_track_id])
+}
+
+// GrowthStep — Data Framework §3.5.
+model GrowthStep {
+  id                  String           @id @default(uuid())
+  title               String
+  description         String
+  step_shape          StepShape
+  content             String
+  variant_phrasings   Json?
+  capture_schema      Json
+  artifact_id         String?
+  artifact            Artifact?        @relation(fields: [artifact_id], references: [id])
+  target_member_types MemberType[]     @relation("GrowthStepTargetMemberTypes")
+  trigger_signals     Topic[]          @relation("GrowthStepTriggerSignals")
+  author_id           String
+  author              Banker           @relation("GrowthStepAuthor", fields: [author_id], references: [id])
+  status              CanonicalStatus  @default(canonical)
+  promoted_at         DateTime?
+  promoted_by_id      String?
+  promoted_by         Banker?          @relation("GrowthStepPromoter", fields: [promoted_by_id], references: [id])
+  performance_counts  Json?
+  review_due          DateTime?
+  created_at          DateTime         @default(now())
+
+  growth_track_steps  GrowthTrackStep[]
+  executions          GrowthStepExecution[]
+}
+
+// Artifact — Data Framework §3.6. Compliance-reviewed visual asset.
+model Artifact {
+  id                  String           @id @default(uuid())
+  title               String
+  description         String
+  type                ArtifactType
+  parameter_schema    Json
+  template            String
+  compliance_status   ComplianceStatus @default(draft)
+  last_reviewed_at    DateTime?
+  reviewed_by_id      String?
+  reviewed_by         Banker?          @relation(fields: [reviewed_by_id], references: [id])
+  shareable           Boolean          @default(false)
+  use_counts          Json?
+  created_at          DateTime         @default(now())
+
+  growth_steps        GrowthStep[]
+}
+
+// ============================================================
+// Member-cluster (transactional)
+// ============================================================
+
+model Member {
+  id                      String          @id @default(uuid())
+  legal_name              String
+  doing_business_as       String?
+  industry_family_id      String
+  industry_family         IndustryFamily  @relation(fields: [industry_family_id], references: [id])
+  stage                   Stage
+  size_band               SizeBand
+  // [derived] Computed from industry_family × stage × size_band; set explicitly in the seed.
+  member_type_id          String
+  member_type             MemberType      @relation(fields: [member_type_id], references: [id])
+  primary_banker_id       String
+  primary_banker          Banker          @relation("MemberPrimaryBanker", fields: [primary_banker_id], references: [id])
+  tenure_started_at       DateTime
+  consent_state           Json
+  core_sync_state         Json
+  private_notes           Json?
+  // [derived] Most recent Conversation timestamp; set during seed step 6.
+  last_touch_at           DateTime?
+  // [derived] Count of Signals where active = true; set during seed step 6.
+  active_signal_count     Int             @default(0)
+  // [derived] Count of ActionCards where status in (open, in_progress); set during seed step 6.
+  open_action_card_count  Int             @default(0)
+  created_at              DateTime        @default(now())
+  updated_at              DateTime        @updatedAt
+
+  conversations           Conversation[]
+  signals                 Signal[]
+  action_cards            ActionCard[]
+  recommendations         Recommendation[]
+
+  @@index([primary_banker_id])
+  @@index([member_type_id])
+  @@index([industry_family_id, stage, size_band])
+}
+
+model Conversation {
+  id                      String                 @id @default(uuid())
+  member_id               String
+  member                  Member                 @relation(fields: [member_id], references: [id])
+  banker_id               String
+  banker                  Banker                 @relation(fields: [banker_id], references: [id])
+  meeting_type            MeetingType
+  channel                 Channel
+  sentiment               Sentiment
+  duration_min            Int?
+  moment_quote            String?
+  banker_note             String?
+  created_at              DateTime               @default(now())
+  closed_at               DateTime               @default(now())
+
+  growth_step_executions  GrowthStepExecution[]
+  signals                 Signal[]
+  origin_action_cards     ActionCard[]
+
+  @@index([member_id])
+  @@index([banker_id])
+  @@index([created_at])
+}
+
+// GrowthStepExecution — Data Framework §3.5 (sub-entity of Conversation).
+model GrowthStepExecution {
+  id                       String              @id @default(uuid())
+  conversation_id          String
+  conversation             Conversation        @relation(fields: [conversation_id], references: [id])
+  growth_step_id           String
+  growth_step              GrowthStep          @relation(fields: [growth_step_id], references: [id])
+  sequence_position        Int
+  captured_data            Json
+  executed_at              DateTime             @default(now())
+
+  produced_signals         Signal[]
+  produced_action_cards    ActionCard[]
+  produced_recommendation  Recommendation?
+
+  @@unique([conversation_id, sequence_position])
+  @@index([conversation_id])
+}
+
+model Signal {
+  id                          String                @id @default(uuid())
+  conversation_id             String
+  conversation                Conversation          @relation(fields: [conversation_id], references: [id])
+  growth_step_execution_id    String?
+  growth_step_execution       GrowthStepExecution?  @relation(fields: [growth_step_execution_id], references: [id])
+  member_id                   String
+  member                      Member                @relation(fields: [member_id], references: [id])
+  type                        SignalType
+  topic_id                    String
+  topic                       Topic                 @relation(fields: [topic_id], references: [id])
+  severity                    Severity
+  their_words                 String?
+  recency                     Recency
+  confidence                  SignalConfidence
+  active                      Boolean               @default(true)
+  // Optional Size-shape quantification carried inline for query convenience.
+  // Originally captured inside the Size step's captured_data jsonb; mirrored here so
+  // dashboards can query Signal magnitude without unpacking the execution record.
+  magnitude                   Float?
+  unit                        String?
+  frequency                   String?
+  feeling                     String?
+  captured_at                 DateTime              @default(now())
+
+  @@index([member_id, active])
+  @@index([conversation_id])
+  @@index([topic_id])
+  @@index([type])
+}
+
+model ActionCard {
+  id                              String                @id @default(uuid())
+  type                            ActionCardType
+  owner_id                        String
+  owner                           Banker                @relation(fields: [owner_id], references: [id])
+  member_id                       String
+  member                          Member                @relation(fields: [member_id], references: [id])
+  origin_conversation_id          String
+  origin_conversation             Conversation          @relation(fields: [origin_conversation_id], references: [id])
+  origin_growth_step_execution_id String?
+  origin_growth_step_execution    GrowthStepExecution?  @relation(fields: [origin_growth_step_execution_id], references: [id])
+  rationale                       String
+  suggested_opening               String?
+  due_at                          DateTime
+  status                          ActionCardStatus      @default(open)
+  status_changed_at               DateTime              @default(now())
+  outcome                         ActionCardOutcome?
+  // outcome_reason kept as String rather than enum so the seed can carry the verbatim
+  // brief value; the Data Framework's enum list is enforced at the application layer.
+  outcome_reason                  String?
+  funded_product_id               String?
+  funded_product                  Product?              @relation(fields: [funded_product_id], references: [id])
+  created_at                      DateTime              @default(now())
+  closed_at                       DateTime?
+
+  @@index([owner_id, status])
+  @@index([member_id, status])
+  @@index([due_at])
+}
+
+// Recommendation — Data Framework §6.1. Modeled as a first-class entity (rather than
+// a jsonb blob on Member) so the demo can render it on the Member profile and link it
+// back to the originating Growth step execution and Rule.
+model Recommendation {
+  id                          String                  @id @default(uuid())
+  member_id                   String
+  member                      Member                  @relation(fields: [member_id], references: [id])
+  growth_step_execution_id    String                  @unique
+  growth_step_execution       GrowthStepExecution     @relation(fields: [growth_step_execution_id], references: [id])
+  product_id                  String
+  product                     Product                 @relation(fields: [product_id], references: [id])
+  size_proposed               Float?
+  structure                   RecommendationStructure
+  paired_product_id           String?
+  paired_product              Product?                @relation("PairedProduct", fields: [paired_product_id], references: [id])
+  rationale_text              String
+  confidence_band             ConfidenceBand
+  response                    RecommendationResponse
+  // primary_concern stored as String rather than enum because the brief introduces
+  // the value `blaze_capacity_for_deal_size` for Cygnus, which is outside the
+  // canonical enum in Data Framework §4.4. Q-013 in OPEN_QUESTIONS tracks whether
+  // to extend the enum or keep the field free-form.
+  primary_concern             String?
+  status                      RecommendationStatus    @default(surfaced)
+  rule_id_that_fired          String?
+  rule_that_fired             Rule?                   @relation(fields: [rule_id_that_fired], references: [id])
+  their_words                 String?
+  created_at                  DateTime                @default(now())
+
+  @@index([member_id])
 }
