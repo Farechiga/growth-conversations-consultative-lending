@@ -73,7 +73,27 @@ Tokens reserved for very specific surface treatments, not general use. Adding a 
 |---|---|---|
 | `--blaze-frost-edge` | `#CAE8FD` | 1px borders on semi-transparent white panels sitting over a dark warm-grey ground. Echoes the frosted-glass edge treatment on page 12 of the source PDF where panels float over photography. **Do not use this color anywhere except on those specific panel edges** — it is not a general accent, not a link color, not a focus ring. The reframe: this token's job is to make the frosted panel feel like glass and not like flat white-on-dark. |
 
-The frosted-glass pattern itself: `background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); border: 1px solid var(--blaze-frost-edge);` applied to panels on the dark-ground pages (Member profile from Day 2 onward; the Insight Engine surfaces likely follow). On the cream/parchment-ground pages (theme-check page, possibly the Meeting recap surface), the frosted-glass pattern does not apply.
+The frosted-glass pattern itself: `background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(8px); border: 1px solid var(--blaze-frost-edge);` applied to panels on the dark-ground pages. The dark-ground pattern was the dominant treatment for dense surfaces in early Day-2 work; it has been superseded for those surfaces by the borderless typography-led pattern in §4.5 below.
+
+### 2.6 Borderless-pattern tokens
+
+Tokens used by the borderless typography-led pattern (§4.5). These are dominant on dense banker-facing surfaces (Member profile, Insight Engine views).
+
+| Token | Hex | Usage |
+|---|---|---|
+| `--blaze-charcoal` | `#1A1A1A` | Primary body text on cream/parchment grounds. Slightly darker than `--blaze-grey-darker` (`#262626`); reads as black on cream without being true black. |
+| `--blaze-data-cool` | `#F9FBFD` | Background fill for captured-value chips. Deliberate temperature shift — cool grey contrasts with the warm cream page ground to signal "structured field." **Do not use elsewhere** — chip fills only. |
+| `--blaze-rule` | `#E8EAEC` | 1px horizontal rules between bands in the borderless layout. **Do not use as a general border color** — section separators only. The cool-grey temperature matches `--blaze-data-cool` so structural elements read as a coherent set distinct from warm content. |
+
+All three are deliberate temperature shifts away from the warm palette: `--blaze-charcoal` is functionally neutral (a touch warmer than slate, but readable as black); `--blaze-data-cool` and `--blaze-rule` are the only cool-grey tokens in the entire palette, used precisely because they need to read as "structural" rather than "decorative" against warm content. Resist using them for general-purpose surfaces — that's how cool greys creep in and dilute the warm identity.
+
+### 2.7 Section-mark dimensions
+
+The orange rectangle mark used at the start of every section label in the borderless pattern (§4.5):
+
+- **Default size:** 8px wide × 16px tall, solid `--blaze-orange` (`#B45F26`), 12px right margin before label text.
+- **Compact contexts** (sidebar mini-bands, dense lists, modal sub-sections): 6px wide × 12px tall, same color, 8px right margin.
+- The mark is decorative-semantic — it functions as a wordmark/bullet, not a status indicator. If it starts to read as a warning flag or active-state badge, drop to the compact size.
 
 ---
 
@@ -110,9 +130,9 @@ The gradient that runs across the top of every page in the source deck is the mo
 
 ---
 
-## 4. The dominant component pattern — orange-headed panel
+## 4. The orange-headed panel — occasional anchor (sparse contexts only)
 
-This is the pattern that appears most often in the source deck. Every product card, every action item, every structured information block follows this shape.
+The pattern below is the canonical product-card shape from the source deck. It is **no longer the dominant pattern for dense banker-facing surfaces** — those use the borderless typography-led pattern in §4.5. The orange-headed panel is now used sparingly, for *one or two* deliberate emphasis points per surface — the canonical example is the pinned "Suggested next step" callout on the Member profile, where the card-versus-borderless contrast is what makes the suggestion land as the primary call to action. If everything is borderless, this card stops feeling deliberate; if this card is borderless too, the page loses its primary CTA.
 
 ```jsx
 <div className="rounded-md overflow-hidden border border-warm-grey-50">
@@ -131,6 +151,120 @@ This is the pattern that appears most often in the source deck. Every product ca
 - **On light grounds:** body is solid white (`#FEFFFF`) with a hairline grey border.
 - **Selected state:** orange header gets the brighter `--blaze-orange-bright` (`#BC5D1D`); body adds a 2px outer ring in `--blaze-orange-pale`.
 - **Action items (numbered cards from page 8):** orange header is replaced with a large orange numeral (1, 2, 3) in the top-left of the body, with the same `#B45F26` color.
+
+---
+
+## 4.5 Borderless typography-led pattern (dominant for dense surfaces)
+
+This is the **dominant pattern** for dense banker-facing surfaces — the Member profile, the Insight Engine views, and any future analytical view. The orange-headed-panel pattern from §4 still applies but only as occasional anchor, never as the page-level chrome.
+
+The discipline: structure comes from typography, whitespace, and small semantic accents — not from card borders. Orange does small, deliberate pieces of work as visual anchors. Most of the page is flat cream ground with charcoal text.
+
+### Section structure
+
+Every section opens with a **section label** consisting of an orange rectangle mark followed by uppercase tracked label text:
+
+```jsx
+<div className="flex items-baseline gap-3">
+  <span aria-hidden className="inline-block h-4 w-2 bg-[#B45F26]" />
+  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[#1A1A1A]">
+    Active state
+  </span>
+  {meta && (
+    <span className="text-xs font-medium text-[#4F5052]">{meta}</span>
+  )}
+</div>
+```
+
+- **Mark dimensions:** 8×16px solid `--blaze-orange`, 12px right margin (default); 6×12px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin.
+- **Label text:** 12px / 600 / `letter-spacing 0.08em` / uppercase, color `--blaze-charcoal`.
+- **Optional meta:** 12px / 500, color `--blaze-grey-body`. Used for descriptive context ("where things stand", "what we know about Jenny right now").
+
+The mark is decorative-semantic — it functions as a wordmark/bullet, not a status indicator. If it starts to read as a warning flag or active-state badge, drop to the compact 6×12 size.
+
+### Body text hierarchy
+
+| Element | Size | Weight | Color |
+|---|---|---|---|
+| Section title (under the section label) | 18px | 600 | `#000000` (true black) |
+| Member identity heading (Band 1 only — page's primary identity) | 24-28px | 600 | `#000000` |
+| Body text | 14px | 400 | `--blaze-charcoal` (`#1A1A1A`) |
+| Body emphasis | 14px | 500 | `--blaze-charcoal` |
+| Secondary / supporting prose, captions, metadata | 13-14px | 400 | `--blaze-grey-body` (`#4F5052`) |
+| Small labels, timestamps | 12-13px | 500 | `--blaze-grey-body` |
+
+Three levels of dark (black for titles, charcoal for body, grey-body for supporting) — the eye reads structure even without colored panels. **Do not soften body text below `#262626`** — anything lighter loses presence on cream.
+
+### Captured-value chip (the new chip pattern)
+
+Replaces the prior orange-tinted chip. Marks structured field values captured in specific Growth-step executions, hover-tooltip cites the capture event.
+
+```jsx
+<span
+  className="inline-flex items-baseline border-[1.5px] border-[#B45F26] bg-[#F9FBFD] px-1 py-0.5 font-mono text-[0.85em] text-[#1A1A1A]"
+  title={`Captured · ${capturedBy}`}
+>
+  $75K
+</span>
+```
+
+- **Background fill:** `--blaze-data-cool` (`#F9FBFD`) — cool grey signals "structured field" against warm cream ground.
+- **Border:** 1.5px solid `--blaze-orange`. If the chip reads as "boxed-in label" rather than "structured value", drop to 1px.
+- **Border-radius:** 0px (square edges, no rounded corners).
+- **Text:** monospace at 0.85em, color `--blaze-charcoal`.
+- **Padding:** 4px horizontal, 2px vertical (compact).
+
+### Quote-attribution mark (verbatim member quotes)
+
+```jsx
+<blockquote className="border-l-[3px] border-[#B45F26] py-1 pl-3 italic text-[#4F5052]">
+  &ldquo;{their_words}&rdquo;
+</blockquote>
+```
+
+- **Mark:** 3px-wide vertical line in `--blaze-orange`, full height of the quote block.
+- **Quote text:** italic, color `--blaze-grey-body` (softer than body charcoal — reads as voice, not statement).
+- **Spacing:** 12px between line and text; 4px padding above and below the text.
+
+### Section dividers
+
+Between bands, a 1px horizontal rule in `--blaze-rule` (`#E8EAEC`):
+
+```jsx
+<hr className="my-12 border-0 border-t border-[#E8EAEC]" />
+```
+
+- ~56px total gap between bands; rule sits centered in that gap (`my-12` = 48px above + below; total ≈ 100px including line height — adjust to taste).
+- The cool-grey rule should disappear into the page until the eye is looking for it. If you can perceive it at first glance, it's too prominent.
+
+### Hyperlinks and inline navigation
+
+Burnished orange retained for clickable tokens — this is the third piece of orange work alongside section marks and quote attribution lines.
+
+- **Inline links** in body prose (Active state summary tokens, Recommendation responds-to anchor links): `--blaze-orange-deep` (`#AD571C`), underline on hover.
+- **Verb-prefix labels** ("→ serves goal:", "→ addresses blocker:"): `--blaze-orange-deep`, normal weight; functioning as inline hierarchy markers.
+
+### The three pieces of orange semantic work
+
+The borderless pattern lets orange do three small deliberate jobs and nothing else:
+
+1. **Section marks** — anchor the start of each section.
+2. **Quote attribution lines** — attribute member voice.
+3. **Hyperlinks and verb-prefix labels** — mark inline navigation/hierarchy.
+
+Plus the captured-value chip border. Anything else surfacing as orange is a smell — check before adding.
+
+### Surfaces this applies to
+
+- Member profile (current Day-2 implementation; this pattern lands here first)
+- Insight Engine views (when built — Day 3+)
+- Future analytical surfaces
+
+### Surfaces this does NOT apply to
+
+- The pinned "Suggested next step" panel — it's the deliberate card exception per §4. Stays as the orange-pale card so the primary CTA reads as primary.
+- The signature gradient band at the top of the page (§3) — that's a brand frame, not section structure.
+- Buttons, form inputs, charts — they have their own patterns in §7-9.
 
 ---
 

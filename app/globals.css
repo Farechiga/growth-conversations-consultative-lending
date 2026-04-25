@@ -88,6 +88,20 @@
      panels over a dark warm-grey ground (frosted-glass pattern). Per
      BLAZE_STYLE_GUIDE.md §2.5. Do not use this color anywhere else. */
   --color-blaze-frost-edge: #cae8fd;
+
+  /* Body-text charcoal — slightly darker than blaze-grey-darker; primary body
+     text on cream/parchment grounds. Per BLAZE_STYLE_GUIDE §2.6. */
+  --color-blaze-charcoal: #1a1a1a;
+
+  /* Captured-value chip fill — very light cool grey. Reads as "structured
+     field" by contrasting with the warm cream page ground. Used only as the
+     chip background for captured field values. Per BLAZE_STYLE_GUIDE §2.6. */
+  --color-blaze-data-cool: #f9fbfd;
+
+  /* Section divider — very light cool grey. Used only for the thin horizontal
+     rule between bands in the borderless typography-led layout. Per
+     BLAZE_STYLE_GUIDE §2.6. */
+  --color-blaze-rule: #e8eaec;
 }
 
 /*

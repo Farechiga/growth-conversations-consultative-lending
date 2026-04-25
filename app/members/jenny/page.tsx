@@ -1,37 +1,38 @@
 /*
- * Day-2 — Member profile, live data + dominant orange-headed-panel pattern.
+ * Day-2 — Member profile, live data + borderless typography-led pattern.
  *
  * Server Component that fetches Jenny's record from Prisma with deep includes
  * and renders the six-band layout per Module and Data Flow §4.2 plus the
  * banker-only sidebar (§4.3) and the above-the-fold pinned suggested-next-step
  * panel (§4.4).
  *
- * Visual identity (BLAZE_STYLE_GUIDE):
- *   - Page background: blaze-grey-darker (the dark warm-grey ground).
- *   - All structural panels follow the §4 orange-headed pattern: 1px
- *     blaze-frost-edge outer border, blaze-orange header strip with white
- *     uppercase-tracked label, white/92 backdrop-blur body. No drop shadows
- *     on default state (§14). Orange used as accent only, never as flood.
- *   - Inner items inside bands (Signal entries, Recommendation cards,
- *     ActionCard rows, history entries) keep their existing soft cream-
- *     tinted treatment so the orange-headed strip stays anchored at the
- *     band level and doesn't read as visually doubled.
+ * Visual identity (BLAZE_STYLE_GUIDE.md §4.5 — "Borderless typography-led
+ * pattern"):
+ *   - Page background: blaze-cream (warm parchment). No card chrome.
+ *   - Each section opens with an orange rectangle mark (8×16px) followed by
+ *     uppercase tracked label text in charcoal — the section anchor.
+ *   - Section titles in true black at 18px / 600. Body in blaze-charcoal
+ *     (#1A1A1A). Secondary prose in blaze-grey-body. Three levels of dark
+ *     give typographic hierarchy without colored panels.
+ *   - Captured-value chips: cool-grey fill (--blaze-data-cool) with 1.5px
+ *     blaze-orange outline, square edges, monospace, charcoal text. The
+ *     temperature shift signals "structured field" against the warm ground.
+ *   - Verbatim member quotes: 3px blaze-orange vertical line + italic
+ *     blaze-grey-body text. Voice, not statement.
+ *   - Section dividers: 1px blaze-rule (#E8EAEC) centered in ~56px gaps.
+ *   - The three pieces of orange semantic work: section marks, quote
+ *     attribution lines, hyperlinks/verb-prefix labels.
+ *
+ * The pinned "Suggested next step" panel is the deliberate exception — it
+ * keeps the orange-pale card treatment per §4 so the primary CTA stays
+ * primary. Everything else is borderless.
  *
  * Substantive treatments retained from prior steps:
- *   - Trace pattern via <details>/<summary> on Signals, Recommendations,
- *     ActionCards, and Conversation history rows.
- *   - Captured-value chips with title-attribute tooltips citing the capture
- *     event. Chips in Band 3 (structured display); inline prose in Band 4
- *     (narrative responds-to summary). Same audit chain, different reading
- *     context.
+ *   - Trace pattern via <details>/<summary>.
  *   - Recommendation.responds_to_signals sorted goal → blocker → trigger →
- *     indecision with verb-prefix labels.
+ *     indecision with verb-prefix labels (in blaze-orange-deep inline).
  *   - Active state summary tokens are anchor links to the relevant bands.
- *
- * Suggested next step (step d): live fireRules() against the Member's active
- * Signals + products held. Top-ranked rule's first output Growth track
- * populates the pinned panel; falls back to hidden if no rule fires (defensive,
- * not expected for the seeded fixture).
+ *   - Live fireRules() result populates the pinned panel.
  *
  * Live fetch is parameterless — Jenny is keyed by legal name. The /members/[id]
  * dynamic generalization for Northland and Cygnus surfaces lands in a follow-up
@@ -146,8 +147,10 @@ function injectLinks(text: string, links: { token: string; node: ReactNode }[]):
 }
 
 // ============================================================
-// Captured-value chip — Semantic Discipline (2). Visually distinct so audit /
-// LLM readers can tell which strings are captured field values vs. prose.
+// Captured-value chip — borderless pattern per BLAZE_STYLE_GUIDE §4.5.
+// Cool-grey fill + 1.5px blaze-orange outline + square edges + monospace
+// + charcoal text. The temperature shift (cool grey on warm cream ground)
+// signals "structured field" without competing with content.
 // title attribute provides hover-tooltip citing the capture event.
 // ============================================================
 
@@ -160,7 +163,7 @@ function CapturedChip({
 }) {
   return (
     <span
-      className="inline-flex items-baseline rounded border border-blaze-orange-deep/30 bg-blaze-orange-pale/50 px-1.5 py-px font-mono text-[0.85em] text-blaze-orange-deep align-baseline"
+      className="inline-flex items-baseline border-[1.5px] border-blaze-orange bg-blaze-data-cool px-1 py-0.5 font-mono text-[0.85em] text-blaze-charcoal align-baseline"
       title={`Captured · ${capturedBy}`}
     >
       {children}
@@ -169,55 +172,50 @@ function CapturedChip({
 }
 
 // ============================================================
-// Band wrapper — the dominant orange-headed-panel pattern from
-// BLAZE_STYLE_GUIDE §4. Each band is a 1px-bordered container with a slim
-// blaze-orange header strip carrying the band label in white, and a
-// white/92 backdrop-blur body.
+// SectionLabel — the section-anchor primitive from §4.5. Orange rectangle
+// mark followed by uppercase tracked label text in charcoal. Optional
+// descriptive meta in grey-body to the right.
 //
-// §14 anti-patterns honored:
-//   - No drop shadows on default state (the dialog modal is exempt; modals
-//     are an active state, not default).
-//   - Orange used as accent only — never flood. The strip is 40-44px tall
-//     on a multi-hundred-pixel-tall band.
-//   - Hairline (1px) borders only.
-//
-// `tone` lets specific bands (e.g., the pinned suggested-step) carry a
-// slightly differentiated treatment without breaking the pattern.
+// `size` switches between default (8×16) and compact (6×12) for sidebar
+// mini-bands and modal sub-sections. `as` lets the surrounding element
+// match the band's heading semantics (h2 by default; h3 inside nested
+// sub-sections).
 // ============================================================
 
-function Band({
-  id,
+function SectionLabel({
   label,
-  labelMeta,
-  tone = "default",
-  children,
+  meta,
+  size = "default",
 }: {
-  id?: string;
   label: string;
-  labelMeta?: ReactNode;
-  tone?: "default" | "highlight";
-  children: ReactNode;
+  meta?: ReactNode;
+  size?: "default" | "compact";
 }) {
-  const headerCls =
-    tone === "highlight"
-      ? "bg-blaze-orange-deep" // pinned suggested-step gets the deeper accent
-      : "bg-blaze-orange";
+  const markCls =
+    size === "compact" ? "h-3 w-1.5 mr-2" : "h-4 w-2 mr-3";
   return (
-    <section
-      id={id}
-      className="overflow-hidden rounded-lg border border-blaze-frost-edge"
-    >
-      <div
-        className={`${headerCls} flex items-baseline justify-between gap-3 px-5 py-2.5 text-white`}
-      >
-        <span className="text-sm font-medium uppercase tracking-wide">{label}</span>
-        {labelMeta && (
-          <span className="text-xs font-normal text-white/85">{labelMeta}</span>
-        )}
-      </div>
-      <div className="bg-white/92 p-5 backdrop-blur">{children}</div>
-    </section>
+    <div className="flex items-baseline">
+      <span aria-hidden className={`inline-block bg-blaze-orange ${markCls}`} />
+      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-charcoal">
+        {label}
+      </span>
+      {meta && (
+        <span className="ml-3 text-xs font-medium text-blaze-grey-body">
+          {meta}
+        </span>
+      )}
+    </div>
   );
+}
+
+// ============================================================
+// Rule — 1px horizontal divider in blaze-rule (cool grey #E8EAEC), centered
+// in ~96px of vertical space (my-12 = 48px above + 48px below). The cool
+// grey should disappear into the page until the eye is looking for it.
+// ============================================================
+
+function Rule() {
+  return <hr className="my-12 border-0 border-t border-blaze-rule" aria-hidden />;
 }
 
 // ============================================================
@@ -503,50 +501,52 @@ export default async function JennyMemberProfilePage() {
   // ----------------------------------------------------------
 
   return (
-    <div className="min-h-screen w-full bg-blaze-grey-darker">
+    <div className="min-h-screen w-full bg-blaze-cream">
       {/* §3 signature gradient band */}
       <div className="h-8 w-full" style={{ backgroundImage: "var(--blaze-gradient)" }} aria-hidden />
 
-      {/* App header — wordmark + banker identity. Frosted-glass panel sitting
-          on the dark ground for visual continuity with the body bands below. */}
-      <header className="border-b border-blaze-frost-edge/40 bg-white/92 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-4">
+      {/* App header — wordmark + banker identity. Borderless on cream. */}
+      <header>
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-8 py-5">
           <Link href="/" className="text-2xl font-semibold tracking-tight">
             <span className="text-blaze-orange-deep">Member</span>{" "}
-            <span className="text-blaze-grey-darker">Signals</span>
+            <span className="text-blaze-charcoal">Signals</span>
           </Link>
-          <div className="rounded border border-blaze-grey-soft/40 bg-white px-3 py-1.5 text-sm text-blaze-grey-darker">
+          <div className="text-sm text-blaze-charcoal">
             Logged in as{" "}
             <span className="font-medium">{member.primary_banker.display_name}</span>
-            <span className="ml-2 text-xs text-blaze-grey-soft">Primary banker</span>
+            <span className="ml-2 text-xs text-blaze-grey-body">Primary banker</span>
           </div>
         </div>
       </header>
 
       {/* Main content + sidebar */}
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-8 py-8 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <main className="space-y-6">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-12 px-8 py-8 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <main>
           {/* Pinned: Suggested next step (above the fold). Live result from
-              fireRules(); the panel is hidden if no rule fires (defensive —
-              not expected for the seeded fixture). The header strip uses the
-              orange-deep tone so this band reads as the highest-priority
-              call-to-action on the page without breaking the panel pattern. */}
+              fireRules(); hidden if no rule fires. THE deliberate exception
+              to the borderless pattern — orange-pale card so the primary CTA
+              reads as primary. Per BLAZE_STYLE_GUIDE §4. */}
           {suggestedTrack && (
-            <Band
+            <section
               id="band-suggested"
-              tone="highlight"
-              label="Suggested next step"
-              labelMeta={`${suggestedTrack.confidence_band} confidence`}
+              className="rounded-md bg-blaze-orange-pale/85 p-5"
             >
-              <h2 className="text-xl font-semibold text-blaze-grey-darker">
+              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-orange-deep">
+                Suggested next step ·{" "}
+                <span className="font-medium">
+                  {suggestedTrack.confidence_band} confidence
+                </span>
+              </p>
+              <h2 className="mt-2 text-xl font-semibold text-blaze-orange-deep">
                 {suggestedTrack.name}
               </h2>
-              <p className="mt-2 text-sm leading-relaxed text-blaze-grey-body">
+              <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
                 {suggestedTrack.description}
               </p>
-              <p className="mt-2 text-xs text-blaze-grey-soft">
+              <p className="mt-2 text-xs text-blaze-grey-body">
                 Surfaced by rule:{" "}
-                <span className="font-medium text-blaze-grey-body">
+                <span className="font-medium text-blaze-charcoal">
                   {suggestedTrack.rule_name}
                 </span>
               </p>
@@ -554,37 +554,42 @@ export default async function JennyMemberProfilePage() {
                 <button className="rounded bg-blaze-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blaze-orange-bright active:bg-blaze-orange-burnt">
                   Run Growth track
                 </button>
-                <button className="rounded border border-blaze-grey-soft bg-white px-4 py-2 text-sm font-medium text-blaze-grey-dark transition-colors hover:bg-blaze-cream">
+                <button className="rounded bg-transparent px-4 py-2 text-sm font-medium text-blaze-charcoal transition-colors hover:bg-blaze-orange-pale">
                   Dismiss
                 </button>
               </div>
-            </Band>
+            </section>
           )}
 
+          <Rule />
+
           {/* Band 1 — Identity strip */}
-          <Band id="band-identity" label="Member">
-            <h1 className="text-2xl font-semibold text-blaze-grey-darker">
+          <section id="band-identity">
+            <SectionLabel label="Member" />
+            <h1 className="mt-3 text-3xl font-semibold text-black">
               {member.doing_business_as ?? member.legal_name}
             </h1>
-            <p className="text-sm text-blaze-grey-body">Legal: {member.legal_name}</p>
-            <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm text-blaze-grey-body md:grid-cols-4">
+            <p className="mt-1 text-sm text-blaze-grey-body">
+              Legal: {member.legal_name}
+            </p>
+            <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 text-sm text-blaze-grey-body md:grid-cols-4">
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Member Type</dt>
-                <dd className="font-medium text-blaze-grey-darker">{member.member_type.name}</dd>
+                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Member Type</dt>
+                <dd className="font-medium text-blaze-charcoal">{member.member_type.name}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Industry</dt>
-                <dd className="font-medium text-blaze-grey-darker">{member.industry_family.name}</dd>
+                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Industry</dt>
+                <dd className="font-medium text-blaze-charcoal">{member.industry_family.name}</dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Primary banker</dt>
-                <dd className="font-medium text-blaze-grey-darker">
+                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Primary banker</dt>
+                <dd className="font-medium text-blaze-charcoal">
                   {member.primary_banker.display_name}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Member since</dt>
-                <dd className="font-medium text-blaze-grey-darker">
+                <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Member since</dt>
+                <dd className="font-medium text-blaze-charcoal">
                   {fmtDate(member.tenure_started_at)}
                 </dd>
               </div>
@@ -602,64 +607,72 @@ export default async function JennyMemberProfilePage() {
                   <>
                     {f.owner_name && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Owner</dt>
-                        <dd className="font-medium text-blaze-grey-darker">{f.owner_name}</dd>
+                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Owner</dt>
+                        <dd className="font-medium text-blaze-charcoal">{f.owner_name}</dd>
                       </div>
                     )}
                     {f.location && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Location</dt>
-                        <dd className="font-medium text-blaze-grey-darker">{f.location}</dd>
+                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Location</dt>
+                        <dd className="font-medium text-blaze-charcoal">{f.location}</dd>
                       </div>
                     )}
                     {f.employees !== undefined && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Employees</dt>
-                        <dd className="font-medium text-blaze-grey-darker">{f.employees}</dd>
+                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Employees</dt>
+                        <dd className="font-medium text-blaze-charcoal">{f.employees}</dd>
                       </div>
                     )}
                     {f.revenue_ttm_band && (
                       <div>
-                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-soft">Revenue (TTM)</dt>
-                        <dd className="font-medium text-blaze-grey-darker">{f.revenue_ttm_band}</dd>
+                        <dt className="text-xs uppercase tracking-wide text-blaze-grey-body">Revenue (TTM)</dt>
+                        <dd className="font-medium text-blaze-charcoal">{f.revenue_ttm_band}</dd>
                       </div>
                     )}
                   </>
                 );
               })()}
             </dl>
-          </Band>
+          </section>
+
+          <Rule />
 
           {/* Band 2 — Active state summary, with clickable tokens. */}
-          <Band id="band-summary" label="Active state" labelMeta="where things stand">
-            <p className="text-sm leading-relaxed text-blaze-grey-darker">{summaryNodes}</p>
-            <p className="mt-3 text-xs text-blaze-grey-soft">
+          <section id="band-summary">
+            <SectionLabel label="Active state" meta="where things stand" />
+            <h2 className="mt-3 text-lg font-semibold text-black">
+              Where things stand
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-blaze-charcoal">{summaryNodes}</p>
+            <p className="mt-3 text-xs text-blaze-grey-body">
               Generated from the Member summary template (
-              <code className="rounded bg-blaze-cream px-1 py-px text-[0.85em]">
+              <code className="rounded bg-white/60 px-1 py-px text-[0.85em]">
                 lib/summaries.ts · v1
               </code>
               ). Tokens above link to the relevant band.
             </p>
-          </Band>
+          </section>
+
+          <Rule />
 
           {/* Band 3 — Active signals, grouped by all four types */}
-          <Band
-            id="band-signals"
-            label="Active signals"
-            labelMeta={`what we know about ${
-              member.doing_business_as ?? member.legal_name
-            } right now`}
-          >
-            <div className="space-y-5">
+          <section id="band-signals">
+            <SectionLabel
+              label="Active signals"
+              meta={`what we know about ${
+                member.doing_business_as ?? member.legal_name
+              } right now`}
+            />
+            <div className="mt-5 space-y-5">
               {(["goal", "blocker", "trigger", "indecision"] as const).map((type) => {
                 const items = signalsByType[type];
                 return (
                   <div key={type}>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-body">
                       {SIGNAL_TYPE_LABELS[type]} ({items.length})
                     </h3>
                     {items.length === 0 ? (
-                      <p className="mt-1 text-sm italic text-blaze-grey-soft">
+                      <p className="mt-1 text-sm italic text-blaze-grey-body">
                         No active{" "}
                         {type === "indecision" ? "indecisions" : `${type}s`} on record.
                       </p>
@@ -678,7 +691,7 @@ export default async function JennyMemberProfilePage() {
                             <li
                               key={s.id}
                               id={`signal-${s.id}`}
-                              className="rounded border border-blaze-dust bg-blaze-cream/60 p-3 scroll-mt-24"
+                              className="py-1 scroll-mt-24"
                             >
                               <div className="flex items-start gap-2">
                                 <span
@@ -688,10 +701,10 @@ export default async function JennyMemberProfilePage() {
                                   aria-label={`severity: ${s.severity}`}
                                 />
                                 <div className="min-w-0 flex-1">
-                                  <p className="text-sm font-medium text-blaze-grey-darker">
+                                  <p className="text-sm font-medium text-blaze-charcoal">
                                     {s.topic.display_name}
                                   </p>
-                                  <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs text-blaze-grey-soft">
+                                  <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-xs text-blaze-grey-body">
                                     <CapturedChip capturedBy={`Signal.severity · ${captureRef}`}>
                                       {s.severity}
                                     </CapturedChip>
@@ -717,16 +730,16 @@ export default async function JennyMemberProfilePage() {
                                       {s.confidence.replace(/_/g, " ")}
                                     </CapturedChip>
                                   </p>
-                                  <p className="mt-1 text-xs text-blaze-grey-soft">
+                                  <p className="mt-1 text-xs text-blaze-grey-body">
                                     {RECENCY_LABEL[s.recency]}
                                   </p>
                                   {s.their_words && (
-                                    <blockquote className="mt-2 border-l-2 border-blaze-orange/40 pl-3 text-sm italic text-blaze-grey-body">
+                                    <blockquote className="mt-2 border-l-[3px] border-blaze-orange py-1 pl-3 text-sm italic text-blaze-grey-body">
                                       &ldquo;{s.their_words}&rdquo;
                                     </blockquote>
                                   )}
                                   <details className="group mt-2 text-xs">
-                                    <summary className="cursor-pointer text-blaze-grey-soft transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
+                                    <summary className="cursor-pointer text-blaze-grey-body transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
                                       <span className="mr-1 inline-block transition-transform group-open:rotate-90">
                                         ›
                                       </span>
@@ -751,15 +764,17 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </div>
-          </Band>
+          </section>
+
+          <Rule />
 
           {/* Band 4 — Active proposals with responds_to_signals inline */}
-          <Band
-            id="band-proposals"
-            label="Active proposals"
-            labelMeta="recommendations on the table"
-          >
-            <ul className="space-y-3">
+          <section id="band-proposals">
+            <SectionLabel
+              label="Active proposals"
+              meta="recommendations on the table"
+            />
+            <ul className="mt-5 space-y-4">
               {member.recommendations.map((r) => {
                 const conv = r.growth_step_execution.conversation;
                 const captureRef = `Recommendation · Show step in ${conv.meeting_type.replace(
@@ -769,10 +784,10 @@ export default async function JennyMemberProfilePage() {
                 return (
                   <li
                     key={r.id}
-                    className="rounded border border-blaze-dust bg-blaze-cream/60 p-4"
+                    className="py-2"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium text-blaze-grey-darker">
+                      <p className="text-sm font-medium text-blaze-charcoal">
                         {r.product.name}{" "}
                         {r.size_proposed !== null ? (
                           <>
@@ -782,10 +797,10 @@ export default async function JennyMemberProfilePage() {
                             </CapturedChip>
                           </>
                         ) : (
-                          <span className="text-blaze-grey-soft">(unsized — see rationale)</span>
+                          <span className="text-blaze-grey-body">(unsized — see rationale)</span>
                         )}
                       </p>
-                      <span className="text-xs text-blaze-grey-soft">
+                      <span className="text-xs text-blaze-grey-body">
                         <CapturedChip capturedBy={`confidence_band · ${captureRef}`}>
                           {r.confidence_band} confidence
                         </CapturedChip>{" "}
@@ -813,12 +828,12 @@ export default async function JennyMemberProfilePage() {
                                 : "";
                             return (
                               <li key={s.id} className="leading-relaxed">
-                                <span className="text-blaze-grey-soft">
+                                <span className="font-medium text-blaze-orange-deep">
                                   → {SIGNAL_TYPE_VERBS[s.type]}:
                                 </span>{" "}
                                 <a
                                   href={`#signal-${s.id}`}
-                                  className="text-blaze-orange-deep underline-offset-2 hover:underline"
+                                  className="text-blaze-charcoal underline-offset-2 hover:underline"
                                 >
                                   {s.topic.display_name}
                                 </a>
@@ -848,12 +863,12 @@ export default async function JennyMemberProfilePage() {
                       .
                     </p>
 
-                    <p className="mt-2 text-sm leading-relaxed text-blaze-grey-darker">
+                    <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
                       {r.rationale_text}
                     </p>
 
                     <details className="group mt-3 text-xs">
-                      <summary className="cursor-pointer text-blaze-grey-soft transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
+                      <summary className="cursor-pointer text-blaze-grey-body transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
                         <span className="mr-1 inline-block transition-transform group-open:rotate-90">
                           ›
                         </span>
@@ -869,17 +884,19 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </ul>
-          </Band>
+          </section>
+
+          <Rule />
 
           {/* Band 5 — Open work */}
-          <Band
-            id="band-work"
-            label="Open work"
-            labelMeta={`ActionCards for ${
-              member.doing_business_as ?? member.legal_name
-            }`}
-          >
-            <ul className="space-y-3">
+          <section id="band-work">
+            <SectionLabel
+              label="Open work"
+              meta={`ActionCards for ${
+                member.doing_business_as ?? member.legal_name
+              }`}
+            />
+            <ul className="mt-5 space-y-4">
               {member.action_cards.map((c) => {
                 const days = daysBetween(c.due_at, NOW);
                 const overdue = days < 0;
@@ -894,14 +911,14 @@ export default async function JennyMemberProfilePage() {
                 return (
                   <li
                     key={c.id}
-                    className={`rounded border p-4 ${
+                    className={
                       overdue
-                        ? "border-blaze-danger/40 bg-blaze-danger/5"
-                        : "border-blaze-dust bg-blaze-cream/60"
-                    }`}
+                        ? "border-l-[3px] border-blaze-danger py-1 pl-3"
+                        : "py-2"
+                    }
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-3">
-                      <p className="text-sm font-medium text-blaze-grey-darker">
+                      <p className="text-sm font-medium text-blaze-charcoal">
                         <CapturedChip capturedBy={`ActionCard.type · ${captureRef}`}>
                           {c.type.replace(/_/g, " ")}
                         </CapturedChip>{" "}
@@ -909,7 +926,7 @@ export default async function JennyMemberProfilePage() {
                       </p>
                       <span
                         className={`text-xs ${
-                          overdue ? "font-medium text-blaze-danger" : "text-blaze-grey-soft"
+                          overdue ? "font-medium text-blaze-danger" : "text-blaze-grey-body"
                         }`}
                       >
                         Due{" "}
@@ -919,21 +936,21 @@ export default async function JennyMemberProfilePage() {
                         {overdue ? ` · ${Math.abs(days)}d overdue` : ""}
                       </span>
                     </div>
-                    <p className="mt-2 text-sm leading-relaxed text-blaze-grey-darker">
+                    <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
                       {c.rationale}
                     </p>
                     {c.suggested_opening && (
-                      <div className="mt-2 rounded border border-blaze-orange-deep/20 bg-white/70 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-blaze-orange-deep">
-                          Suggested opening (member-facing)
+                      <div className="mt-3 border-l-[3px] border-blaze-orange py-1 pl-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blaze-orange-deep">
+                          Suggested opening · member-facing
                         </p>
-                        <p className="mt-1 text-sm italic text-blaze-grey-darker">
+                        <p className="mt-1 text-sm italic text-blaze-grey-body">
                           &ldquo;{c.suggested_opening}&rdquo;
                         </p>
                       </div>
                     )}
                     <details className="group mt-3 text-xs">
-                      <summary className="cursor-pointer text-blaze-grey-soft transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
+                      <summary className="cursor-pointer text-blaze-grey-body transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
                         <span className="mr-1 inline-block transition-transform group-open:rotate-90">
                           ›
                         </span>
@@ -951,19 +968,21 @@ export default async function JennyMemberProfilePage() {
                 );
               })}
             </ul>
-          </Band>
+          </section>
+
+          <Rule />
 
           {/* Band 6 — History */}
-          <Band
-            id="band-history"
-            label="History"
-            labelMeta="conversations and Artifact share record"
-          >
-            <ol className="space-y-3 border-l-2 border-blaze-dust pl-4">
+          <section id="band-history">
+            <SectionLabel
+              label="History"
+              meta="conversations and Artifact share record"
+            />
+            <ol className="mt-5 space-y-3 border-l border-blaze-rule pl-4">
               {member.conversations.map((c) => (
                 <li key={c.id} className="relative">
                   <span className="absolute -left-[1.42rem] top-1.5 inline-block h-2 w-2 rounded-full bg-blaze-orange-deep" />
-                  <p className="text-xs uppercase tracking-wide text-blaze-grey-soft">
+                  <p className="text-xs uppercase tracking-wide text-blaze-grey-body">
                     {fmtDate(c.created_at)} · {c.meeting_type.replace(/_/g, " ")} ·{" "}
                     {c.channel.replace(/_/g, " ")} · {c.sentiment}
                     {c.duration_min ? ` · ${c.duration_min}m` : ""}
@@ -974,11 +993,11 @@ export default async function JennyMemberProfilePage() {
                     </p>
                   )}
                   {c.banker_note && (
-                    <p className="mt-1 text-sm text-blaze-grey-darker">{c.banker_note}</p>
+                    <p className="mt-1 text-sm text-blaze-charcoal">{c.banker_note}</p>
                   )}
                   {c.growth_step_executions.length > 0 && (
                     <details className="group mt-1 text-xs">
-                      <summary className="cursor-pointer text-blaze-grey-soft transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
+                      <summary className="cursor-pointer text-blaze-grey-body transition-colors hover:text-blaze-orange-deep group-open:text-blaze-orange-deep">
                         <span className="mr-1 inline-block transition-transform group-open:rotate-90">
                           ›
                         </span>
@@ -996,12 +1015,12 @@ export default async function JennyMemberProfilePage() {
               ))}
             </ol>
 
-            <div className="mt-6 border-t border-blaze-dust pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
+            <div className="mt-6 border-t border-blaze-rule pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-body">
                 Artifact share record
               </p>
               {artifactShareRows.length === 0 ? (
-                <p className="mt-2 text-sm italic text-blaze-grey-soft">
+                <p className="mt-2 text-sm italic text-blaze-grey-body">
                   No Artifacts shown to this member yet.
                 </p>
               ) : (
@@ -1019,7 +1038,7 @@ export default async function JennyMemberProfilePage() {
                       conversation_date_iso: row.conversation_date_iso,
                     };
                     return (
-                      <li key={i} className="text-sm text-blaze-grey-darker">
+                      <li key={i} className="text-sm text-blaze-charcoal">
                         <ArtifactPreviewDialog artifact={dialogData} /> · shown{" "}
                         {fmtDate(row.conversation_date_iso)} · member reaction:{" "}
                         <CapturedChip
@@ -1036,39 +1055,46 @@ export default async function JennyMemberProfilePage() {
                 </ul>
               )}
             </div>
-          </Band>
+          </section>
         </main>
 
-        {/* Sidebar — banker-only context. The mini-bands carry the same
-            orange-headed pattern as the main bands so the visual identity is
-            consistent across the page. */}
-        <aside className="space-y-4">
-          <Band label="Private notes">
-            {(() => {
-              const notes = (member.private_notes ?? []) as { content: string; created_at?: string }[];
-              return notes.length === 0 ? (
-                <p className="text-sm italic text-blaze-grey-soft">
-                  No private notes captured yet.
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {notes.map((n, i) => (
-                    <li key={i} className="text-sm text-blaze-grey-darker">
-                      {n.content}
-                    </li>
-                  ))}
-                </ul>
-              );
-            })()}
-          </Band>
+        {/* Sidebar — banker-only context. Borderless mini-bands matching the
+            main column's typography-led pattern; section marks at compact
+            size so the sidebar reads quieter than the primary column. */}
+        <aside className="space-y-10">
+          <section>
+            <SectionLabel label="Private notes" size="compact" />
+            <div className="mt-3">
+              {(() => {
+                const notes = (member.private_notes ?? []) as {
+                  content: string;
+                  created_at?: string;
+                }[];
+                return notes.length === 0 ? (
+                  <p className="text-sm italic text-blaze-grey-body">
+                    No private notes captured yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {notes.map((n, i) => (
+                      <li key={i} className="text-sm text-blaze-charcoal">
+                        {n.content}
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+          </section>
 
-          <Band label="Forward signals">
-            <p className="text-sm italic text-blaze-grey-soft">
+          <section>
+            <SectionLabel label="Forward signals" size="compact" />
+            <p className="mt-3 text-sm italic text-blaze-grey-body">
               No forward intent captured yet. Check back after the next Connect step.
             </p>
-          </Band>
+          </section>
 
-          <p className="px-1 text-xs text-blaze-cream/70">
+          <p className="px-1 text-xs text-blaze-grey-body">
             Sidebar visibility is banker-only. Private notes never aggregate to dashboards.
           </p>
         </aside>

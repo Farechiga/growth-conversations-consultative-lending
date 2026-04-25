@@ -1,17 +1,16 @@
 "use client";
 
 /*
- * Artifact preview modal scaffolding (Day-2 step b.4).
+ * Artifact preview modal — borderless typography-led treatment per
+ * BLAZE_STYLE_GUIDE.md §4.5. Dialog itself keeps a subtle elevation (the
+ * §14 "no drop shadows on default state" rule applies to in-flow page
+ * panels, not modals — modals are an active state). Sub-sections inside the
+ * modal use the same orange-rectangle section labels and chip pattern as
+ * the main page.
  *
- * Wraps the native HTML <dialog> element, which gives us free-of-charge focus
- * trapping, ESC-to-close, and backdrop styling via ::backdrop. The Recharts
- * chart rendering itself is deferred to Day 3 — for now the modal body shows
- * the artifact metadata, the parameters used, and a "Chart rendering — Day 3"
- * placeholder.
- *
- * Per Semantic Discipline Principle 4: prose in the modal comes from the
- * Artifact's description field, not from inlined strings. Banker-facing
- * register throughout (this surface is banker-only).
+ * Per Semantic Discipline Principle 4: prose comes from the Artifact's
+ * description field, not from inlined strings. Banker-facing register
+ * throughout (this surface is banker-only).
  */
 
 import { useRef } from "react";
@@ -28,6 +27,17 @@ export type ArtifactPreviewData = {
   shared_afterward: boolean;
   conversation_date_iso: string;
 };
+
+function ModalSectionLabel({ label }: { label: string }) {
+  return (
+    <div className="flex items-baseline">
+      <span aria-hidden className="inline-block h-3 w-1.5 mr-2 bg-blaze-orange" />
+      <span className="text-xs font-semibold uppercase tracking-[0.08em] text-blaze-charcoal">
+        {label}
+      </span>
+    </div>
+  );
+}
 
 export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewData }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -51,24 +61,24 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
 
       <dialog
         ref={dialogRef}
-        className="m-auto rounded-lg border border-blaze-frost-edge bg-white/95 p-0 shadow-2xl backdrop:bg-blaze-grey-darker/70 max-w-2xl w-full"
-        // Native <dialog> uses ::backdrop, but in case of older browsers we close on outside click too.
+        className="m-auto bg-blaze-cream p-0 shadow-2xl backdrop:bg-blaze-grey-darker/70 max-w-2xl w-full"
+        // Native <dialog> uses ::backdrop; close on outside-click as a fallback.
         onClick={(e) => {
           if (e.target === dialogRef.current) close();
         }}
       >
-        <div className="flex items-start justify-between border-b border-blaze-dust px-6 py-4">
+        <div className="flex items-start justify-between border-b border-blaze-rule px-6 py-4">
           <div>
-            <p className="text-xs uppercase tracking-wide text-blaze-grey-soft">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blaze-grey-body">
               Artifact preview · {artifact.type}
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-blaze-grey-darker">{artifact.title}</h2>
+            <h2 className="mt-1 text-lg font-semibold text-black">{artifact.title}</h2>
           </div>
           <button
             type="button"
             onClick={close}
             aria-label="Close"
-            className="rounded p-1 text-blaze-grey-soft hover:bg-blaze-cream hover:text-blaze-grey-darker"
+            className="p-1 text-blaze-grey-body hover:text-blaze-charcoal"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden>
               <path
@@ -81,23 +91,19 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           </button>
         </div>
 
-        <div className="space-y-4 px-6 py-5 text-sm text-blaze-grey-darker">
+        <div className="space-y-6 px-6 py-5 text-sm text-blaze-charcoal">
           <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
-              Description
-            </p>
-            <p className="mt-1 leading-relaxed">{artifact.description}</p>
+            <ModalSectionLabel label="Description" />
+            <p className="mt-3 leading-relaxed">{artifact.description}</p>
           </section>
 
           <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
-              Parameters used (this rendering)
-            </p>
-            <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+            <ModalSectionLabel label="Parameters used (this rendering)" />
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1">
               {Object.entries(artifact.parameters_used).map(([key, val]) => (
                 <div key={key} className="contents">
-                  <dt className="text-xs text-blaze-grey-soft">{key}</dt>
-                  <dd className="text-xs font-mono text-blaze-grey-darker">
+                  <dt className="text-xs text-blaze-grey-body">{key}</dt>
+                  <dd className="text-xs font-mono text-blaze-charcoal">
                     {typeof val === "string" ? val : JSON.stringify(val)}
                   </dd>
                 </div>
@@ -106,12 +112,10 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           </section>
 
           <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
-              Share record
-            </p>
-            <p className="mt-1 text-xs text-blaze-grey-body">
+            <ModalSectionLabel label="Share record" />
+            <p className="mt-3 text-xs text-blaze-grey-body">
               Shown in the conversation on{" "}
-              <span className="font-medium text-blaze-grey-darker">
+              <span className="font-medium text-blaze-charcoal">
                 {new Date(artifact.conversation_date_iso).toLocaleDateString("en-US", {
                   year: "numeric",
                   month: "long",
@@ -119,7 +123,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
                 })}
               </span>
               . Member reaction:{" "}
-              <span className="font-medium text-blaze-grey-darker">{artifact.member_reaction}</span>
+              <span className="font-medium text-blaze-charcoal">{artifact.member_reaction}</span>
               .
               {artifact.shared_afterward
                 ? " Sent as takeaway after the meeting."
@@ -128,20 +132,18 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           </section>
 
           <section>
-            <p className="text-xs font-semibold uppercase tracking-wide text-blaze-grey-soft">
-              Chart
-            </p>
-            <div className="mt-2">
+            <ModalSectionLabel label="Chart" />
+            <div className="mt-3">
               {artifact.template === "seasonal_smoothing_chart_v1" ? (
                 <SeasonalSmoothingChart />
               ) : (
-                <div className="rounded border-2 border-dashed border-blaze-frost-edge bg-blaze-cream/40 p-6 text-center">
-                  <p className="text-xs uppercase tracking-wide text-blaze-grey-soft">
+                <div className="border border-dashed border-blaze-rule p-6 text-center">
+                  <p className="text-xs uppercase tracking-[0.08em] text-blaze-grey-body">
                     Chart rendering
                   </p>
                   <p className="mt-1 text-sm text-blaze-grey-body">
                     Renderer for template{" "}
-                    <code className="rounded bg-white px-1 py-px text-[0.85em]">
+                    <code className="font-mono text-blaze-charcoal">
                       {artifact.template}
                     </code>{" "}
                     plugs in alongside the seasonal smoothing chart on a future day.
@@ -152,11 +154,11 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           </section>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-blaze-dust px-6 py-3">
+        <div className="flex justify-end gap-3 border-t border-blaze-rule px-6 py-3">
           <button
             type="button"
             onClick={close}
-            className="rounded border border-blaze-grey-soft bg-transparent px-4 py-1.5 text-sm font-medium text-blaze-grey-dark transition-colors hover:bg-blaze-cream"
+            className="bg-transparent px-4 py-1.5 text-sm font-medium text-blaze-charcoal transition-colors hover:bg-blaze-orange-pale"
           >
             Close
           </button>

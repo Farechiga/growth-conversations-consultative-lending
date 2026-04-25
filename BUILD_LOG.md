@@ -422,4 +422,69 @@ If real banker testing produces feedback like "the dips don't feel concerning en
 
 ---
 
+## 2026-04-25 (Day 2 borderless restyle) · Typography-led pattern replaces orange-headed-panel as dominant
+
+**Session type:** Substantial visual refactor of `/members/jenny` from the orange-headed-panel pattern to a borderless typography-led design per Francisco's eight-point spec. Three pieces of orange semantic work are preserved (section marks, quote attribution, hyperlinks); everything else relies on typography, whitespace, and a small cool-grey palette for structural elements.
+
+**Style-guide changes:**
+
+- **`BLAZE_STYLE_GUIDE.md` §2.6** added — three new tokens (`--blaze-charcoal` `#1A1A1A`, `--blaze-data-cool` `#F9FBFD`, `--blaze-rule` `#E8EAEC`). All three are deliberate temperature shifts away from the warm palette, used precisely because they need to read as "structural" rather than "decorative."
+- **§2.7** added — orange section-mark dimensions (8×16px default, 6×12px compact).
+- **§4** reframed — the orange-headed-panel pattern is now "occasional anchor (sparse contexts only)" rather than dominant. The pinned Suggested-next-step card is the canonical example of when it still applies.
+- **§4.5** added — "Borderless typography-led pattern (dominant for dense surfaces)" — codifies the section structure (orange rectangle mark + uppercase tracked label + optional meta), body text hierarchy (true black titles, charcoal body, grey-body secondary), captured-value chip (cool-grey fill + 1.5px orange border + square edges + monospace + charcoal text), quote-attribution mark (3px orange line + italic grey-body), section dividers (1px cool-grey rule centered in ~96px gap), and the three pieces of orange semantic work.
+
+**Token plumbing:**
+
+- `app/globals.css` gains the three new color tokens with usage notes.
+
+**Page refactor (`app/members/jenny/page.tsx`):**
+
+- Page background switched from `blaze-grey-darker` (frosted-glass-on-dark) to `blaze-cream` (warm parchment ground).
+- Old `Band` wrapper removed; replaced with two new primitives:
+  - `SectionLabel` — orange rectangle (8×16 default / 6×12 compact) + uppercase tracked label in `blaze-charcoal` + optional grey-body meta.
+  - `Rule` — 1px `blaze-rule` divider centered in `my-12` (~96px total gap).
+- Each of the six bands (and the two sidebar mini-bands) now opens with a `SectionLabel`. Bands are separated by `Rule` dividers.
+- Section titles inside bands at 18px/600/black (where used — e.g., "Where things stand" under the Active state label). Member identity heading at 28px/600/black.
+- Body text: primary `blaze-charcoal`, secondary `blaze-grey-body`. The page-wide `text-blaze-grey-darker → text-blaze-charcoal` swap landed in one mass replace; `text-blaze-grey-soft → text-blaze-grey-body` in another.
+- **Captured-value chip** redesigned per spec: cool-grey fill (`bg-blaze-data-cool`), 1.5px `border-blaze-orange`, square edges (no `rounded`), monospace, charcoal text. 44 chips on the page.
+- **Verbatim member quotes** updated: 3px-wide `border-l border-blaze-orange` (replacing the prior 2px orange/40), italic `blaze-grey-body`. 10 quote-attribution lines visible.
+- **Verb-prefix labels** in Recommendation responds-to lines (`→ serves goal:`, `→ addresses blocker:`, `→ responds to indecision:`) now render in `blaze-orange-deep` font-medium — the third piece of orange semantic work, alongside section marks and hyperlinks.
+- **Inner card chrome removed** from Signal entries / Recommendation entries / ActionCard rows. The cream-on-cream backgrounds had become invisible against the new cream page ground; whitespace + typography do the structural work now. ActionCards retain a subtle danger-red left border when overdue (3px `border-blaze-danger` matching the orange quote line treatment).
+- **Pinned Suggested-next-step panel** retained as the deliberate exception — orange-pale card on `blaze-orange-pale/85`, orange-deep heading, full burnished-orange "Run Growth track" button. It stays distinct so the primary CTA reads as primary.
+- History band's left timeline rule softened from `border-blaze-dust` to `border-blaze-rule` (the cool-grey).
+
+**Modal refactor (`app/members/jenny/artifact-preview-dialog.tsx`):**
+
+- Borderless treatment inside the modal: each sub-section (Description, Parameters used, Share record, Chart) opens with the orange compact (6×12) rectangle mark + uppercase tracked label.
+- Modal body background switched to `bg-blaze-cream` so the modal feels of-a-piece with the page ground.
+- Header and footer keep a 1px `blaze-rule` divider separating them from the content.
+- Close button is now borderless (transparent with hover tint) matching the page's button treatment.
+- The seasonal smoothing chart inside the modal is unchanged — its content is the chart itself, not a card around it.
+
+**Verified:**
+
+- `GET /members/jenny` returns 200 (~96 KB).
+- 8 orange rectangle marks render (6 default-size in main column + 2 compact in sidebar). Pinned suggested-step has no rectangle mark (it's the orange-pale card exception).
+- 44 cool-grey-fill chips render (one per captured value across the page).
+- 10 orange quote-attribution lines render (verbatim Signal quotes + ActionCard suggested-opening blocks).
+- 16 `blaze-rule` instances render (section dividers between bands + history timeline + modal header/footer dividers).
+- 122 `blaze-charcoal` text instances render (body text everywhere).
+- Live `fireRules()` result still populates the pinned panel ("Smooth seasonal cash flow with LOC for small caterer", high confidence).
+- All step-(b) treatments retained: trace `<details>`, captured-value chip tooltips, responds-to anchor links, clickable summary tokens, modal scaffolding.
+
+**Watch list for Francisco's eyeball:**
+
+- **Section marks at 8×16:** should read as a wordmark/bullet, not a status flag. If too prominent, drop to the compact 6×12 globally (currently only the sidebar uses compact).
+- **Chip outlines at 1.5px:** definite without being heavy. If they read as "boxed-in label", drop to 1px in the chip CSS.
+- **`blaze-rule` dividers at `my-12`:** should disappear into the page until the eye is looking for them. If too prominent, they're either the wrong color (try `blaze-rule` lightened) or too prominent through spacing (the rule itself is 1px, so this is mostly a spacing question).
+- **Charcoal body text at `#1A1A1A` on cream:** should feel readable without harshness. If harsh, soften to `#262626` (blaze-grey-darker) globally — change the `text-blaze-charcoal` instances back. Don't go softer than `#262626`.
+
+**What's deferred per the gate:**
+
+- `/members/[id]` dynamic generalization for Northland and Cygnus surfaces.
+- The other two Artifact templates (`fleet_roi_composed_chart_v1`, `capital_event_map_v1`).
+- Insight Engine surfaces (Day 3+).
+
+---
+
 *Next session entry will be appended below.*
