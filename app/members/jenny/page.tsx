@@ -540,12 +540,13 @@ export default async function JennyMemberProfilePage() {
               id="band-suggested"
               className="relative rounded-md bg-white p-5"
             >
-              {/* Confidence indicator — solid charcoal rectangle bound to the
-                  top-right corner, white text. The corner-tag treatment makes
-                  the confidence read as authoritative metadata rather than
-                  inline prose. rounded-tr-md matches the card's corner so the
-                  tag sits flush against the rounded edge. */}
-              <span className="absolute right-0 top-0 rounded-tr-md bg-blaze-charcoal px-3 py-1.5 text-xs font-semibold tracking-wide text-white">
+              {/* Confidence indicator — solid charcoal rectangle pinned to
+                  the right edge, vertically centered with the heading. The
+                  card's p-5 padding-top is 20px, the heading is 24px tall
+                  (text-2xl + leading-none), so heading center = y=32. The tag
+                  is ~28px tall (text-xs at 16px line-height + py-1.5 padding),
+                  so top-[18px] places the tag center at y=32 — aligned. */}
+              <span className="absolute right-0 top-[18px] bg-blaze-charcoal px-3 py-1.5 text-xs font-semibold tracking-wide text-white">
                 {suggestedTrack.confidence_band} confidence
               </span>
 
@@ -557,7 +558,7 @@ export default async function JennyMemberProfilePage() {
                 Suggested next step
               </h2>
 
-              <p className="mt-4 text-xl font-semibold text-blaze-charcoal leading-tight">
+              <p className="mt-4 text-xl font-semibold text-blaze-orange-deep leading-tight">
                 {suggestedTrack.name}
               </p>
               <p className="mt-2 text-sm leading-relaxed text-blaze-charcoal">
