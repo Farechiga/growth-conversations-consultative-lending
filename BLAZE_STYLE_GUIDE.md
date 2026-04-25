@@ -92,9 +92,13 @@ All four are deliberate temperature shifts away from the warm palette: `--blaze-
 
 The orange rectangle mark used at the start of every section label in the borderless pattern (§4.5):
 
-- **Default size:** 12px wide × 16px tall, solid `--blaze-orange` (`#B45F26`), 12px right margin before label text. The 12-wide proportion (3:4 width-to-height) reads as a deliberate brand mark rather than a passive bullet.
-- **Compact contexts** (sidebar mini-bands, dense lists, modal sub-sections): 9px wide × 12px tall, same color, 8px right margin. Maintains the 3:4 proportion.
-- Section-label text sits at 19px / 600 / `letter-spacing 0.08em` / uppercase next to the mark — this is roughly 80% of the wordmark size at the page header, giving the section label real presence without competing with the Member identity heading at the top of Band 1.
+- **Default size:** 27px wide × 24px tall, solid `--blaze-orange` (`#B45F26`), 12px right margin before label text. The 24px height matches the section-label text height (24px); the 27px width is the proportionally-scaled 3:4 baseline (18px) widened by 50% to give the mark deliberate brand-element weight.
+- **Compact contexts** (sidebar mini-bands, dense lists, modal sub-sections): 18px wide × 16px tall, same color, 8px right margin. Proportionally smaller — matches what the prior "default" was, kept available so dense surfaces have a quieter section-label rhythm.
+- **Section-label text:**
+  - **Default:** 24px / 600 / `letter-spacing 0.08em` / uppercase / `leading-none`. Roughly 80% of the 30px Member identity heading (Band 1 H1) — the section label has real presence without competing with the Member name at the top of the page.
+  - **Compact:** 19px / 600 / `letter-spacing 0.08em` / uppercase / `leading-none`. ~80% of the page-header wordmark (24px). Used in sidebar and modal sub-sections.
+
+Both sizes maintain `items-baseline` between the mark and the label so the mark reads as a wordmark/bullet aligned with the text baseline rather than a centered status badge.
 
 ---
 
@@ -177,8 +181,8 @@ Every section opens with a **section label** consisting of an orange rectangle m
 </div>
 ```
 
-- **Mark dimensions:** 12×16px solid `--blaze-orange`, 12px right margin (default); 9×12px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin. Maintains a 3:4 width-to-height ratio so the mark reads as a deliberate brand element.
-- **Label text:** 19px / 600 / `letter-spacing 0.08em` / uppercase, color `--blaze-charcoal`. ~80% of the page-header wordmark size — the section label has real presence without competing with the Member identity heading.
+- **Mark dimensions:** 27×24px solid `--blaze-orange`, 12px right margin (default); 18×16px in compact contexts (sidebar mini-bands, modal sub-sections), 8px right margin. The default mark width is the proportionally-scaled 3:4 baseline (18px) widened by 50% to give the mark deliberate brand-element weight; compact preserves the smaller original sizing for quieter contexts.
+- **Label text:** 24px / 600 / `letter-spacing 0.08em` / uppercase / `leading-none`, color `--blaze-charcoal` (default); 19px / 600 in compact contexts. The default is ~80% of the 30px Member identity heading — the section label has real presence without competing with the Member name at the top of the page.
 - **Optional meta:** 13-14px / 500, color `--blaze-grey-body`. Used for descriptive context ("where things stand", "what we know about Jenny right now").
 
 ### Body text hierarchy

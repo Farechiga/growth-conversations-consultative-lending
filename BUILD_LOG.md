@@ -521,4 +521,21 @@ The chip pattern is now effectively border-only (chip fill `#F9FBFD` against pag
 
 ---
 
+## 2026-04-25 (Day 2 visual tweaks, follow-on) · Bigger section headers, taller-and-wider orange marks
+
+**Session type:** Two more sizing refinements after Francisco's eyeball.
+
+**Changes:**
+
+- **Section label text** scaled from `text-[19px]` → **`text-2xl` (24px)** — about 80% of the 30px Member identity heading. The labels now have real presence and read at a glance from across the page.
+- **Default orange mark** widened and made taller: 12×16 → **27×24**. The math: 24px height matches the new 24px label text; the 27px width is the proportionally-scaled 3:4 baseline (18px) widened by 50%, giving the mark deliberate brand-element weight rather than a passive bullet. Implemented as `h-6 w-[27px]`.
+- **Compact mark** scaled to **18×16** — what was previously the default. Compact text scaled to **`text-[19px]`** — what was previously the default. Sidebar mini-bands and modal sub-sections inherit the compact size so the main column reads as the visually loudest, and dense surfaces feel quieter.
+- **Modal section labels** (`ModalSectionLabel`) updated from `text-base` (16px) + `h-3 w-[9px]` mark to **`text-[19px]` + `h-4 w-[18px]`** — matching the new compact treatment.
+
+**Style-guide updates** (`BLAZE_STYLE_GUIDE.md` §2.7 and §4.5): both subsections updated to document the new default 27×24 / compact 18×16 mark sizes and the 24px / 19px label-text sizes. The section-label ratio rationale is documented inline: 24px label text ≈ 80% of the 30px Member identity heading; 19px compact label ≈ 80% of the 24px page-header wordmark.
+
+**Verified:** `GET /members/jenny` returns 200. 12 `h-6 w-[27px]` instances (6 default-size marks doubled by RSC streaming) + 8 `h-4 w-[18px]` instances (compact marks across sidebar + modal). 12 `text-2xl` uppercase-tracked label instances rendering. The Member identity heading (Band 1 H1) at `text-3xl` (30px) remains the visually largest text on the page; the 24px section labels sit one tier below, with body text another tier below at 14-16px — three clean typographic levels.
+
+---
+
 *Next session entry will be appended below.*

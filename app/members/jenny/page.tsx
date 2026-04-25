@@ -191,17 +191,22 @@ function SectionLabel({
   meta?: ReactNode;
   size?: "default" | "compact";
 }) {
-  // Dimensions per BLAZE_STYLE_GUIDE §2.7: 12×16 default (3:4 proportion);
-  // 9×12 compact. Both 50% wider than the original 8×16/6×12 — the wider
-  // proportion reads as a deliberate brand mark rather than a passive bullet.
+  // Dimensions per BLAZE_STYLE_GUIDE §2.7:
+  //   default — 27×24 mark (h-6 = 24px height matches the 24px label text;
+  //             width = 24 × 3/4 = 18 proportional to the old 12:16 ratio,
+  //             then +50% wider = 27)
+  //   compact — 18×16 mark (proportionally smaller for sidebar / modal
+  //             contexts; matches what the old "default" was)
   const markCls =
-    size === "compact" ? "h-3 w-[9px] mr-2" : "h-4 w-3 mr-3";
+    size === "compact" ? "h-4 w-[18px] mr-2" : "h-6 w-[27px] mr-3";
+  const labelCls =
+    size === "compact"
+      ? "text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none"
+      : "text-2xl font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none";
   return (
     <div className="flex items-baseline">
       <span aria-hidden className={`inline-block bg-blaze-orange ${markCls}`} />
-      <span className="text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
-        {label}
-      </span>
+      <span className={labelCls}>{label}</span>
       {meta && (
         <span className="ml-3 text-sm font-medium text-blaze-grey-body">
           {meta}

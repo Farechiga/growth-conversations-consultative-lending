@@ -29,10 +29,13 @@ export type ArtifactPreviewData = {
 };
 
 function ModalSectionLabel({ label }: { label: string }) {
+  // Modal sub-sections use the compact-size mark (18×16) and label text
+  // (19px) — proportionally smaller than the main page's section labels
+  // so the modal feels of-a-piece without competing with the main column.
   return (
     <div className="flex items-baseline">
-      <span aria-hidden className="inline-block h-3 w-[9px] mr-2 bg-blaze-orange" />
-      <span className="text-base font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
+      <span aria-hidden className="inline-block h-4 w-[18px] mr-2 bg-blaze-orange" />
+      <span className="text-[19px] font-semibold uppercase tracking-[0.08em] text-blaze-charcoal leading-none">
         {label}
       </span>
     </div>
