@@ -5,6 +5,8 @@
  * and not component-layer bugs.
  */
 
+import Link from "next/link";
+
 const ORANGE_SWATCHES = [
   { name: "orange", hex: "#B45F26", bg: "bg-blaze-orange" },
   { name: "orange-bright", hex: "#BC5D1D", bg: "bg-blaze-orange-bright" },
@@ -89,6 +91,17 @@ export default function ThemeCheckPage() {
           landed correctly. It is not part of the demo. Once the palette, typography,
           buttons, and component patterns all read as expected against the style guide,
           this page gets replaced with the real app shell.
+        </p>
+
+        <p className="mt-4 max-w-2xl text-sm text-blaze-grey-body">
+          Day-2 work in progress:{" "}
+          <Link
+            href="/members/jenny"
+            className="font-medium text-blaze-orange-deep underline-offset-2 hover:underline"
+          >
+            Jenny's Catering — Member profile (smoke test)
+          </Link>
+          .
         </p>
 
         {/* Section: palette */}
