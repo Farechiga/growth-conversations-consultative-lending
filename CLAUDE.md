@@ -218,6 +218,8 @@ The complete documentation set for this project:
 - `docs/design/02_Semantic_Discipline.docx`
 - `docs/design/03_Data_Framework.docx`
 - `docs/design/04_Module_and_Data_Flow.docx`
+- `docs/design/MEMBER_FIXTURE_BRIEF.md` (consult during fixture authoring)
+- `BLAZE_STYLE_GUIDE.md` (consult before any UI work)
 
 **Tier 3 — Living progress trackers**
 - `BUILD_LOG.md` (append-only chronological log)

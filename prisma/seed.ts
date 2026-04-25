@@ -1,18 +1,39 @@
 /*
- * Blaze Member Signals — fixture seed.
+ * Blaze Member Signals — fixture seed (full body).
  *
  * Authoring sequence per docs/design/MEMBER_FIXTURE_BRIEF.md §7.1:
- *   1. Reference data first   ← this file (step 1)
- *   2. Member identity records ← this file (step 2)
- *   3. Conversation history (low-fidelity) ← deferred
- *   4. Featured conversations + Growth step executions ← deferred
- *   5. Artifacts ← deferred
- *   6. Derived state verification ← deferred
+ *   1. Reference data
+ *   2. Member identity records
+ *   3. Prior conversation history (low-fidelity, with carry-forward Signals)
+ *   4. Featured conversations + Growth step executions + Signals + ActionCards + Recommendations
+ *   5. Artifacts (authored before step 4 since Show executions reference them)
+ *   6. Derived state on Member (last_touch_at, active_signal_count, open_action_card_count)
  *
- * Stops at step 2. Re-running this script is safe — it deletes existing rows in
- * foreign-key-safe order before re-inserting.
+ * Re-running this script is safe — it clears existing rows in FK-safe order
+ * before re-inserting.
  *
  * Demo "now" anchor: 2026-04-25 (per brief §1.1).
+ *
+ * AI-native ontology check (applies throughout):
+ *   - Every reference entity carries a populated description (Principle 1).
+ *   - Named relationships are catalogued at the top of schema.prisma (Principle 2).
+ *   - Enum values that surface to humans have descriptions in
+ *     app/lib/enum-descriptions.ts (Principle 3).
+ *   - Every interesting entity is summarizable via app/lib/summary-templates.ts
+ *     (Principle 4).
+ *
+ * Brief-vs-Framework reconciliation decisions encoded in this seed:
+ *   - Q-013 (resolved): primary_concern enum extended with bank_capability.
+ *     The Cygnus Recommendation uses this value with a description.
+ *   - Q-014 (resolved): Resolve-shape executions where resolution_type=indecision
+ *     produce both a Signal (type=indecision, topic=indecision.<authority|information>)
+ *     and an ActionCard. Implemented in seedJennyFeaturedConversation and
+ *     seedNorthlandFeaturedConversation.
+ *   - Show-shape executions are the producer of Recommendation in this fixture
+ *     (the Data Framework formally ascribes Recommendation to Propose-shape, but
+ *     none of the brief's three tracks include a Propose step; the parameterized
+ *     proposal is embedded in the Show step's parameters_used). Each Recommendation's
+ *     growth_step_execution_id points at the Show execution.
  */
 
 import "dotenv/config";
@@ -897,6 +918,1391 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
 }
 
 // ============================================================
+// Step 5 — Artifacts (brief §3.5, §4.5, §5.5)
+//
+// Authored before the featured conversations because Show-shape executions
+// reference them. Each carries a description (Principle 1), a parameter_schema
+// describing what member-specific values it accepts, and a compliance_status.
+// `template` is a stable identifier the front-end uses to pick the correct
+// React/Recharts renderer; the actual visual is rendered client-side from
+// parameters_used at view time.
+// ============================================================
+
+async function seedArtifacts(reviewedByBankerId: string) {
+  const seasonalSmoothing = await prisma.artifact.create({
+    data: {
+      title: "Seasonal cash flow smoothing chart",
+      description:
+        "Compares twelve months of business cash flow with and without a working capital line of credit, parameterized by the member's own revenue band and seasonal pattern. Designed to make the seasonal smoothing benefit visually obvious without claiming any specific outcome. The reframe: a properly-sized LOC turns lumpy revenue into smooth cash flow, at a cost typically far below the cost of declined opportunities or stress-driven decisions during slow months.",
+      type: "chart",
+      parameter_schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        required: ["revenue_band", "monthly_low", "monthly_high", "proposed_loc_size"],
+        properties: {
+          revenue_band: { type: "string", description: "Banded TTM revenue (e.g., '$500K-$1M')" },
+          monthly_low: { type: "number", description: "Slow-season monthly cash position floor in dollars." },
+          monthly_high: { type: "number", description: "Peak-season monthly cash position in dollars." },
+          proposed_loc_size: { type: "number", description: "Proposed Working Capital LOC commitment in dollars." },
+        },
+      },
+      template: "seasonal_smoothing_chart_v1",
+      compliance_status: "approved",
+      last_reviewed_at: iso("2025-08-15"),
+      reviewed_by_id: reviewedByBankerId,
+      shareable: true,
+    },
+  });
+
+  const fleetROI = await prisma.artifact.create({
+    data: {
+      title: "Fleet expansion ROI projection",
+      description:
+        "Compares 3 years of projected cash position under two paths: continuing to buy used vehicles with cash, versus financing two new vehicles to expand dispatch capacity. Shows captured-vs-declined revenue as a stacked overlay. The reframe is that revenue captured from previously-declined service calls outweighs the debt service cost of the financing — typically by year 2.",
+      type: "chart",
+      parameter_schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        required: [
+          "revenue_band",
+          "current_fleet_size",
+          "proposed_addition",
+          "service_call_avg_value",
+          "financing_term_months",
+          "financing_rate_pct",
+        ],
+        properties: {
+          revenue_band: { type: "string" },
+          current_fleet_size: { type: "integer", description: "Number of service vehicles currently in operation." },
+          proposed_addition: { type: "integer", description: "Number of vehicles in the proposed expansion." },
+          service_call_avg_value: { type: "number", description: "Average revenue per service call in dollars." },
+          financing_term_months: { type: "integer" },
+          financing_rate_pct: { type: "number" },
+        },
+      },
+      template: "fleet_roi_composed_chart_v1",
+      compliance_status: "approved",
+      last_reviewed_at: iso("2025-11-20"),
+      reviewed_by_id: reviewedByBankerId,
+      shareable: true,
+    },
+  });
+
+  const capitalEventMap = await prisma.artifact.create({
+    data: {
+      title: "Capital event partnership map",
+      description:
+        "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the reframe is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty Manufacturer · Established and adjacent established Member Types.",
+      type: "comparison",
+      parameter_schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        required: ["company_revenue_band", "expansion_size_estimate", "current_blaze_relationships", "cre_specialist_id"],
+        properties: {
+          company_revenue_band: { type: "string" },
+          expansion_size_estimate: { type: "string", description: "Banded estimate of the expansion size (e.g., '$4M-$7M')." },
+          current_blaze_relationships: {
+            type: "array",
+            items: { type: "string", enum: ["checking", "treasury", "loc", "card", "equipment", "cre"] },
+          },
+          cre_specialist_id: { type: "string", description: "Banker.id of the CRE specialist to surface in the map." },
+        },
+      },
+      template: "capital_event_map_v1",
+      compliance_status: "approved",
+      last_reviewed_at: iso("2026-02-12"),
+      reviewed_by_id: reviewedByBankerId,
+      shareable: true,
+    },
+  });
+
+  return { seasonalSmoothing, fleetROI, capitalEventMap };
+}
+
+// ============================================================
+// Step 4a — Growth steps (templates)
+//
+// Twelve Growth steps total (4 per featured track). Each carries a description
+// (Principle 1) and a capture_schema matching its step_shape per Data Framework
+// §4. The `content` is a short banker-facing prompt; the verbatim member words
+// are captured per execution, not per template.
+//
+// All authored by Priya Patel (the Growth lead). Status = canonical.
+// ============================================================
+
+type Artifacts = Awaited<ReturnType<typeof seedArtifacts>>;
+
+const ASK_CAPTURE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  required: ["signal_type", "topic_id", "severity", "recency", "confidence"],
+  properties: {
+    signal_type: { type: "string", enum: ["goal", "blocker", "trigger", "indecision"] },
+    topic_id: { type: "string" },
+    severity: { type: "string", enum: ["manageable", "painful", "threatening"] },
+    their_words: { type: "string" },
+    recency: { type: "string", enum: ["acute_recent", "ongoing", "chronic", "hypothetical_future"] },
+    confidence: { type: "string", enum: ["member_stated", "banker_inferred", "unclear"] },
+  },
+};
+
+const SIZE_CAPTURE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  required: ["parent_signal_id", "magnitude", "unit", "frequency", "quantification_confidence"],
+  properties: {
+    parent_signal_id: { type: "string" },
+    magnitude: { type: "number" },
+    unit: { type: "string", enum: ["dollars", "orders", "weeks", "hours", "percent", "fte", "calls_declined", "other"] },
+    frequency: { type: "string", enum: ["one_time", "monthly", "quarterly", "annual", "perpetual"] },
+    feeling: { type: "string", enum: ["resigned", "frustrated", "energized", "angry"] },
+    quantification_confidence: {
+      type: "string",
+      enum: ["member_stated", "banker_estimated_from_cues"],
+    },
+  },
+};
+
+const SHOW_CAPTURE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  required: ["artifact_id", "parameters_used", "member_reaction", "shared_afterward"],
+  properties: {
+    artifact_id: { type: "string" },
+    parameters_used: { type: "object" },
+    member_reaction: { type: "string", enum: ["engaged", "skeptical", "already_knew", "confused", "missed_it"] },
+    followup_questions_asked: { type: "array", items: { type: "string" } },
+    shared_afterward: { type: "boolean" },
+    their_words: { type: "string" },
+  },
+};
+
+const RESOLVE_CAPTURE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  required: ["resolution_type", "next_step_owner_id", "due_date"],
+  properties: {
+    resolution_type: { type: "string", enum: ["committed", "deferred", "declined", "indecision"] },
+    indecision_type: { type: ["string", "null"], enum: ["valuation", "information", "outcome_uncertainty", "authority", null] },
+    next_step_description: { type: "string" },
+    next_step_owner_id: { type: "string" },
+    due_date: { type: "string", format: "date" },
+    member_stated_reason: { type: "string" },
+  },
+};
+
+const CONNECT_CAPTURE_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  type: "object",
+  required: ["connect_type", "trigger_reason", "member_receptiveness"],
+  properties: {
+    connect_type: {
+      type: "string",
+      enum: ["specialist_handoff", "external_referral", "resource_share", "forward_intent", "stale_signal_cleanup"],
+    },
+    target_specialist_id: { type: "string" },
+    target_resource_id: { type: "string" },
+    forward_topic_ids: { type: "array", items: { type: "string" } },
+    trigger_reason: { type: "string" },
+    member_receptiveness: { type: "string", enum: ["eager", "neutral", "reluctant"] },
+  },
+};
+
+async function seedGrowthSteps(
+  memberTypes: MemberTypes,
+  topics: Topics,
+  artifacts: Artifacts,
+  bankers: Bankers,
+) {
+  // Jenny's track steps
+  const jennyAsk = await prisma.growthStep.create({
+    data: {
+      title: "Surface seasonal cash flow stress",
+      description:
+        "Open a routine relationship conversation by asking the member how cash flow has felt across the recent slow season. Designed to elicit a self-reported pattern rather than diagnosing the issue from system signals; produces a blocker Signal with recency and severity captured from the member's own framing.",
+      step_shape: "ask",
+      content:
+        "How has cash flow been feeling over the last few months — particularly through the slower stretches? Tell me where it's been hardest.",
+      capture_schema: ASK_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      trigger_signals: { connect: [{ id: topics.blockerSeasonal.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const jennySize = await prisma.growthStep.create({
+    data: {
+      title: "Quantify the seasonal impact",
+      description:
+        "Layer on top of a captured seasonal cash flow stress Signal to attach a magnitude. Asks the member to estimate the revenue gap or working capital pressure during the worst stretches — banker can convert qualitative cues into a banker-estimated magnitude when the member doesn't carry the number.",
+      step_shape: "size",
+      content:
+        "Roughly how big does the cash gap feel during your slowest months — in dollars, in weeks of payroll, however you think about it?",
+      capture_schema: SIZE_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const jennyShow = await prisma.growthStep.create({
+    data: {
+      title: "Render seasonal smoothing chart",
+      description:
+        "Render the Seasonal cash flow smoothing chart Artifact parameterized to the member's revenue band and seasonal pattern. The visual makes the smoothing benefit of a properly-sized LOC obvious. Captures member reaction and any follow-up questions for downstream pattern matching.",
+      step_shape: "show",
+      content:
+        "I want to show you what your year would look like with a working capital line of credit sized for your business — let's walk through it together.",
+      capture_schema: SHOW_CAPTURE_SCHEMA,
+      artifact_id: artifacts.seasonalSmoothing.id,
+      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const jennyResolve = await prisma.growthStep.create({
+    data: {
+      title: "Capture closure",
+      description:
+        "Close the conversation with a structured capture of where the member landed: committed, deferred, declined, or indecision (with type). Produces an ActionCard for the next step. When resolution_type is indecision, also produces an indecision Signal so the member's current state is queryable in the Insight Engine.",
+      step_shape: "resolve",
+      content:
+        "Where does this leave you for the next step? What do you want me to have ready for our next conversation?",
+      capture_schema: RESOLVE_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  // Northland's track steps
+  const northlandAsk = await prisma.growthStep.create({
+    data: {
+      title: "Surface capacity constraint",
+      description:
+        "Open the conversation by asking how the recent peak season went — especially whether the member had to turn work away. The most common articulation of capacity constraint in growing trades is 'declined calls' or 'missed work'; the prompt is designed to elicit that specific framing.",
+      step_shape: "ask",
+      content:
+        "How did your last peak season go for you — were you able to get to all the work, or were there calls you couldn't take?",
+      capture_schema: ASK_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      trigger_signals: { connect: [{ id: topics.blockerCapacity.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-15"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const northlandSize = await prisma.growthStep.create({
+    data: {
+      title: "Quantify declined work",
+      description:
+        "Quantify the capacity constraint into declined service calls or lost project revenue. Trades members typically estimate this in calls or jobs declined per peak season; the banker converts to dollars using the member's average call value for the ROI calculation.",
+      step_shape: "size",
+      content:
+        "Roughly how many calls do you think you had to turn away during peak — and what's a typical call worth to you?",
+      capture_schema: SIZE_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-15"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const northlandShow = await prisma.growthStep.create({
+    data: {
+      title: "Render fleet expansion ROI",
+      description:
+        "Render the Fleet expansion ROI projection Artifact parameterized to the member's current fleet, average call value, and proposed addition. The composed chart shows captured-vs-declined revenue against debt service, demonstrating that fleet financing typically pays for itself by year 2 in growing trades.",
+      step_shape: "show",
+      content:
+        "Let me show you what financing two more trucks would look like against the work you've been turning down. This isn't a pitch; it's the math.",
+      capture_schema: SHOW_CAPTURE_SCHEMA,
+      artifact_id: artifacts.fleetROI.id,
+      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-15"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const northlandResolve = await prisma.growthStep.create({
+    data: {
+      title: "Capture closure",
+      description:
+        "Close with a structured capture of where the member landed and what the next step is. Same shape as Jenny's Resolve step but anchored to the trades-financing track; produces an ActionCard for the follow-up and an indecision Signal when applicable.",
+      step_shape: "resolve",
+      content:
+        "Where does this leave you? Want me to put together the full projection for you to take to your CPA, or is there a different next step?",
+      capture_schema: RESOLVE_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-02-15"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  // Cygnus's track steps
+  const cygnusAsk1 = await prisma.growthStep.create({
+    data: {
+      title: "Probe the capital event evaluation",
+      description:
+        "When an established manufacturer references a forward-looking capital decision in casual conversation, this Ask step elevates the comment into a structured trigger Signal. Captures what they're evaluating, the time horizon, and how acutely it's on their mind.",
+      step_shape: "ask",
+      content:
+        "Tell me more about what you're weighing on the floor space — what's driving the timing, and how sure are you that something has to give?",
+      capture_schema: ASK_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      trigger_signals: { connect: [{ id: topics.triggerCapacityEval.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-03-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const cygnusAsk2 = await prisma.growthStep.create({
+    data: {
+      title: "Discover the timing driver",
+      description:
+        "Layered after the capital-event Ask: probe for the specific customer or market signal driving the timing. Established manufacturers' capital events are rarely speculative; surfacing the underlying customer-volume or qualification trigger sharpens the rationale and provides the timing anchor.",
+      step_shape: "ask",
+      content:
+        "What's making this particular moment the right time — anything from your customer side that's pushing the timing?",
+      capture_schema: ASK_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      trigger_signals: { connect: [{ id: topics.triggerVolume.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-03-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const cygnusShow = await prisma.growthStep.create({
+    data: {
+      title: "Render the capital event partnership map",
+      description:
+        "Render the Capital event partnership map Artifact, showing the products and specialist roles that come together in a coordinated capital event. The reframe is that the capital event is a multi-product engagement Blaze can deliver, not a single CRE loan request — earning the right to be at the table before any RFP starts.",
+      step_shape: "show",
+      content:
+        "Let me show you how a deal like this typically comes together at Blaze, so you can see what we'd actually bring to the table — products, specialists, timing.",
+      capture_schema: SHOW_CAPTURE_SCHEMA,
+      artifact_id: artifacts.capitalEventMap.id,
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-03-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  const cygnusConnect = await prisma.growthStep.create({
+    data: {
+      title: "Hand off to Marcus Webb",
+      description:
+        "Bring the CRE specialist into the relationship before any formal RFP process begins. The handoff is a Connect step (specialist_handoff), preserves the primary banker as the relationship owner, and creates an ActionCard for Marcus to schedule a working session with the member.",
+      step_shape: "connect",
+      content:
+        "I'd like to bring in our CRE specialist Marcus Webb early so you can hear directly from him on a deal of this size. Would you be open to a 30-minute working session in the next two weeks?",
+      capture_schema: CONNECT_CAPTURE_SCHEMA,
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      author_id: bankers.priya.id,
+      status: "canonical",
+      promoted_at: iso("2026-03-01"),
+      promoted_by_id: bankers.priya.id,
+    },
+  });
+
+  return {
+    jennyAsk,
+    jennySize,
+    jennyShow,
+    jennyResolve,
+    northlandAsk,
+    northlandSize,
+    northlandShow,
+    northlandResolve,
+    cygnusAsk1,
+    cygnusAsk2,
+    cygnusShow,
+    cygnusConnect,
+  };
+}
+
+// ============================================================
+// Step 4b — Growth tracks (with ordered Growth step sequences)
+// ============================================================
+
+type GrowthSteps = Awaited<ReturnType<typeof seedGrowthSteps>>;
+
+async function seedGrowthTracks(
+  memberTypes: MemberTypes,
+  topics: Topics,
+  growthSteps: GrowthSteps,
+  bankers: Bankers,
+) {
+  const seasonalCashFlow = await prisma.growthTrack.create({
+    data: {
+      name: "Smooth seasonal cash flow with LOC for small caterer",
+      description:
+        "Surfaces seasonal cash flow stress for small caterers, quantifies the gap, renders a parameterized smoothing chart, and closes with a sized LOC proposal. Designed for owner-operator catering businesses in their first three years where seasonality is the dominant cash flow shape.",
+      target_member_type: { connect: { id: memberTypes.smallCatererStarting.id } },
+      target_blocker_topics: { connect: [{ id: topics.blockerSeasonal.id }] },
+      author: { connect: { id: bankers.priya.id } },
+      status: "canonical",
+      promoted_at: iso("2026-02-01"),
+      promoted_by: { connect: { id: bankers.priya.id } },
+      growth_step_sequence: {
+        create: [
+          { position: 1, growth_step: { connect: { id: growthSteps.jennyAsk.id } } },
+          { position: 2, growth_step: { connect: { id: growthSteps.jennySize.id } } },
+          { position: 3, growth_step: { connect: { id: growthSteps.jennyShow.id } } },
+          { position: 4, growth_step: { connect: { id: growthSteps.jennyResolve.id } } },
+        ],
+      },
+    },
+  });
+
+  const fleetFinancing = await prisma.growthTrack.create({
+    data: {
+      name: "Unlock growth capacity with fleet financing",
+      description:
+        "Surfaces capacity constraint for growing trades businesses, quantifies declined work, renders a fleet ROI projection, and closes with a sized vehicle/fleet loan proposal. Designed for HVAC, electrical, plumbing, and similar trades businesses that have proven their model and are constrained by execution capacity rather than demand.",
+      target_member_type: { connect: { id: memberTypes.hvacGrowing.id } },
+      target_blocker_topics: { connect: [{ id: topics.blockerCapacity.id }] },
+      author: { connect: { id: bankers.priya.id } },
+      status: "canonical",
+      promoted_at: iso("2026-02-15"),
+      promoted_by: { connect: { id: bankers.priya.id } },
+      growth_step_sequence: {
+        create: [
+          { position: 1, growth_step: { connect: { id: growthSteps.northlandAsk.id } } },
+          { position: 2, growth_step: { connect: { id: growthSteps.northlandSize.id } } },
+          { position: 3, growth_step: { connect: { id: growthSteps.northlandShow.id } } },
+          { position: 4, growth_step: { connect: { id: growthSteps.northlandResolve.id } } },
+        ],
+      },
+    },
+  });
+
+  const capitalEvent = await prisma.growthTrack.create({
+    data: {
+      name: "Earn the capital event with the right team in the room",
+      description:
+        "Surfaces the capital event evaluation for established specialty manufacturers, discovers the customer-volume or qualification driver, demonstrates Blaze's coordinated commercial banking capability via the partnership map, and hands off to the CRE specialist before any formal RFP starts. Designed to address the recurring failure mode where established manufacturers default to regional commercial banks for capital events because their primary credit union 'isn't really set up for that'.",
+      target_member_type: { connect: { id: memberTypes.specialtyManufacturerEstablished.id } },
+      target_trigger_topics: {
+        connect: [
+          { id: topics.triggerCapacityEval.id },
+          { id: topics.triggerVolume.id },
+        ],
+      },
+      author: { connect: { id: bankers.priya.id } },
+      status: "canonical",
+      promoted_at: iso("2026-03-01"),
+      promoted_by: { connect: { id: bankers.priya.id } },
+      growth_step_sequence: {
+        create: [
+          { position: 1, growth_step: { connect: { id: growthSteps.cygnusAsk1.id } } },
+          { position: 2, growth_step: { connect: { id: growthSteps.cygnusAsk2.id } } },
+          { position: 3, growth_step: { connect: { id: growthSteps.cygnusShow.id } } },
+          { position: 4, growth_step: { connect: { id: growthSteps.cygnusConnect.id } } },
+        ],
+      },
+    },
+  });
+
+  return { seasonalCashFlow, fleetFinancing, capitalEvent };
+}
+
+// Wire MemberType.default_growth_tracks and Rule.output_growth_tracks now that
+// the Growth tracks exist. This was deliberately deferred from step 1.
+async function linkMemberTypesAndRulesToTracks(
+  memberTypes: MemberTypes,
+  growthTracks: Awaited<ReturnType<typeof seedGrowthTracks>>,
+) {
+  await prisma.memberType.update({
+    where: { id: memberTypes.smallCatererStarting.id },
+    data: { default_growth_tracks: { connect: [{ id: growthTracks.seasonalCashFlow.id }] } },
+  });
+  await prisma.memberType.update({
+    where: { id: memberTypes.hvacGrowing.id },
+    data: { default_growth_tracks: { connect: [{ id: growthTracks.fleetFinancing.id }] } },
+  });
+  await prisma.memberType.update({
+    where: { id: memberTypes.specialtyManufacturerEstablished.id },
+    data: { default_growth_tracks: { connect: [{ id: growthTracks.capitalEvent.id }] } },
+  });
+
+  // Rules → output Growth tracks. Look up rules by name (the canonical key).
+  const rule1 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface seasonal cash flow track for small caterers" } });
+  const rule2 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface fleet financing track for growing trades" } });
+  const rule3 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface capital event track for established manufacturers" } });
+
+  await prisma.rule.update({
+    where: { id: rule1.id },
+    data: { output_growth_tracks: { connect: [{ id: growthTracks.seasonalCashFlow.id }] } },
+  });
+  await prisma.rule.update({
+    where: { id: rule2.id },
+    data: { output_growth_tracks: { connect: [{ id: growthTracks.fleetFinancing.id }] } },
+  });
+  await prisma.rule.update({
+    where: { id: rule3.id },
+    data: { output_growth_tracks: { connect: [{ id: growthTracks.capitalEvent.id }] } },
+  });
+}
+
+// ============================================================
+// Step 3 + Step 4 — Conversations per Member
+//
+// Each Member has a sequence of prior Conversations (low-fidelity — meeting
+// type, channel, sentiment, optional moment_quote / banker_note) plus one
+// featured Conversation with full Growth step executions, Signals,
+// ActionCards, and a Recommendation.
+//
+// Carry-forward Signals (active Signals captured in prior Conversations that
+// remain part of the current state) are attached to the prior Conversation
+// they originated in.
+// ============================================================
+
+type Members = Awaited<ReturnType<typeof seedMembers>>;
+
+async function seedJennyConversations(
+  members: Members,
+  bankers: Bankers,
+  topics: Topics,
+  growthSteps: GrowthSteps,
+  artifacts: Artifacts,
+  rules: { rule1Id: string },
+  products: Products,
+) {
+  const m = members.jenny;
+
+  // 2023-06-15 onboarding
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "onboarding",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Account opening; Visa application initiated",
+      created_at: iso("2023-06-15"),
+      closed_at: iso("2023-06-15"),
+    },
+  });
+
+  // 2024-03-12 check_in — Jenny mentioned 'winter was tough' but didn't elaborate
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "call",
+      sentiment: "receptive",
+      moment_quote: "winter was tough",
+      banker_note: "Year-end review; Jenny mentioned 'winter was tough' but didn't elaborate. In hindsight this was the first surface of seasonal cash flow stress; not formally captured as a Signal at the time.",
+      created_at: iso("2024-03-12"),
+      closed_at: iso("2024-03-12"),
+    },
+  });
+
+  // 2024-09-08 check_in — Visa limit increase, spouse mention
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "cautious",
+      banker_note: "Visa limit increase request approved; Jenny mentioned spouse helps with books — first surface of spousal involvement in financial decisions.",
+      created_at: iso("2024-09-08"),
+      closed_at: iso("2024-09-08"),
+    },
+  });
+
+  // 2025-12-04 service — late-paying corporate client; produces a carry-forward Signal
+  const dec2025 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "service",
+      channel: "call",
+      sentiment: "uncertain",
+      banker_note: "Inquiry about a corporate client paying 45+ days late. Scott offered guidance, no Growth track run.",
+      created_at: iso("2025-12-04"),
+      closed_at: iso("2025-12-04"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: dec2025.id,
+      member_id: m.id,
+      type: "blocker",
+      topic_id: topics.blockerReceivables.id,
+      severity: "manageable",
+      their_words: "they keep slipping past 30 days and I have to keep pinging them",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2025-12-04"),
+    },
+  });
+
+  // 2026-04-08 — featured conversation
+  const apr8 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      duration_min: 32,
+      moment_quote: "this is exactly what I needed to see — wow",
+      banker_note: "Husband is the financial decision-maker; include him next time",
+      created_at: iso("2026-04-08"),
+      closed_at: iso("2026-04-08"),
+    },
+  });
+
+  // Step 1 — Ask
+  const askExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_id: growthSteps.jennyAsk.id,
+      sequence_position: 1,
+      captured_data: {
+        signal_type: "blocker",
+        topic_id: topics.blockerSeasonal.id,
+        severity: "painful",
+        their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
+        recency: "acute_recent",
+        confidence: "member_stated",
+      },
+      executed_at: iso("2026-04-08"),
+    },
+  });
+
+  const seasonalSignal = await prisma.signal.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_execution_id: askExec.id,
+      member_id: m.id,
+      type: "blocker",
+      topic_id: topics.blockerSeasonal.id,
+      severity: "painful",
+      their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
+      recency: "acute_recent",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-08"),
+    },
+  });
+
+  // Step 2 — Size: layers magnitude onto the seasonal Signal
+  const sizeExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_id: growthSteps.jennySize.id,
+      sequence_position: 2,
+      captured_data: {
+        parent_signal_id: seasonalSignal.id,
+        magnitude: 12000,
+        unit: "dollars",
+        frequency: "quarterly",
+        feeling: "frustrated",
+        quantification_confidence: "banker_estimated_from_cues",
+      },
+      executed_at: iso("2026-04-08"),
+    },
+  });
+
+  // Update parent Signal with magnitude per Data Framework §4.2
+  await prisma.signal.update({
+    where: { id: seasonalSignal.id },
+    data: {
+      magnitude: 12000,
+      unit: "dollars",
+      frequency: "quarterly",
+      feeling: "frustrated",
+    },
+  });
+
+  // Step 3 — Show: produces Recommendation
+  const showExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_id: growthSteps.jennyShow.id,
+      sequence_position: 3,
+      captured_data: {
+        artifact_id: artifacts.seasonalSmoothing.id,
+        parameters_used: {
+          revenue_band: "$500K-$1M",
+          monthly_low: 35000,
+          monthly_high: 95000,
+          proposed_loc_size: 75000,
+        },
+        member_reaction: "engaged",
+        followup_questions_asked: ["size", "rate", "flexibility"],
+        shared_afterward: true,
+        their_words: "this is exactly what I needed to see — wow",
+      },
+      executed_at: iso("2026-04-08"),
+    },
+  });
+
+  await prisma.recommendation.create({
+    data: {
+      member_id: m.id,
+      growth_step_execution_id: showExec.id,
+      product_id: products.workingCapitalLOC.id,
+      size_proposed: 75000,
+      structure: "standard",
+      rationale_text:
+        "Member showed acute seasonal cash flow stress quantified at approximately $12K per quarter. A $75K LOC sized at roughly one quarter of the slow-season revenue gap provides smoothing capacity with comfortable headroom. Member's existing Visa demonstrates payment discipline; primary guarantee from the owner is appropriate given the size.",
+      confidence_band: "high",
+      response: "leaning_yes",
+      primary_concern: "spouse",
+      status: "surfaced",
+      rule_id_that_fired: rules.rule1Id,
+      their_words: "this is exactly what I needed to see — wow",
+      created_at: iso("2026-04-08"),
+    },
+  });
+
+  // Step 4 — Resolve: produces ActionCard + Signal (Q-014)
+  const resolveExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_id: growthSteps.jennyResolve.id,
+      sequence_position: 4,
+      captured_data: {
+        resolution_type: "indecision",
+        indecision_type: "authority",
+        next_step_description: "Send Jenny the parameterized chart by email; offer joint call with her spouse next week",
+        next_step_owner_id: bankers.scott.id,
+        due_date: "2026-04-22",
+        member_stated_reason: "I want to talk to my husband before we commit to anything this size",
+      },
+      executed_at: iso("2026-04-08"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: apr8.id,
+      growth_step_execution_id: resolveExec.id,
+      member_id: m.id,
+      type: "indecision",
+      topic_id: topics.indecisionAuthority.id,
+      severity: "manageable",
+      their_words: "I want to talk to my husband before we commit to anything this size",
+      recency: "acute_recent",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-08"),
+    },
+  });
+
+  await prisma.actionCard.create({
+    data: {
+      type: "follow_up",
+      owner_id: bankers.scott.id,
+      member_id: m.id,
+      origin_conversation_id: apr8.id,
+      origin_growth_step_execution_id: resolveExec.id,
+      rationale:
+        "Jenny was 'leaning yes' on the $75K LOC after seeing the seasonal smoothing chart but wants to discuss with her husband before committing. De-risk by sending her the parameterized chart and offering a joint call next week.",
+      suggested_opening:
+        "Hi Jenny — attaching the projection we walked through. Happy to set up a quick call with you and Mike if that would be helpful before deciding.",
+      due_at: iso("2026-04-22"),
+      status: "open",
+      status_changed_at: iso("2026-04-08"),
+      created_at: iso("2026-04-08"),
+    },
+  });
+}
+
+async function seedNorthlandConversations(
+  members: Members,
+  bankers: Bankers,
+  topics: Topics,
+  growthSteps: GrowthSteps,
+  artifacts: Artifacts,
+  rules: { rule2Id: string },
+  products: Products,
+) {
+  const m = members.northland;
+
+  // 2018-09-22 onboarding
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "onboarding",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Account opening; first business banking relationship for Dan.",
+      created_at: iso("2018-09-22"),
+      closed_at: iso("2018-09-22"),
+    },
+  });
+
+  // 2024-08-12 check_in
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      moment_quote: "really busy summer",
+      banker_note: "Annual check-in; Dan mentioned 'really busy summer' — early surface of capacity pressure, not formally captured.",
+      created_at: iso("2024-08-12"),
+      closed_at: iso("2024-08-12"),
+    },
+  });
+
+  // 2024-11-03 service
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "service",
+      channel: "call",
+      sentiment: "receptive",
+      banker_note: "Equipment loan payment review; routine.",
+      created_at: iso("2024-11-03"),
+      closed_at: iso("2024-11-03"),
+    },
+  });
+
+  // 2025-02-22 opportunity
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "opportunity",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Visa limit increase approved; Dan mentioned needing one more truck — second informal surface of capacity constraint.",
+      created_at: iso("2025-02-22"),
+      closed_at: iso("2025-02-22"),
+    },
+  });
+
+  // 2026-04-15 — featured
+  const apr15 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      duration_min: 35,
+      moment_quote: "I've been doing this all wrong — paying cash for used trucks while declining work",
+      banker_note: "Daughter's vehicle loan also approved separately; that conversation went well too.",
+      created_at: iso("2026-04-15"),
+      closed_at: iso("2026-04-15"),
+    },
+  });
+
+  // Step 1 — Ask
+  const askExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_id: growthSteps.northlandAsk.id,
+      sequence_position: 1,
+      captured_data: {
+        signal_type: "blocker",
+        topic_id: topics.blockerCapacity.id,
+        severity: "painful",
+        their_words: "we just couldn't get to all the calls last summer — felt awful turning people away",
+        recency: "ongoing",
+        confidence: "member_stated",
+      },
+      executed_at: iso("2026-04-15"),
+    },
+  });
+
+  const capSignal = await prisma.signal.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_execution_id: askExec.id,
+      member_id: m.id,
+      type: "blocker",
+      topic_id: topics.blockerCapacity.id,
+      severity: "painful",
+      their_words: "we just couldn't get to all the calls last summer — felt awful turning people away",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-15"),
+    },
+  });
+
+  // Step 2 — Size
+  const sizeExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_id: growthSteps.northlandSize.id,
+      sequence_position: 2,
+      captured_data: {
+        parent_signal_id: capSignal.id,
+        magnitude: 70,
+        unit: "calls_declined",
+        frequency: "annual",
+        feeling: "frustrated",
+        quantification_confidence: "banker_estimated_from_cues",
+      },
+      executed_at: iso("2026-04-15"),
+    },
+  });
+
+  await prisma.signal.update({
+    where: { id: capSignal.id },
+    data: {
+      magnitude: 70,
+      unit: "calls_declined",
+      frequency: "annual",
+      feeling: "frustrated",
+    },
+  });
+
+  // Step 3 — Show
+  const showExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_id: growthSteps.northlandShow.id,
+      sequence_position: 3,
+      captured_data: {
+        artifact_id: artifacts.fleetROI.id,
+        parameters_used: {
+          revenue_band: "$3M-$5M",
+          current_fleet_size: 8,
+          proposed_addition: 2,
+          service_call_avg_value: 700,
+          financing_term_months: 60,
+          financing_rate_pct: 7.5,
+        },
+        member_reaction: "engaged",
+        followup_questions_asked: ["structure_options", "rate", "speed_of_approval"],
+        shared_afterward: true,
+        their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
+      },
+      executed_at: iso("2026-04-15"),
+    },
+  });
+
+  await prisma.recommendation.create({
+    data: {
+      member_id: m.id,
+      growth_step_execution_id: showExec.id,
+      product_id: products.fleetLoan.id,
+      size_proposed: 180000,
+      structure: "standard",
+      rationale_text:
+        "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season, representing roughly $49K of annual lost revenue. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
+      confidence_band: "high",
+      response: "leaning_yes",
+      primary_concern: "cpa",
+      status: "surfaced",
+      rule_id_that_fired: rules.rule2Id,
+      their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
+      created_at: iso("2026-04-15"),
+    },
+  });
+
+  // Step 4 — Resolve: produces ActionCard + Signal (Q-014)
+  const resolveExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_id: growthSteps.northlandResolve.id,
+      sequence_position: 4,
+      captured_data: {
+        resolution_type: "indecision",
+        indecision_type: "information",
+        next_step_description: "Send Dan the projection report; schedule call after he meets with his CPA",
+        next_step_owner_id: bankers.scott.id,
+        due_date: "2026-04-29",
+        member_stated_reason: "I need to run the numbers by my accountant before I commit to something this size",
+      },
+      executed_at: iso("2026-04-15"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: apr15.id,
+      growth_step_execution_id: resolveExec.id,
+      member_id: m.id,
+      type: "indecision",
+      topic_id: topics.indecisionInformation.id,
+      severity: "manageable",
+      their_words: "I need to run the numbers by my accountant before I commit to something this size",
+      recency: "acute_recent",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-15"),
+    },
+  });
+
+  await prisma.actionCard.create({
+    data: {
+      type: "follow_up",
+      owner_id: bankers.scott.id,
+      member_id: m.id,
+      origin_conversation_id: apr15.id,
+      origin_growth_step_execution_id: resolveExec.id,
+      rationale:
+        "Dan was leaning yes on fleet financing after seeing the ROI projection but wants to verify with his CPA before committing. De-risk by sending him the projection report and scheduling a follow-up call after his CPA meeting.",
+      suggested_opening:
+        "Hi Dan — attaching the projection we walked through. Take it to your CPA and let's schedule a call once you've had that conversation. No pressure on timing.",
+      due_at: iso("2026-04-29"),
+      status: "open",
+      status_changed_at: iso("2026-04-15"),
+      created_at: iso("2026-04-15"),
+    },
+  });
+}
+
+async function seedCygnusConversations(
+  members: Members,
+  bankers: Bankers,
+  topics: Topics,
+  growthSteps: GrowthSteps,
+  artifacts: Artifacts,
+  rules: { rule3Id: string },
+  products: Products,
+) {
+  const m = members.cygnus;
+
+  // 2006-04-10 onboarding
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "onboarding",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Account opening as a deposit relationship; Margaret was already 3 years into building Cygnus.",
+      created_at: iso("2006-04-10"),
+      closed_at: iso("2006-04-10"),
+    },
+  });
+
+  // 2024-11-15 check_in — captures carry-forward goal.customer_growth Signal
+  const nov2024 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Annual treasury review; Margaret mentioned anchor customers signaling volume growth — captured as a forward-looking goal.",
+      created_at: iso("2024-11-15"),
+      closed_at: iso("2024-11-15"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: nov2024.id,
+      member_id: m.id,
+      type: "goal",
+      topic_id: topics.goalCustomerGrowth.id,
+      severity: "manageable",
+      their_words: "two of our customers are signaling we should plan for more volume next year",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2024-11-15"),
+    },
+  });
+
+  // 2025-03-08 service
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "service",
+      channel: "call",
+      sentiment: "receptive",
+      banker_note: "LOC renewal at $2M; routine.",
+      created_at: iso("2025-03-08"),
+      closed_at: iso("2025-03-08"),
+    },
+  });
+
+  // 2025-06-22 check_in — captures carry-forward blocker.customer_concentration Signal
+  const jun2025 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      moment_quote: "they're naming us a preferred supplier on the platform consolidation",
+      banker_note: "Margaret described a customer 'platform consolidation' naming Cygnus a preferred supplier; surfaced concentration risk as the structural counterpart. No Growth track existed for this pattern at the time.",
+      created_at: iso("2025-06-22"),
+      closed_at: iso("2025-06-22"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: jun2025.id,
+      member_id: m.id,
+      type: "blocker",
+      topic_id: topics.blockerConcentration.id,
+      severity: "manageable",
+      their_words: "three customers are getting really big as a share of our book",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2025-06-22"),
+    },
+  });
+
+  // 2025-09-04 service
+  await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "service",
+      channel: "in_person",
+      sentiment: "receptive",
+      banker_note: "Margaret introduced new COO Tom Reyes to Scott. No Growth track run.",
+      created_at: iso("2025-09-04"),
+      closed_at: iso("2025-09-04"),
+    },
+  });
+
+  // 2026-04-21 — featured
+  const apr21 = await prisma.conversation.create({
+    data: {
+      member_id: m.id,
+      banker_id: bankers.scott.id,
+      meeting_type: "check_in",
+      channel: "in_person",
+      sentiment: "receptive",
+      duration_min: 55,
+      moment_quote: "this is the conversation I've been wanting to have with you",
+      banker_note: "Margaret still references the 2019 deal we lost; this is the chance to make that right.",
+      created_at: iso("2026-04-21"),
+      closed_at: iso("2026-04-21"),
+    },
+  });
+
+  // Step 1 — Ask: capacity expansion evaluation
+  const ask1Exec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_id: growthSteps.cygnusAsk1.id,
+      sequence_position: 1,
+      captured_data: {
+        signal_type: "trigger",
+        topic_id: topics.triggerCapacityEval.id,
+        severity: "painful",
+        their_words: "we're going to need to make a big decision about the floor space within the next two quarters",
+        recency: "ongoing",
+        confidence: "member_stated",
+      },
+      executed_at: iso("2026-04-21"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_execution_id: ask1Exec.id,
+      member_id: m.id,
+      type: "trigger",
+      topic_id: topics.triggerCapacityEval.id,
+      severity: "painful",
+      their_words: "we're going to need to make a big decision about the floor space within the next two quarters",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-21"),
+    },
+  });
+
+  // Step 2 — Ask: customer volume commitment
+  const ask2Exec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_id: growthSteps.cygnusAsk2.id,
+      sequence_position: 2,
+      captured_data: {
+        signal_type: "trigger",
+        topic_id: topics.triggerVolume.id,
+        severity: "painful",
+        their_words:
+          "three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source",
+        recency: "ongoing",
+        confidence: "member_stated",
+      },
+      executed_at: iso("2026-04-21"),
+    },
+  });
+
+  await prisma.signal.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_execution_id: ask2Exec.id,
+      member_id: m.id,
+      type: "trigger",
+      topic_id: topics.triggerVolume.id,
+      severity: "painful",
+      their_words:
+        "three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source",
+      recency: "ongoing",
+      confidence: "member_stated",
+      active: true,
+      captured_at: iso("2026-04-21"),
+    },
+  });
+
+  // Step 3 — Show: produces Recommendation (size_proposed null per brief — range stays in rationale)
+  const showExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_id: growthSteps.cygnusShow.id,
+      sequence_position: 3,
+      captured_data: {
+        artifact_id: artifacts.capitalEventMap.id,
+        parameters_used: {
+          company_revenue_band: "$25M-$50M",
+          expansion_size_estimate: "$4M-$7M",
+          current_blaze_relationships: ["treasury", "loc"],
+          cre_specialist_id: bankers.marcus.id,
+        },
+        member_reaction: "engaged",
+        followup_questions_asked: ["timeline_for_decision", "blaze_capacity_for_deal_size", "marcus_webb_background"],
+        shared_afterward: false,
+        their_words: "this is the conversation I've been wanting to have with you",
+      },
+      executed_at: iso("2026-04-21"),
+    },
+  });
+
+  await prisma.recommendation.create({
+    data: {
+      member_id: m.id,
+      growth_step_execution_id: showExec.id,
+      product_id: products.creTermLoan.id,
+      size_proposed: null,
+      structure: "standard",
+      rationale_text:
+        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments. Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. CRE specialist Marcus Webb engaged; relationship coordination by Scott Brynjolffson.",
+      confidence_band: "medium",
+      response: "leaning_yes",
+      primary_concern: "bank_capability",
+      status: "surfaced",
+      rule_id_that_fired: rules.rule3Id,
+      their_words: "this is the conversation I've been wanting to have with you",
+      created_at: iso("2026-04-21"),
+    },
+  });
+
+  // Step 4 — Connect: produces ActionCard (handoff)
+  const connectExec = await prisma.growthStepExecution.create({
+    data: {
+      conversation_id: apr21.id,
+      growth_step_id: growthSteps.cygnusConnect.id,
+      sequence_position: 4,
+      captured_data: {
+        connect_type: "specialist_handoff",
+        target_specialist_id: bankers.marcus.id,
+        trigger_reason:
+          "Capital event evaluation underway; CRE and structured term financing required; bringing CRE specialist in early to earn the relationship before any RFP process. Member explicitly receptive to Blaze handling the deal.",
+        member_receptiveness: "eager",
+      },
+      executed_at: iso("2026-04-21"),
+    },
+  });
+
+  await prisma.actionCard.create({
+    data: {
+      type: "handoff",
+      owner_id: bankers.marcus.id,
+      member_id: m.id,
+      origin_conversation_id: apr21.id,
+      origin_growth_step_execution_id: connectExec.id,
+      rationale:
+        "Capital event evaluation underway at Cygnus Bioscience. Member is at ~85% capacity utilization with 3 anchor customers indicating 15-25% volume growth over 18 months. Expansion size estimated at $4-7M. Member is explicitly receptive to Blaze handling the deal but is keeping options open. Bring CRE specialist in early to earn the relationship before any RFP process. Note: Cygnus financed their 2019 expansion through a regional commercial bank — Margaret still mentions this; this is an opportunity to make that right.",
+      suggested_opening:
+        "Margaret, Scott told me you're starting to think about your floor space situation. I lead our commercial real estate and structured financing work — I'd love to spend 30 minutes understanding what you're weighing, with no expectation that we're the right answer. When works for you?",
+      due_at: iso("2026-04-26"),
+      status: "open",
+      status_changed_at: iso("2026-04-21"),
+      created_at: iso("2026-04-21"),
+    },
+  });
+
+  // Card 2 — Scott follow-up: a banker-edited add-on (no specific step origin).
+  await prisma.actionCard.create({
+    data: {
+      type: "follow_up",
+      owner_id: bankers.scott.id,
+      member_id: m.id,
+      origin_conversation_id: apr21.id,
+      origin_growth_step_execution_id: null,
+      rationale:
+        "Confirm Marcus's introduction to Margaret landed cleanly. Check in with Margaret separately to see if there's anything else she wanted to discuss but didn't. The primary banker stays primary even when the specialist comes in.",
+      suggested_opening:
+        "Margaret — wanted to follow up on our conversation last week. Did Marcus reach out? And is there anything else you've been thinking about that we should put on the next agenda?",
+      due_at: iso("2026-05-05"),
+      status: "open",
+      status_changed_at: iso("2026-04-21"),
+      created_at: iso("2026-04-21"),
+    },
+  });
+}
+
+// ============================================================
+// Step 6 — Derive Member.last_touch_at, active_signal_count, open_action_card_count
+// ============================================================
+
+async function deriveMemberState(memberId: string) {
+  const lastConv = await prisma.conversation.findFirst({
+    where: { member_id: memberId },
+    orderBy: { created_at: "desc" },
+    select: { created_at: true },
+  });
+  const activeSignals = await prisma.signal.count({ where: { member_id: memberId, active: true } });
+  const openCards = await prisma.actionCard.count({
+    where: { member_id: memberId, status: { in: ["open", "in_progress"] } },
+  });
+  await prisma.member.update({
+    where: { id: memberId },
+    data: {
+      last_touch_at: lastConv?.created_at ?? null,
+      active_signal_count: activeSignals,
+      open_action_card_count: openCards,
+    },
+  });
+}
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -905,23 +2311,48 @@ async function main() {
   await clear();
 
   console.log("Step 1 — reference data");
-  console.log("  bankers");
   const bankers = await seedBankers();
-  console.log("  industry families");
   const industryFamilies = await seedIndustryFamilies();
-  console.log("  topics");
   const topics = await seedTopics();
-  console.log("  products");
   const products = await seedProducts();
-  console.log("  member types");
   const memberTypes = await seedMemberTypes(industryFamilies, topics, products);
-  console.log("  rules");
   await seedRules(memberTypes, topics);
 
   console.log("Step 2 — Member identity records");
   const members = await seedMembers(industryFamilies, memberTypes, products, bankers);
 
-  // Quick sanity-print so checkpoint review can eyeball counts.
+  console.log("Step 5 — Artifacts (authored before featured conversations)");
+  // Reviewed by Priya Patel — placeholder reviewer. The Compliance reviewer is
+  // a distinct role per Data Framework §3.6; for the demo we attach the Growth
+  // lead as the reviewer of record since she's the one curating the canonical content.
+  const artifacts = await seedArtifacts(bankers.priya.id);
+
+  console.log("Step 4a — Growth steps (templates)");
+  const growthSteps = await seedGrowthSteps(memberTypes, topics, artifacts, bankers);
+
+  console.log("Step 4b — Growth tracks");
+  const growthTracks = await seedGrowthTracks(memberTypes, topics, growthSteps, bankers);
+
+  console.log("Linking MemberType.default_growth_tracks and Rule.output_growth_tracks");
+  await linkMemberTypesAndRulesToTracks(memberTypes, growthTracks);
+
+  // Look up rule IDs once so per-Member seeds can attach Recommendations to the
+  // rule that fired.
+  const rule1 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface seasonal cash flow track for small caterers" } });
+  const rule2 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface fleet financing track for growing trades" } });
+  const rule3 = await prisma.rule.findFirstOrThrow({ where: { name: "Surface capital event track for established manufacturers" } });
+
+  console.log("Step 3 + 4c — Conversations (prior + featured) per Member");
+  await seedJennyConversations(members, bankers, topics, growthSteps, artifacts, { rule1Id: rule1.id }, products);
+  await seedNorthlandConversations(members, bankers, topics, growthSteps, artifacts, { rule2Id: rule2.id }, products);
+  await seedCygnusConversations(members, bankers, topics, growthSteps, artifacts, { rule3Id: rule3.id }, products);
+
+  console.log("Step 6 — Derive last_touch_at, active_signal_count, open_action_card_count");
+  for (const m of [members.jenny, members.northland, members.cygnus]) {
+    await deriveMemberState(m.id);
+  }
+
+  // Final row counts.
   const counts = {
     bankers: await prisma.banker.count(),
     industryFamilies: await prisma.industryFamily.count(),
@@ -930,16 +2361,19 @@ async function main() {
     memberTypes: await prisma.memberType.count(),
     rules: await prisma.rule.count(),
     members: await prisma.member.count(),
+    artifacts: await prisma.artifact.count(),
+    growthSteps: await prisma.growthStep.count(),
+    growthTracks: await prisma.growthTrack.count(),
+    conversations: await prisma.conversation.count(),
+    growthStepExecutions: await prisma.growthStepExecution.count(),
+    signals: await prisma.signal.count(),
+    actionCards: await prisma.actionCard.count(),
+    recommendations: await prisma.recommendation.count(),
   };
-  console.log("\nRow counts after seed:");
+  console.log("\nRow counts after full seed:");
   console.table(counts);
 
-  console.log(`\nMembers seeded:`);
-  console.log(`  ${members.jenny.legal_name} (${members.jenny.id})`);
-  console.log(`  ${members.northland.legal_name} (${members.northland.id})`);
-  console.log(`  ${members.cygnus.legal_name} (${members.cygnus.id})`);
-
-  console.log("\nSeed complete (Steps 1-2). Next: prior conversation history (step 3) and featured conversations (step 4).");
+  console.log("\nSeed complete (Steps 1-6).");
 }
 
 main()

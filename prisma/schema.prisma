@@ -14,6 +14,84 @@
 //   - decimal(p,s) → Float (SQLite has no decimal type; demo precision is sufficient)
 //   - timestamp / date → DateTime (SQLite stores as ISO-8601 text)
 //   - Multi-value enums (e.g., Banker.roles) → Json (SQLite has no native arrays)
+//
+// =====================================================================
+// Named relationships (Semantic Discipline Principle 2)
+// =====================================================================
+//
+// Prisma's @relation names below are join-table identifiers, not semantic
+// verb-phrases. The semantic names — required reading for any LLM-facing surface
+// or summary template — are catalogued here per Data Framework §3 and the brief's
+// AI-native ontology rules:
+//
+// Member fits MemberType                          (Member.member_type)
+// Member owned_by Banker                          (Member.primary_banker)
+// Member belongs_to IndustryFamily                (Member.industry_family)
+// Member has_many Conversation                    (Member.conversations)
+// Member has_many Signal                          (Member.signals)
+// Member has_many ActionCard                      (Member.action_cards)
+// Member has_many Recommendation                  (Member.recommendations)
+// Member holds Product (via core_sync_state.products_held — denormalized)
+//
+// MemberType is_characterized_by_blockers Topic   (MemberType.characteristic_blockers)
+// MemberType is_characterized_by_triggers Topic   (MemberType.characteristic_triggers)
+// MemberType is_characterized_by_goals Topic      (MemberType.characteristic_goals)
+// MemberType typically_uses Product               (MemberType.typical_products)
+// MemberType has_default GrowthTrack              (MemberType.default_growth_tracks)
+// MemberType belongs_to IndustryFamily            (MemberType.industry_family)
+//
+// Conversation held_with Member                   (Conversation.member)
+// Conversation led_by Banker                      (Conversation.banker)
+// Conversation has_many GrowthStepExecution       (Conversation.growth_step_executions)
+// Conversation produced_many Signal               (Conversation.signals)
+// Conversation originated_action_cards ActionCard (Conversation.origin_action_cards)
+//
+// GrowthStepExecution executed_in Conversation    (GrowthStepExecution.conversation)
+// GrowthStepExecution instance_of GrowthStep      (GrowthStepExecution.growth_step)
+// GrowthStepExecution produced_signals Signal     (GrowthStepExecution.produced_signals)
+// GrowthStepExecution produced_cards ActionCard   (GrowthStepExecution.produced_action_cards)
+// GrowthStepExecution produced_recommendation Recommendation
+//
+// Signal belongs_to Conversation                  (Signal.conversation)
+// Signal anchored_to Member                       (Signal.member)
+// Signal references Topic                         (Signal.topic)
+// Signal produced_by GrowthStepExecution          (Signal.growth_step_execution)
+//
+// ActionCard owned_by Banker                      (ActionCard.owner)
+// ActionCard anchored_to Member                   (ActionCard.member)
+// ActionCard originated_from Conversation         (ActionCard.origin_conversation)
+// ActionCard spawned_by GrowthStepExecution       (ActionCard.origin_growth_step_execution)
+// ActionCard funded_with Product                  (ActionCard.funded_product)
+//
+// GrowthStep authored_by Banker                   (GrowthStep.author)
+// GrowthStep promoted_by Banker                   (GrowthStep.promoted_by)
+// GrowthStep shows Artifact                       (GrowthStep.artifact)
+// GrowthStep targets MemberType                   (GrowthStep.target_member_types)
+// GrowthStep surfaced_by_topic Topic              (GrowthStep.trigger_signals)
+//
+// GrowthTrack applies_to MemberType               (GrowthTrack.target_member_type)
+// GrowthTrack authored_by Banker                  (GrowthTrack.author)
+// GrowthTrack contains_in_order GrowthStep        (GrowthTrack.growth_step_sequence via GrowthTrackStep)
+// GrowthTrack triggered_by_blockers Topic         (GrowthTrack.target_blocker_topics)
+// GrowthTrack triggered_by_triggers Topic         (GrowthTrack.target_trigger_topics)
+// GrowthTrack surfaced_by Rule                    (GrowthTrack.surfacing_rules)
+//
+// Artifact reviewed_by Banker                     (Artifact.reviewed_by)
+//
+// Rule outputs GrowthTrack                        (Rule.output_growth_tracks)
+// Rule promoted_by Banker                         (Rule.promoted_by)
+//
+// Topic has_parent Topic                          (Topic.parent_topic)
+//
+// Recommendation belongs_to Member                (Recommendation.member)
+// Recommendation produced_by GrowthStepExecution  (Recommendation.growth_step_execution)
+// Recommendation references_product Product       (Recommendation.product)
+// Recommendation paired_with Product              (Recommendation.paired_product)
+// Recommendation surfaced_by_rule Rule            (Recommendation.rule_that_fired)
+//
+// When the LLM-facing summary layer is built (Phase 2), these verb-phrases are
+// the natural-language predicate vocabulary. Update this block whenever the
+// schema gains a new relation.
 
 generator client {
   provider = "prisma-client"
@@ -212,6 +290,23 @@ enum RecommendationStatus {
   dismissed
   converted_to_card
   deferred
+}
+
+// Recommendation.primary_concern — extended from Data Framework §4.4 with
+// `bank_capability` per Q-013 resolution. Value descriptions live in
+// app/lib/enum-descriptions.ts and are required reading for any UI label or
+// summary template that surfaces this field.
+enum RecommendationPrimaryConcern {
+  none
+  rate
+  speed
+  commitment
+  spouse
+  cpa
+  partner
+  timing
+  bank_capability
+  other
 }
 
 // ============================================================
@@ -589,11 +684,11 @@ model Recommendation {
   rationale_text              String
   confidence_band             ConfidenceBand
   response                    RecommendationResponse
-  // primary_concern stored as String rather than enum because the brief introduces
-  // the value `blaze_capacity_for_deal_size` for Cygnus, which is outside the
-  // canonical enum in Data Framework §4.4. Q-013 in OPEN_QUESTIONS tracks whether
-  // to extend the enum or keep the field free-form.
-  primary_concern             String?
+  // primary_concern uses RecommendationPrimaryConcern enum, extended via Q-013
+  // (Resolved) with bank_capability. Value descriptions live in
+  // app/lib/enum-descriptions.ts so summary templates and UI labels render prose,
+  // not bare tokens.
+  primary_concern             RecommendationPrimaryConcern?
   status                      RecommendationStatus    @default(surfaced)
   rule_id_that_fired          String?
   rule_that_fired             Rule?                   @relation(fields: [rule_id_that_fired], references: [id])
