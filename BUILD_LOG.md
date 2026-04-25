@@ -122,4 +122,71 @@ The first concrete code milestone is "the seed data loads cleanly and a basic pa
 
 ---
 
+## 2026-04-25 · Day 1 — full schema + fixture + AI-native structural enforcement
+
+**Session type:** First implementation day. Completed scaffold checkpoints, theming pass, schema authoring, fixture authoring (steps 1-6), and a structural-discipline pass that hardens the AI-native ontology contracts.
+
+**Major milestones (commits on `main`):**
+
+- `c338f00` — Scaffold (Next.js 16 + Prisma 7 + shadcn Radix/Mira).
+- `cacc02c` — Theming pass (Mira → Blaze tokens), Q-006 resolved (Scott Brynjolffson replaces Sarah Chen), SCOPE.md expanded to three full-fidelity Members.
+- `c834b47` — Prisma schema for all 8 first-class entities + reference data; brief steps 1-2 (reference data + Member identity).
+- `381981d` — Brief steps 3-6 fully authored: prior conversations with carry-forward Signals, featured Conversations with full Growth step executions, Artifacts, Growth steps, Growth tracks, Recommendations, derived state. Q-013 (extend `primary_concern` enum with `bank_capability`), Q-014 (Resolve-shape produces Signal+ActionCard for indecision), Q-011 (CLAUDE.md §12 Tier 2 expanded) resolved.
+- *This commit* — Structural enforcement layer for the AI-native ontology: `MemberSummarySnapshot` model, `lib/summaries.ts` summary registry with `Result<string, MissingSlotsError>` contract, `lib/relation-names.ts` registry, retroactive snapshot generation for the three featured Conversations.
+
+**What this turn added on top of step 4:**
+
+1. **`MemberSummarySnapshot` model** — immutable, write-only audit record of the rendered Member summary at the moment of a Conversation save. Stores summary text + `template_version` + `generated_at`. Migration `20260425134932_add_member_summary_snapshot` applied. One snapshot per (member, conversation). UI surface deferred to post-demo per Q-015.
+
+2. **`lib/summaries.ts`** — registry with three exports (`summarizeMember`, `summarizeGrowthTrack`, `summarizeRecommendation`) using the `Result<string, MissingSlotsError>` contract. Each function declares required slots and returns explicit errors when slots are missing rather than rendering half-blank prose. `summarizeMember` has a separate `initial_state` variant for Members with no Conversations yet (selected automatically when `last_touch_at` is null). Each function carries a `*_TEMPLATE_VERSION` integer constant for snapshot interpretability across template revisions.
+
+3. **`lib/relation-names.ts`** — runtime registry of the canonical verb-phrase mapping from Prisma's structural relations to Semantic Discipline Principle 2 named relationships. The Named Relationships block at the top of `prisma/schema.prisma` is the comment-form companion; the registry is the runtime form. Two-File Rule: any new schema relation updates both.
+
+4. **Module relocation** — moved `app/lib/{enum-descriptions,rule-engine}.ts` to root `lib/` for consistency with shadcn's `lib/utils.ts` and the user's explicit `lib/summaries.ts` / `lib/relation-names.ts` paths. `app/lib/summary-templates.ts` deleted (the prior partial implementation is replaced by the stricter `lib/summaries.ts` contract).
+
+5. **Q-015 logged** as Open / Deferred to post-demo discussion: surfacing `MemberSummarySnapshot` records in banker UI raises template-versioning, divergence-with-live-state, regulatory-hold, and privacy-deletion-cascade questions that need leadership and compliance input. Persistence is implemented for audit-trail integrity regardless.
+
+6. **`prisma/checkpoint.ts`** — reproducible verification script that renders the compliance check, three Member profiles, rule engine output, registry-rendered Member summaries, snapshot rows, the relation-name registry, and Growth track summaries. Sister to `prisma/seed.ts`.
+
+**Verified at the step-4 checkpoint:**
+
+- Row counts: 3 bankers · 3 industry families · 15 topics · 9 products · 3 member types · 3 rules · 3 members · 3 artifacts · 12 growth steps · 3 growth tracks · 16 conversations · 12 growth-step executions · 9 signals · 4 action cards · 3 recommendations · **3 member summary snapshots**.
+- Principle 1 compliance: all 33 reference entities carry descriptions ≥15 words (min 19, median 32, max 116). No regression across the structural pass.
+- `summarizeMember` renders cleanly for all three Members with no `MissingSlotsError`. `bank_capability` propagation verified — Cygnus's summary reads "...concerned about whether the bank can handle a deal of this size" rather than the bare token.
+- Rule engine output is correct: Jenny → "Smooth seasonal cash flow with LOC for small caterer" #1 (high); Northland → "Unlock growth capacity with fleet financing" #1 (high); Cygnus → "Earn the capital event with the right team in the room" #1 (medium).
+
+**Future-cost note for next architecture review:**
+
+In v1 the templated `summarizeMember` runs in microseconds per call, so generating a snapshot on every Conversation save is essentially free. If a future version replaces templates with LLM-generated summaries — natural-language faithful summaries are explicitly future scope per Semantic Discipline §3.5 — the per-event cost becomes meaningful at scale (hundreds of milliseconds + token spend per snapshot, plus rate-limit and provider-availability concerns). Migration plan should be: (a) keep templated summaries as a fallback rendering path, (b) generate LLM summaries asynchronously off the save critical path, (c) write both into the snapshot or write the LLM output as a separate snapshot kind. This is a Phase 2 architecture conversation, not a v1 concern.
+
+**Data Framework erratum required at next review** (logged here so it's not lost):
+
+§4.5 (Resolve shape — capture schema) currently reads "Produces: one ActionCard with appropriate type based on resolution_type and indecision_type." Per Q-014's resolution, the actual production set is "Produces: one ActionCard, plus one Signal of type=indecision when resolution_type=indecision, anchored to the matching indecision Topic." The fixture seed implements the corrected behaviour. Update the Data Framework prose at next revision.
+
+**What's open after Day 1:**
+
+- Q-001..Q-005 — pre-build deferred (HubSpot tier, Growth lead staffing, RM incentives, core integration, first Member Type buildout). All have working conservative defaults.
+- Q-007 — Artifact rendering tech (Recharts vs alt). Likely closes when first Artifact UI builds in Day 4-5.
+- Q-008 — Demo data persistence (server SQLite vs session-scoped). Pre-Insight Engine concern.
+- Q-012 — Prisma 7 generator output location (currently `app/generated/prisma`). Low priority; revisit if it bites during UI work.
+- Q-015 — `MemberSummarySnapshot` UI surface; deferred to post-demo with leadership and compliance.
+
+**Risks heading into Day 2:**
+
+- Schema is now effectively locked. Any further structural change to the Member, Conversation, Signal, ActionCard, Recommendation, or MemberSummarySnapshot models needs an explicit OPEN_QUESTIONS entry first. Day 2 should be UI work, not schema work.
+- The summary registry's `Result<string, MissingSlotsError>` contract assumes the UI handles errors visibly (not silently rendering half-blank prose). Day 2 UI work needs to surface MissingSlotsError as a visible "summary unavailable — fixture missing slot X" placeholder rather than empty string.
+- Mira's neutral baseline tokens are now overlaid with Blaze hex per `BLAZE_STYLE_GUIDE.md` §13. UI components may surface contrast issues (e.g., parchment-on-cream backgrounds with insufficient ratio). Run a quick contrast pass before Day 2's first screen ships.
+
+**Suggested next move (Day 2):**
+
+Start the Member profile UI. Three Members already render their full structured profile via `prisma/checkpoint.ts`; the Day 2 task is producing the actual visual surface using shadcn primitives over the `summarizeMember` registry, the orange-headed-panel pattern from `BLAZE_STYLE_GUIDE.md` §4, and Recharts for the Show-step's seasonal smoothing chart Artifact.
+
+**Follow-ups for Francisco:**
+
+- Confirm the structural pass is acceptable. If you want the snapshot generation to run for every Conversation (not just featured ones) in the demo, say so before Day 2 — adding the other 13 prior conversations is a single-line change.
+- Confirm Q-015's "deferred to post-demo" disposition; this is the right hold, but flag if you want the demo to render snapshots for stakeholder education.
+- Day 2 starts on UI. Confirm the right entry surface — Member profile (three full surfaces to build) vs banker dashboard (lighter, but lets the dropdown identity-switch land first).
+
+---
+
 *Next session entry will be appended below.*

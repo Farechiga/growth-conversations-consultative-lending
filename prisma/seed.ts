@@ -39,6 +39,11 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import {
+  summarizeMember,
+  SUMMARIZE_MEMBER_TEMPLATE_VERSION,
+  type MemberSummaryInput,
+} from "../lib/summaries";
 
 // Prisma 7 requires an explicit driver adapter. The DATABASE_URL is "file:./dev.db"
 // but better-sqlite3 wants a plain filesystem path; strip the file: prefix.
@@ -64,6 +69,7 @@ const iso = (yyyymmdd: string) => new Date(`${yyyymmdd}T12:00:00Z`);
 
 async function clear() {
   // Delete in FK-safe order: leaf tables first, root tables last.
+  await prisma.memberSummarySnapshot.deleteMany();
   await prisma.recommendation.deleteMany();
   await prisma.actionCard.deleteMany();
   await prisma.signal.deleteMany();
@@ -2303,6 +2309,83 @@ async function deriveMemberState(memberId: string) {
 }
 
 // ============================================================
+// Step 6b — MemberSummarySnapshot generation (retroactive for featured Conversations)
+//
+// In production, snapshots are written by the Conversation-save flow AFTER
+// deriveMemberState has run, capturing the prose a banker would see at that
+// moment. For the demo seed, we generate one snapshot per featured
+// Conversation per Member to populate the audit trail visibly. UI surfacing
+// of snapshots is deferred to post-demo (Q-015).
+//
+// Performance note: in v1 the templated summarizeMember runs in microseconds
+// per call. If a future version replaces templates with LLM-generated
+// summaries, the per-event cost becomes meaningful at scale (hundreds of
+// milliseconds + token spend per Conversation save) — flagged in BUILD_LOG
+// for the next architecture review.
+// ============================================================
+
+async function generateMemberSummarySnapshot(memberId: string, conversationId: string, now: Date) {
+  const member = await prisma.member.findUniqueOrThrow({
+    where: { id: memberId },
+    include: {
+      member_type: { select: { name: true } },
+      industry_family: { select: { name: true } },
+      primary_banker: { select: { display_name: true } },
+      recommendations: {
+        where: { status: { in: ["surfaced"] } },
+        orderBy: { created_at: "desc" },
+        take: 1,
+        include: { product: { select: { name: true } } },
+      },
+    },
+  });
+
+  const activeBlockerCount = await prisma.signal.count({
+    where: { member_id: memberId, active: true, type: "blocker" },
+  });
+
+  const proposal = member.recommendations[0] ?? null;
+
+  const input: MemberSummaryInput = {
+    legal_name: member.legal_name,
+    doing_business_as: member.doing_business_as,
+    member_type_name: member.member_type.name,
+    industry_family_name: member.industry_family.name,
+    tenure_started_at: member.tenure_started_at,
+    primary_banker_name: member.primary_banker.display_name,
+    active_blocker_count: activeBlockerCount,
+    active_proposal: proposal
+      ? {
+          product_name: proposal.product.name,
+          size_proposed: proposal.size_proposed,
+          response: proposal.response,
+          primary_concern: proposal.primary_concern,
+        }
+      : null,
+    last_touch_at: member.last_touch_at,
+    open_action_card_count: member.open_action_card_count,
+    active_signal_count: member.active_signal_count,
+  };
+
+  const result = summarizeMember(input, now);
+  if (!result.ok) {
+    throw new Error(
+      `summarizeMember produced MissingSlotsError for ${member.legal_name}: missing=${result.error.missing.join(", ")}`,
+    );
+  }
+
+  await prisma.memberSummarySnapshot.create({
+    data: {
+      member_id: memberId,
+      conversation_id: conversationId,
+      summary_text: result.value,
+      template_version: SUMMARIZE_MEMBER_TEMPLATE_VERSION,
+      generated_at: now,
+    },
+  });
+}
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -2352,6 +2435,19 @@ async function main() {
     await deriveMemberState(m.id);
   }
 
+  console.log("Step 6b — MemberSummarySnapshot for each featured Conversation");
+  // Featured Conversations are the most recent per Member, by design (the
+  // brief sets the demo "now" anchor at 2026-04-25 with the featured
+  // Conversations within the prior month).
+  for (const m of [members.jenny, members.northland, members.cygnus]) {
+    const featured = await prisma.conversation.findFirstOrThrow({
+      where: { member_id: m.id },
+      orderBy: { created_at: "desc" },
+      select: { id: true },
+    });
+    await generateMemberSummarySnapshot(m.id, featured.id, NOW);
+  }
+
   // Final row counts.
   const counts = {
     bankers: await prisma.banker.count(),
@@ -2369,6 +2465,7 @@ async function main() {
     signals: await prisma.signal.count(),
     actionCards: await prisma.actionCard.count(),
     recommendations: await prisma.recommendation.count(),
+    memberSummarySnapshots: await prisma.memberSummarySnapshot.count(),
   };
   console.log("\nRow counts after full seed:");
   console.table(counts);

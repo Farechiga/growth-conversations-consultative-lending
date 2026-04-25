@@ -88,6 +88,19 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default:** Keep the Prisma 7 scaffolded default (`app/generated/prisma`) for now. It is gitignored. Revisit if Next.js picks it up as routes, or if imports feel awkward.
 - **Status:** Open. Low priority; resolve naturally the first time we import the client.
 
+### Q-015 · `MemberSummarySnapshot` banker-facing UI surface
+
+- **Date logged:** 2026-04-25 (Day-1, raised at the structural-discipline pass before step 4)
+- **Question:** `MemberSummarySnapshot` persistence is implemented for audit-trail integrity (one immutable row per Conversation save, carrying the rendered prose plus the template version used). Surfacing snapshots in banker-facing UI raises questions that should not be answered ad hoc:
+  1. Template versioning — when do banker views show "this snapshot was rendered at template v1, current is v3"? Diff highlight or silent rerender?
+  2. Divergence with live state — a snapshot at conversation-save reflects the Member's state at that moment; subsequent conversations may have shifted active Signals or open ActionCards. Do banker views show the snapshot verbatim, or annotate divergences?
+  3. Regulatory hold — if a Member is under regulatory hold, are snapshots part of the held record set? Are they the *primary* record of "what the banker would have seen"?
+  4. Privacy-deletion cascade — snapshots are immutable. What happens to them when a Member exercises a deletion right under Minnesota privacy law? Hard delete? Tombstone? Tombstone + retain summary text?
+- **Why it matters:** Each of these is a multi-stakeholder decision (compliance, legal, operations, banker UX) that should not be made by build-time defaults. The persistence layer exists for audit-trail integrity regardless; the UI surface is a separate decision.
+- **Affects:** Production rollout. Demo phase: snapshots are persisted but no UI surface displays them — intentional.
+- **Conservative default for now:** Snapshots are written by the seed (and by Conversation save in production) but are not rendered in any Member profile, Insight Engine, or admin view in the demo. This proves out the persistence architecture without committing to UX semantics that need stakeholder input.
+- **Status:** Open / Deferred to post-demo discussion. Reopen with leadership and compliance before any production rollout of user-facing snapshot views.
+
 ### Q-008 · Demo data persistence model
 
 - **Date logged:** Pre-build (new for build phase)

@@ -89,9 +89,14 @@
 // Recommendation paired_with Product              (Recommendation.paired_product)
 // Recommendation surfaced_by_rule Rule            (Recommendation.rule_that_fired)
 //
-// When the LLM-facing summary layer is built (Phase 2), these verb-phrases are
-// the natural-language predicate vocabulary. Update this block whenever the
-// schema gains a new relation.
+// MemberSummarySnapshot snapshots Member          (MemberSummarySnapshot.member)
+// MemberSummarySnapshot generated_at_save_of Conversation
+//                                                 (MemberSummarySnapshot.conversation)
+//
+// The runtime registry — used by lib/summaries.ts and any future LLM-facing
+// surface — lives in lib/relation-names.ts. Keep it in sync with this block
+// (Two-File Rule). When a relation is added to the schema, both this comment
+// block and the registry must reflect it in the same commit.
 
 generator client {
   provider = "prisma-client"
@@ -556,6 +561,7 @@ model Member {
   signals                 Signal[]
   action_cards            ActionCard[]
   recommendations         Recommendation[]
+  summary_snapshots       MemberSummarySnapshot[]
 
   @@index([primary_banker_id])
   @@index([member_type_id])
@@ -580,6 +586,7 @@ model Conversation {
   growth_step_executions  GrowthStepExecution[]
   signals                 Signal[]
   origin_action_cards     ActionCard[]
+  summary_snapshots       MemberSummarySnapshot[]
 
   @@index([member_id])
   @@index([banker_id])
@@ -696,4 +703,26 @@ model Recommendation {
   created_at                  DateTime                @default(now())
 
   @@index([member_id])
+}
+
+// MemberSummarySnapshot — Persisted, immutable record of the rendered
+// Member summary at the moment of a Conversation save. Backs the audit
+// trail for what a banker would have seen at that point in time. Surfacing
+// these in banker-facing UI is deferred to post-demo (Q-015).
+//
+// One snapshot per (member, conversation) save. Snapshots are never
+// updated or deleted once written.
+model MemberSummarySnapshot {
+  id               String       @id @default(uuid())
+  member_id        String
+  member           Member       @relation(fields: [member_id], references: [id])
+  conversation_id  String
+  conversation     Conversation @relation(fields: [conversation_id], references: [id])
+  summary_text     String
+  template_version Int
+  generated_at     DateTime     @default(now())
+
+  @@unique([member_id, conversation_id])
+  @@index([member_id])
+  @@index([conversation_id])
 }
