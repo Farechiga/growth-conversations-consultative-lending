@@ -109,8 +109,10 @@
 
   /* Section divider — light cool grey. Used only for the thin horizontal
      rule between bands in the borderless typography-led layout. Per
-     BLAZE_STYLE_GUIDE §2.6. */
-  --color-blaze-rule: #d5d8db;
+     BLAZE_STYLE_GUIDE §2.6. Lightened from #D5D8DB → #E8EAEC in Sprint 1
+     review fix #2 — the rule should disappear into the page until the eye
+     is looking for it; the prior darker tone competed with content. */
+  --color-blaze-rule: #e8eaec;
 }
 
 /*
@@ -220,5 +222,11 @@
   }
   html {
     @apply font-sans;
+    /* Sprint 4 §4.1d Block B — smooth-scroll for fragment-anchored
+       arrivals (e.g., /growth-conversations/jenny#stage-resolve from a
+       Member-profile stage label click). Click-driven scrollIntoView
+       calls already pass behavior:"smooth"; this lets browser-native
+       fragment navigation match. */
+    scroll-behavior: smooth;
   }
 }

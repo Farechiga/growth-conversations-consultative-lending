@@ -78,7 +78,17 @@ export type MemberSummaryInput = {
     | {
         product_name: string;
         size_proposed: number | null;
-        response: "accepted" | "leaning_yes" | "neutral" | "leaning_no" | "declined" | "deferred";
+        response:
+          | "declined"
+          | "leaning_no"
+          | "dismissive"
+          | "skeptical"
+          | "confused"
+          | "neutral"
+          | "engaged"
+          | "leaning_yes"
+          | "committed"
+          | "funded";
         primary_concern: keyof typeof RECOMMENDATION_PRIMARY_CONCERN_LABELS | null;
       };
   last_touch_at: Date | null; // null is the signal for the initial-state variant
@@ -113,13 +123,37 @@ function formatProposalSize(size: number | null): string {
   return `a $${size.toLocaleString("en-US")} proposal`;
 }
 
-const PROPOSAL_RESPONSE_VERB: Record<MemberSummaryInput["active_proposal"] & { response: string }["response"], string> = {
-  accepted: "has accepted",
-  leaning_yes: "is leaning yes on",
-  neutral: "is neutral on",
-  leaning_no: "is leaning no on",
+// Sprint 1 review fix #4 — extended to absorb the prior
+// ArtifactShareRecord.member_reaction values. Listed in schema order
+// (weakest-negative → strongest-positive). The verb table renders
+// banker-facing prose for each value so summary templates stay clean.
+type ProposalResponse =
+  | "declined"
+  | "leaning_no"
+  | "dismissive"
+  | "skeptical"
+  | "confused"
+  | "neutral"
+  | "engaged"
+  | "leaning_yes"
+  | "committed"
+  | "funded";
+
+const PROPOSAL_RESPONSE_VERB: Record<ProposalResponse, string> = {
   declined: "declined",
-  deferred: "has deferred",
+  leaning_no: "is leaning no on",
+  dismissive: "was dismissive of",
+  skeptical: "is skeptical of",
+  confused: "remains uncertain about",
+  neutral: "is neutral on",
+  engaged: "is engaged with",
+  leaning_yes: "is leaning yes on",
+  committed: "has committed to",
+  // Sprint 2 §A.3 — `funded` is the terminal closed-won state. The
+  // template below picks up an "active and funded" rendering for this
+  // case so the resulting prose reads "Member has Working Capital LOC
+  // active and funded" rather than copy-pasting the committed verb.
+  funded: "has active and funded",
 };
 
 /**
@@ -297,7 +331,7 @@ export type RecommendationSummaryInput = {
   product_name: string;
   size_proposed: number | null;
   structure: "standard" | "phased" | "conservative_first" | "paired_with";
-  response: "accepted" | "leaning_yes" | "neutral" | "leaning_no" | "declined" | "deferred";
+  response: ProposalResponse;
   confidence_band: "low" | "medium" | "high";
   rationale_text: string;
   rationale_summary: string | null;

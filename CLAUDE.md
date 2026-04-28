@@ -10,7 +10,7 @@ If a question arises that this document does not answer, check the four design d
 
 ## 1. What this project is
 
-A standalone web demo of the Blaze Member Signals system, built to support an EVP-of-Lending follow-up at Blaze Credit Union. The demo shows three banker-facing surfaces (Meeting recap, Member profile, Insight Engine) running against a populated fixture (Jenny's Catering plus supporting Members) so the EVP can see the design in operation.
+A standalone web demo of the Blaze Member Signals system, built to support an EVP-of-Lending follow-up at Blaze Credit Union. The demo shows three banker-facing surfaces (Growth Conversations, Member profile, Insight Engine) running against a populated fixture (Jenny's Catering plus supporting Members) so the EVP can see the design in operation.
 
 Scope is the demo phase only. The pilot phase and production v1 are separate efforts with different stack decisions; do not anticipate them in demo code.
 
@@ -86,7 +86,7 @@ Always use:
 - **Their words** — not quote, phrasing, member quote
 - **Feeling** — not emotional charge, sentiment (in capture context)
 - **Follow up** — not nurture, follow-up card, future contact
-- **Meeting recap** — not Onboarding & Routing, Debrief, Capture
+- **Growth Conversations** — not Meeting Recap (renamed Sprint 2 Prompt 2 §F per DEMO_BUILD_PLAN.md v2), not Onboarding & Routing, not Debrief, not Capture
 - **Member profile** — not Member Dashboard, Account view, Member page
 - **Insight Engine** — not Patterns, Trends, Analytics
 
@@ -238,6 +238,7 @@ The complete documentation set for this project:
 **Tier 1 — Hard rules (read every session)**
 - `CLAUDE.md` (this file)
 - `OPEN_QUESTIONS.md`
+- `docs/DEMO_BUILD_PLAN.md` (strategic source of truth above this set; six sprints, multiple prompts each)
 
 **Tier 2 — Reference design (consult when relevant)**
 - `docs/design/01_Overview.docx`
@@ -245,12 +246,14 @@ The complete documentation set for this project:
 - `docs/design/03_Data_Framework.docx`
 - `docs/design/04_Module_and_Data_Flow.docx`
 - `docs/design/MEMBER_FIXTURE_BRIEF.md` (consult during fixture authoring)
+- `docs/design/INSIGHT_ENGINE_DESIGN_NOTES.md` (consult during Insight Engine work; authoritative for Insight Engine design decisions in Sprint 4 and Sprint 5)
 - `BLAZE_STYLE_GUIDE.md` (consult before any UI work)
 
 **Tier 3 — Living progress trackers**
 - `BUILD_LOG.md` (append-only chronological log)
 - `IMPLEMENTATION_STATUS.md` (verified-complete checklist)
 - `SCOPE.md` (in/out scope contract)
+- `docs/prompts/SPRINT_N_PROMPT_M.md` (executable sprint prompts; each is one self-contained handoff against the build plan)
 
 **Tier 4 — Generated and synced**
 - `prisma/schema.prisma` (single source of truth for table/column names)

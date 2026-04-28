@@ -162,7 +162,7 @@ enum Severity {
 }
 
 enum Recency {
-  acute_recent
+  recent
   ongoing
   chronic
   hypothetical_future
@@ -172,6 +172,22 @@ enum SignalConfidence {
   member_stated
   banker_inferred
   unclear
+}
+
+// Sprint 4 §4.1d Block C — TimeHorizon enum for forward-looking trigger
+// signals. Replaces `recency` semantically for Trigger Signals where the
+// banker-facing question is "when will this event hit?" rather than "how
+// recently did it become observable?". The prompt §C.1 spec uses the
+// banker-facing display labels "imminent / 3-6 months / 6-12 months /
+// 12-24 months / longer"; the enum values are identifier-safe forms of
+// those labels. The display layer (AskSection) renders the friendly
+// labels; the storage value is the identifier.
+enum TimeHorizon {
+  imminent
+  three_to_six_months
+  six_to_twelve_months
+  twelve_to_twenty_four_months
+  longer
 }
 
 enum ActionCardType {
@@ -269,6 +285,21 @@ enum ConfidenceBand {
   high
 }
 
+// Sprint 4 §4.2a Block B — provenance enum for SizingMeasurement.source.
+// Distinguishes how the value was sourced: directly from the Member's
+// statement, from the Member's own records (e.g., bank statements,
+// QuickBooks export), calculated by the banker from observable data,
+// or pulled from a market reference (e.g., industry benchmark). The
+// distinction matters for Insight Engine analytics (Sprint 5) — banker-
+// calculated values get different aggregation treatment than member-
+// stated ones.
+enum MeasurementSource {
+  member_stated
+  member_records
+  banker_calculated
+  market_reference
+}
+
 enum BankerStatus {
   active
   inactive
@@ -281,27 +312,69 @@ enum RecommendationStructure {
   paired_with
 }
 
+// RecommendationResponse — extended per Sprint 1 review fix #4.
+//
+// The schema collapse merged ArtifactShareRecord.member_reaction into this
+// enum, on the principle that the last interaction is the truest signal of
+// member state and intermediate captures of how the member reacted to
+// specific Artifacts during the conversation are subsumed by the final
+// Resolve-step response on the Recommendation. Values are ordered
+// weakest-negative → strongest-positive so analytical views can sort by
+// engagement direction.
+//
+// `accepted` (prior) renamed to `committed` to align with the Resolve-step
+// resolution_type vocabulary; `deferred` (prior) removed — a deferring
+// member is now classified by the underlying reason (`neutral`, `confused`,
+// `skeptical`).
+//
+// Value descriptions live in lib/enum-descriptions.ts under
+// RECOMMENDATION_RESPONSE_DESCRIPTIONS — required reading for any UI label
+// or summary template that surfaces this field.
 enum RecommendationResponse {
-  accepted
-  leaning_yes
-  neutral
-  leaning_no
   declined
-  deferred
+  leaning_no
+  dismissive
+  skeptical
+  confused
+  neutral
+  engaged
+  leaning_yes
+  committed
+  funded
 }
 
-enum RecommendationStatus {
-  surfaced
-  accepted
-  dismissed
-  converted_to_card
-  deferred
-}
+// RecommendationStatus enum was retired in Sprint 2 §A.2. Journey state lives
+// in `response` alone going forward — the last interaction is the truest
+// signal, and a separate status dimension created two ways to ask "where is
+// this opportunity" without consistent agreement. Edge cases:
+//   - "Paused" opportunities → handled by aging heuristics in priority logic
+//   - "Lost" opportunities → transition `response` back to `declined`; the
+//     prior `committed` state remains in the audit trail per the existing
+//     immutability discipline.
 
 // Recommendation.primary_concern — extended from Data Framework §4.4 with
-// `bank_capability` per Q-013 resolution. Value descriptions live in
-// app/lib/enum-descriptions.ts and are required reading for any UI label or
-// summary template that surfaces this field.
+// `bank_capability` per Q-013 resolution. Sprint 4 §4.2a refinement #3
+// extended the enum further with declined-context reasons so the Resolve
+// form can offer two contextual option sets:
+//
+//   Open-thread set (engaged / leaning_yes / neutral / leaning_no /
+//     skeptical / confused responses):
+//       none, rate, speed, commitment, spouse, cpa, partner, timing,
+//       bank_capability, other
+//
+//   Decline-reason set (declined / dismissive responses):
+//       rate (rendered as "Rate too high"),
+//       terms_unfavorable, going_with_competitor, no_longer_needed,
+//       timing (rendered as "Timing wrong"),
+//       does_not_qualify, bank_capability (rendered as "Doesn't trust
+//       institution"), lost_interest, found_alternative,
+//       circumstances_changed, other
+//
+// Some values appear in both sets with different banker-facing labels;
+// the form's label map (PRIMARY_CONCERN_LABELS in resolve-section.tsx)
+// resolves the contextual prose. SQLite stores the column as TEXT, so
+// this enum extension is a TS-type change only — no DDL migration is
+// required. A marker migration exists for change-history tracking.
 enum RecommendationPrimaryConcern {
   none
   rate
@@ -313,6 +386,14 @@ enum RecommendationPrimaryConcern {
   timing
   bank_capability
   other
+  // Sprint 4 §4.2a refinement #3 — decline-reason values.
+  terms_unfavorable
+  going_with_competitor
+  no_longer_needed
+  does_not_qualify
+  lost_interest
+  found_alternative
+  circumstances_changed
 }
 
 // ============================================================
@@ -333,6 +414,15 @@ model Banker {
   primary_for_members         Member[]              @relation("MemberPrimaryBanker")
   conversations_led           Conversation[]
   action_cards_owned          ActionCard[]
+  // Sprint 2 Prompt 2 §C — Recommendation ownership reverse relation.
+  recommendations_owned       Recommendation[]      @relation("RecommendationOwnedBy")
+  // Sprint 4 §A.6 — ArtifactParameterCapture authorship reverse relation.
+  parameter_captures          ArtifactParameterCapture[]
+  // Sprint 4 §A.5 — Macro authorship reverse relation (when authored
+  // internally by a Banker; external authors use authored_by_external_label).
+  authored_macros             Macro[]
+  // Sprint 4 §A.8 — Skip-confirmation reverse relation.
+  skip_confirmations          GrowthStepExecution[] @relation("SkipConfirmation")
   authored_growth_steps       GrowthStep[]          @relation("GrowthStepAuthor")
   promoted_growth_steps       GrowthStep[]          @relation("GrowthStepPromoter")
   authored_growth_tracks      GrowthTrack[]         @relation("GrowthTrackAuthor")
@@ -379,6 +469,24 @@ model Topic {
 
   @@index([canonical_tag])
   @@index([topic_type])
+}
+
+// Sprint 4 §4.2a Block B — SizingDimension reference table. Controlled
+// vocabulary for what a SizingMeasurement quantifies. Parallel in shape
+// to Topic (used by Signal) — banker-facing labels + identifier-safe
+// keys + Semantic-Discipline-required descriptions. Demo seeds ~12
+// dimensions covering the three featured Members; Pilot phase will
+// expand without schema change.
+model SizingDimension {
+  id           String              @id @default(uuid())
+  key          String              @unique
+  display_name String
+  description  String
+  created_at   DateTime            @default(now())
+
+  measurements SizingMeasurement[]
+
+  @@index([key])
 }
 
 // Product — Data Framework §5.3.
@@ -449,6 +557,12 @@ model GrowthTrack {
   id                       String          @id @default(uuid())
   name                     String          @unique
   description              String
+  // Member-specific framing of the Track's purpose, written for the banker
+  // reading a Member profile. Distinct from `description` (editor-facing,
+  // canonical for the Growth lead's track-editor view) and from
+  // ActionCard.suggested_opening (member-facing prose for outbound). Surfaces
+  // on the Suggested Next Step card. Per Sprint 1 Prompt 1 §A.3.
+  banker_facing_purpose    String?
   target_member_type_id    String
   target_member_type       MemberType      @relation("GrowthTrackTargetMemberType", fields: [target_member_type_id], references: [id])
   target_blocker_topics    Topic[]         @relation("GrowthTrackBlockerTopics")
@@ -534,6 +648,12 @@ model Artifact {
 
 model Member {
   id                      String          @id @default(uuid())
+  // Sprint 3 §B — stable, URL-safe identifier for the dynamic
+  // /members/[id] route. Lowercase, hyphenated; populated explicitly in
+  // the seed. Unique across Members. Used in place of the UUID `id`
+  // because the UUIDs regenerate on re-seed, making URLs un-bookmarkable
+  // for the demo.
+  slug                    String          @unique
   legal_name              String
   doing_business_as       String?
   industry_family_id      String
@@ -563,6 +683,7 @@ model Member {
   action_cards            ActionCard[]
   recommendations         Recommendation[]
   summary_snapshots       MemberSummarySnapshot[]
+  sizing_measurements     SizingMeasurement[]
 
   @@index([primary_banker_id])
   @@index([member_type_id])
@@ -588,6 +709,7 @@ model Conversation {
   signals                 Signal[]
   origin_action_cards     ActionCard[]
   summary_snapshots       MemberSummarySnapshot[]
+  sizing_measurements     SizingMeasurement[]
 
   @@index([member_id])
   @@index([banker_id])
@@ -596,18 +718,44 @@ model Conversation {
 
 // GrowthStepExecution — Data Framework §3.5 (sub-entity of Conversation).
 model GrowthStepExecution {
-  id                       String              @id @default(uuid())
-  conversation_id          String
-  conversation             Conversation        @relation(fields: [conversation_id], references: [id])
-  growth_step_id           String
-  growth_step              GrowthStep          @relation(fields: [growth_step_id], references: [id])
-  sequence_position        Int
-  captured_data            Json
-  executed_at              DateTime             @default(now())
+  id                          String              @id @default(uuid())
+  conversation_id             String
+  conversation                Conversation        @relation(fields: [conversation_id], references: [id])
+  // Sprint 4 §4.1c §C.3 — Approach 2: track-agnostic Ask + Size phases
+  // do not link to a specific GrowthStep (those exist only for Show /
+  // Resolve / Connect — the post-discovery, track-specific stages).
+  // growth_step_id is nullable for track-agnostic captures; step_phase
+  // carries the phase identity in those cases. For track-specific
+  // executions, both fields populate.
+  growth_step_id              String?
+  growth_step                 GrowthStep?         @relation(fields: [growth_step_id], references: [id])
+  step_phase                  StepShape?
+  sequence_position           Int
+  captured_data               Json
+  executed_at                 DateTime            @default(now())
 
-  produced_signals         Signal[]
-  produced_action_cards    ActionCard[]
-  produced_recommendation  Recommendation?
+  // Sprint 4 §A.8 — skip-state tracking for Sprint 4 Prompt 4.3's skip-
+  // handling UI. When a banker submits a later stage with this stage
+  // unfilled, the popup confirmation creates an execution row with
+  // was_skipped=true rather than a fully-captured execution. Insight
+  // Engine analytics over skip patterns depends on this shape.
+  was_skipped                 Boolean             @default(false)
+  skip_confirmed_by_banker_id String?
+  skip_confirmed_by_banker    Banker?             @relation("SkipConfirmation", fields: [skip_confirmed_by_banker_id], references: [id])
+  skip_confirmed_at           DateTime?
+  skip_reason                 String?
+
+  produced_signals            Signal[]
+  produced_action_cards       ActionCard[]
+  produced_recommendation     Recommendation?
+  produced_sizing_measurements SizingMeasurement[]
+  // Sprint 4 §A.6 — ArtifactParameterCapture reverse relation. Per the
+  // schema comment on ArtifactParameterCapture, the demo's Show-step
+  // share-record data lives in this execution's captured_data jsonb;
+  // structured parameter rows link here directly. If a future sprint
+  // promotes ArtifactShareRecord to a first-class table, the relation
+  // can be re-pointed.
+  artifact_parameter_captures ArtifactParameterCapture[]
 
   @@unique([conversation_id, sequence_position])
   @@index([conversation_id])
@@ -624,11 +772,24 @@ model Signal {
   type                        SignalType
   topic_id                    String
   topic                       Topic                 @relation(fields: [topic_id], references: [id])
-  severity                    Severity
+  // Sprint 4 §4.1d Block C — severity and recency are nullable to support
+  // per-type required-field discipline. Indecision Signals make both
+  // optional; Trigger Signals replace recency with time_horizon. Goal
+  // and Blocker Signals continue to require both, enforced at the
+  // application layer (saveAskCaptures + AskSection client validation).
+  severity                    Severity?
   their_words                 String?
-  recency                     Recency
+  recency                     Recency?
   confidence                  SignalConfidence
   active                      Boolean               @default(true)
+  // Sprint 4 §4.1d Block C — forward-looking time horizon for Trigger
+  // Signals. Goal / Blocker / Indecision Signals continue to use
+  // `recency` (recent / ongoing / chronic / hypothetical_future); Trigger
+  // Signals use `time_horizon` instead. Both fields are nullable so the
+  // capture form can enforce per-type required-field rules at the
+  // application layer rather than the schema layer (per the prompt's
+  // "validation is per-type" decision in §C.4).
+  time_horizon                TimeHorizon?
   // Optional Size-shape quantification carried inline for query convenience.
   // Originally captured inside the Size step's captured_data jsonb; mirrored here so
   // dashboards can query Signal magnitude without unpacking the execution record.
@@ -643,10 +804,70 @@ model Signal {
   // Recommendations in the seed.
   responding_recommendations  Recommendation[]      @relation("RecommendationRespondsToSignal")
 
+  // Sprint 4 §A.7 — Signal supersession for longevity tracking. When a
+  // banker re-enters Growth Conversations months later and updates a
+  // stale Signal, the new Signal record references the prior via
+  // superseded_by_signal_id and the prior is retained with its original
+  // timestamp. Audit trail preserved; current state is "active Signals
+  // not yet superseded." No supersessions in current seed (each demo
+  // Member has exactly one set of signals from their featured
+  // Conversation); Sprint 4 Prompt 4.2 will exercise this when the
+  // capture forms allow updating stale Signals.
+  superseded_by_signal_id     String?
+  superseded_by_signal        Signal?               @relation("SignalSupersession", fields: [superseded_by_signal_id], references: [id])
+  superseded_at               DateTime?
+  superseding_signals         Signal[]              @relation("SignalSupersession")
+
   @@index([member_id, active])
   @@index([conversation_id])
   @@index([topic_id])
   @@index([type])
+}
+
+// Sprint 4 §4.2a Block B — SizingMeasurement is the unit of capture for
+// the Size phase of a Growth Conversation. Tracks-agnostic by design
+// (growth_step_execution_id is nullable; the matching execution row
+// uses step_phase = "size" with growth_step_id = null per the §4.1c
+// architectural decision).
+//
+// Mirrors Signal's supersession discipline: when a banker re-enters a
+// Growth Conversation and updates a measurement (e.g., "the slow-season
+// gap is now $52K, not $48K"), the prior row is retained immutably and
+// the new row references it via superseded_by_id. Active state is
+// "rows where active = true and superseded_by_id is null."
+//
+// Confidence is stored as String (not enum) for flexibility — the demo's
+// dropdown options are { high | moderate | low | banker_estimate }, but
+// pilot phase may extend without a migration. Q-036 in OPEN_QUESTIONS
+// tracks "should Confidence become required?"; left optional for now.
+model SizingMeasurement {
+  id                          String                  @id @default(uuid())
+  member_id                   String
+  member                      Member                  @relation(fields: [member_id], references: [id])
+  conversation_id             String
+  conversation                Conversation            @relation(fields: [conversation_id], references: [id])
+  growth_step_execution_id    String?
+  growth_step_execution       GrowthStepExecution?    @relation(fields: [growth_step_execution_id], references: [id])
+  dimension_id                String
+  dimension                   SizingDimension         @relation(fields: [dimension_id], references: [id])
+  magnitude                   Float
+  unit                        String
+  frequency                   String?
+  source                      MeasurementSource
+  their_words                 String?
+  confidence                  String?
+  time_period                 String?
+  methodology_note            String?
+  active                      Boolean                 @default(true)
+  superseded_by_id            String?
+  superseded_by               SizingMeasurement?      @relation("SizingMeasurementSupersession", fields: [superseded_by_id], references: [id])
+  superseded_at               DateTime?
+  superseding_measurements    SizingMeasurement[]     @relation("SizingMeasurementSupersession")
+  captured_at                 DateTime                @default(now())
+
+  @@index([member_id, active])
+  @@index([conversation_id])
+  @@index([dimension_id])
 }
 
 model ActionCard {
@@ -702,16 +923,49 @@ model Recommendation {
   // app/lib/enum-descriptions.ts so summary templates and UI labels render prose,
   // not bare tokens.
   primary_concern             RecommendationPrimaryConcern?
-  status                      RecommendationStatus    @default(surfaced)
+  // status field retired in Sprint 2 §A.2 — see comment on the now-deleted
+  // RecommendationStatus enum. Lifecycle position is read from `response`
+  // (committed/funded indicate later-stage; declined indicates terminal-no).
   rule_id_that_fired          String?
   rule_that_fired             Rule?                   @relation(fields: [rule_id_that_fired], references: [id])
+  // Sprint 2 Prompt 2 §C — opportunity ownership. Distinct from
+  // Member.primary_banker (the relationship banker); ownership routes a
+  // specific opportunity to a specialist when the product type warrants
+  // it. The demo's example: Cygnus's CRE opportunity is owned by Marcus
+  // Webb (CRE specialist) even though Scott Brynjolffson remains the
+  // primary banker. Nullable for back-compat with existing rows; the
+  // application sets this to Member.primary_banker when not specified.
+  owned_by_id                 String?
+  owned_by                    Banker?                 @relation("RecommendationOwnedBy", fields: [owned_by_id], references: [id])
   their_words                 String?
   // One-line summary for progressive disclosure on the Member profile (Q-018).
   // Authored alongside rationale_text at proposal-creation time; the full
   // rationale_text remains available via the "View full rationale" expand.
   // Convention: ~200 chars. Not enforced at the DB layer.
   rationale_summary           String?
+  // Sprint 4 §A.1 — structured range capture (Sprint 3 review §3a). Both
+  // nullable for migration; expected populated when captured. Display
+  // layer renders a single value when size_low === size_high ("$75K") and
+  // a range when size_low < size_high ("$4M-$7M"). Float type mirrors the
+  // existing size_proposed for consistency with existing helpers; the
+  // prompt's @db.Decimal(15, 2) is a Postgres-specific attribute that
+  // doesn't apply to SQLite, and the dollars() formatter takes number.
+  size_low                    Float?
+  size_high                   Float?
+  // Sprint 4 §A.2 — sub-type within a Product family (Sprint 3 review §3b).
+  // Free-text for demo phase; Pilot phase may convert to enum or Product
+  // variant relation. Examples: "service_van" (Vehicle/Fleet Loan) /
+  // "manufacturing_facility" (Owner-Occupied CRE) / "seasonal_smoothing"
+  // (Working Capital LOC).
+  product_subtype             String?
   created_at                  DateTime                @default(now())
+  // Sprint 2 Prompt 2 §B — Prisma's @updatedAt directive auto-updates this
+  // column on every mutation. Used by computeSuggestedNextStep to break
+  // ties when a Member has multiple active engaged Recommendations: the
+  // most recently engaged is the one to surface. Demo doesn't exercise
+  // multi-engagement (one engaged Rec per Member), but the logic is now
+  // honest about what "most recently engaged" means.
+  updated_at                  DateTime                @default(now()) @updatedAt
 
   // The active Signals this Recommendation responds to (Q-016). Implicit m-n
   // join table _RecommendationRespondsToSignal. Populated for the three
@@ -744,4 +998,93 @@ model MemberSummarySnapshot {
   @@unique([member_id, conversation_id])
   @@index([member_id])
   @@index([conversation_id])
+}
+
+// ============================================================
+// Sprint 4 §A.5 — Macro entity.
+//
+// A Macro is a banker-authored or external-research-authored briefing on a
+// market condition, regulatory shift, or sector pattern that is currently
+// affecting a defined set of Member Types. Macros surface in three places:
+//   1. Member profile context banner (when a Member's Member Type matches
+//      a current Macro)
+//   2. Insight Engine Macro context tab (Sprint 5 work)
+//   3. Growth Conversations Ask phase prompts (Sprint 4 Prompt 4.2 work)
+//
+// Authorship is dual-mode: an internal Banker (via authored_by_banker_id)
+// or an external label (e.g., "Federal Reserve Bank of Minneapolis
+// research") via authored_by_external_label. The schema supports both.
+//
+// Array fields (affected_industry_families, affected_member_types,
+// evidence_links, related_topics) are stored as Json arrays in SQLite —
+// Prisma's String[] is Postgres-only. Each Json array is a list of string
+// IDs (or URLs for evidence_links). The application layer handles
+// serialization.
+// ============================================================
+
+model Macro {
+  id                          String     @id @default(cuid())
+  title                       String
+  summary                     String
+  authored_by_banker_id       String?
+  authored_by_banker          Banker?    @relation(fields: [authored_by_banker_id], references: [id])
+  authored_by_external_label  String?
+  authored_at                 DateTime
+  effective_period_start      DateTime
+  effective_period_end        DateTime?  // Null means "still effective"
+  // affected_industry_families: Json array of IndustryFamily.id strings.
+  affected_industry_families  Json
+  // affected_member_types: Json array of MemberType.id strings.
+  affected_member_types       Json
+  recommended_response        String
+  // evidence_links: Json array of URL strings.
+  evidence_links              Json
+  // related_topics: Json array of Topic.id strings.
+  related_topics              Json
+  created_at                  DateTime   @default(now())
+  updated_at                  DateTime   @updatedAt
+
+  @@index([authored_by_banker_id])
+}
+
+// ============================================================
+// Sprint 4 §A.6 — ArtifactParameterCapture entity (Sprint 3 review §3c).
+//
+// Structured parameter capture for Show-step Artifact rendering. Each row
+// represents one parameter the banker (or auto-fill system) supplied to
+// the Artifact's parameter_schema, plus the provenance of that value.
+//
+// Note on relation target: the prompt names ArtifactShareRecord as the
+// linked entity. ArtifactShareRecord doesn't exist as a first-class
+// entity in the demo schema — Sprint 1 chose to keep share-record data
+// in GrowthStepExecution.captured_data jsonb to avoid a second
+// persistence path. So ArtifactParameterCapture links to the Show-step
+// GrowthStepExecution directly. If a future sprint promotes
+// ArtifactShareRecord to a first-class table, the relation can be
+// re-pointed; the schema shape and the provenance enum stay.
+// ============================================================
+
+model ArtifactParameterCapture {
+  id                          String              @id @default(cuid())
+  growth_step_execution_id    String
+  growth_step_execution       GrowthStepExecution @relation(fields: [growth_step_execution_id], references: [id])
+  parameter_name              String
+  parameter_value             String
+  parameter_provenance        ParameterProvenance
+  captured_at                 DateTime            @default(now())
+  captured_by_banker_id       String
+  captured_by_banker          Banker              @relation(fields: [captured_by_banker_id], references: [id])
+
+  @@index([growth_step_execution_id])
+  @@index([captured_by_banker_id])
+}
+
+// Sprint 4 §A.6 — provenance enum. Value descriptions live in
+// lib/enum-descriptions.ts → PARAMETER_PROVENANCE_DESCRIPTIONS so summary
+// templates and UI labels render banker-facing prose, not bare tokens.
+enum ParameterProvenance {
+  member_profile
+  captured_signal
+  banker_assumption
+  member_stated_in_followup
 }

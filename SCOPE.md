@@ -17,7 +17,7 @@ The demo is **not** a pilot, not production, and not connected to any real Blaze
 The demo phase is complete when **all** of the following are true:
 
 1. A deployed URL exists (Vercel) that any invited Blaze stakeholder can visit in a browser.
-2. The three modules — Meeting recap, Member profile, Insight Engine — are all built and working against the seed fixture.
+2. The three modules — Growth Conversations, Member profile, Insight Engine — are all built and working against the seed fixture.
 3. **Three full-fidelity Members**, one per growth stage, are fully populated and render end-to-end without errors:
    - **Jenny's Catering** — Small Caterer · Starting (canonical; already designed)
    - **An HVAC company** — Trades & Construction · Growing (design brief pending from Francisco before fixture authoring)
@@ -36,13 +36,14 @@ The demo phase is complete when **all** of the following are true:
 
 ### 3.1 Modules (three required surfaces)
 
-**Meeting recap**
-- Banker selects a Member, then either a suggested Growth track or the fallback path
-- Growth track execution: presents each Growth step in sequence with its capture form
+**Growth Conversations** (renamed from Meeting Recap per DEMO_BUILD_PLAN.md v2 §10)
+- Two entry paths: from a Member profile (member prefilled) or from the standalone module (banker selects via Member lookup)
+- Single scrolling page with all stages visible (Ask · Size · Show · Resolve · Decision pending · Funded), anchor progress bar on the right
+- Track-agnostic Ask + Size phases (discovery captures that surface Signals which the rule engine matches to a Track); Show + Resolve track-specific
 - Each Growth step's capture form matches the capture schema for its shape (Ask, Size, Show, Propose, Resolve, Connect)
-- Real-time preview panel showing what records will be created on save
-- Save commits one Conversation, all Growth step executions, and any produced Signals, ActionCards, Recommendations, Artifact share records
-- Fallback path: simpler chip-tap form for unstructured debrief
+- Stage-by-stage save commits that stage's GrowthStepExecution + produced Signals/ActionCards/Recommendations
+- Signal longevity awareness: prior Ask + Size captures visible with timestamps when re-entering; banker can update stale captures with audit trail preserving prior state
+- Skip handling: per-stage checkbox + popup confirmation; skipped state captured in schema for analytics
 
 **Member profile**
 - Six bands: identity strip, active state summary, active signals, active proposals, open work, history
@@ -186,8 +187,8 @@ A demo viewer (the EVP, a banker, a stakeholder) should be able to:
 
 1. **Open the demo URL** and immediately see a banker dashboard with a list of recent conversations and pending work for the default banker identity.
 2. **Click into Jenny's Catering** and see a complete Member profile with all six bands populated, including active signals with magnitude data ("$12K quarterly impact"), the active proposal, the open de-risking ActionCard, and a history of conversations.
-3. **Click "Run Growth track"** from Jenny's profile and execute the four-step seasonal cash flow track end-to-end. The Show step renders an actual chart parameterized with Jenny's data.
-4. **Save the Meeting recap** and see the new Conversation, Signals, and ActionCards immediately reflect on Jenny's Member profile.
+3. **Click "Run Growth track"** from Jenny's profile and enter the Growth Conversations module (single scrolling page with all stages visible, anchor progress bar, stage-by-stage save). Capture content through the Ask · Size · Show · Resolve sequence with the Show step rendering the seasonal smoothing chart parameterized with Jenny's data.
+4. **Save Growth Conversations** stage-by-stage (or via the final review screen) and see the new Conversation, GrowthStepExecutions, Signals, ActionCards, and Recommendation immediately reflect on Jenny's Member profile.
 5. **Switch banker identity** to a CRE specialist and see only the ActionCards where they are the owner, plus Members with active handoffs to them.
 6. **Switch banker identity** to the Growth lead and see (in the Insight Engine) the six analytical views populated with cross-member data.
 7. **Open the Insight Engine** as any banker, filter by Member Type or growth stage, and see the three full-fidelity Members (Jenny's Catering, the HVAC company, the biotech manufacturer) contributing to rolled-up patterns across stages.
@@ -208,7 +209,7 @@ If the build runs materially over budget (e.g., approaching three weeks), pause 
 Time budget breakdown (approximate):
 - Days 1-2: Project scaffolding, Prisma schema, basic seed data
 - Days 3-5: Member profile (the most data-touching surface; proves the model)
-- Days 6-8: Meeting recap (the most interaction-dense surface; proves the flow)
+- Days 6-8: Growth Conversations (the most interaction-dense surface; proves the flow) — note: Sprint 4 in DEMO_BUILD_PLAN.md v2 expanded this to 6-8 days as a single sprint
 - Days 9-11: Insight Engine (the most aggregation-heavy surface; proves the rollup logic)
 - Days 12-14: Polish, additional fixture content, deployment, demo walkthrough validation
 

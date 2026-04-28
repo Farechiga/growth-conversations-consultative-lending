@@ -140,9 +140,9 @@ async function ruleEngine(memberId: string) {
   const m = await prisma.member.findUniqueOrThrow({ where: { id: memberId }, select: { id: true, member_type_id: true, core_sync_state: true } });
   const activeSignals = await prisma.signal.findMany({ where: { member_id: memberId, active: true }, select: { topic_id: true } });
   const heldRaw = (m.core_sync_state as { products_held: { product_id: string }[] }).products_held;
-  const productsHeld = await Promise.all(heldRaw.map(async (p) => {
+  const productsHeld: { product_subcategory: string }[] = await Promise.all(heldRaw.map(async (p) => {
     const pr = await prisma.product.findUnique({ where: { id: p.product_id }, select: { subcategory: true } });
-    return pr ? { product_subcategory: pr.subcategory } : null;
+    return pr ? { product_subcategory: pr.subcategory as string } : null;
   })).then((arr) => arr.filter((x): x is { product_subcategory: string } => x !== null));
 
   const rules = await prisma.rule.findMany({ include: { output_growth_tracks: { select: { id: true, name: true } } } });

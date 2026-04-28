@@ -69,7 +69,12 @@ const iso = (yyyymmdd: string) => new Date(`${yyyymmdd}T12:00:00Z`);
 
 async function clear() {
   // Delete in FK-safe order: leaf tables first, root tables last.
+  // Sprint 4 §A — new tables added; clear ahead of MemberSummarySnapshot
+  // since they're independent leaves.
+  await prisma.artifactParameterCapture.deleteMany();
+  await prisma.macro.deleteMany();
   await prisma.memberSummarySnapshot.deleteMany();
+  await prisma.sizingMeasurement.deleteMany();
   await prisma.recommendation.deleteMany();
   await prisma.actionCard.deleteMany();
   await prisma.signal.deleteMany();
@@ -83,6 +88,7 @@ async function clear() {
   await prisma.rule.deleteMany();
   await prisma.memberType.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.sizingDimension.deleteMany();
   await prisma.topic.deleteMany();
   await prisma.industryFamily.deleteMany();
   await prisma.banker.deleteMany();
@@ -378,6 +384,136 @@ async function seedTopics() {
     indecisionAuthority,
     indecisionInformation,
     indecisionOutcome,
+  };
+}
+
+// ============================================================
+// Step 1c.5 — Sizing dimensions (Sprint 4 §4.2a Block B)
+//
+// Reference vocabulary for what a SizingMeasurement quantifies. Demo
+// seeds 12 dimensions covering the three featured Members; pilot phase
+// will expand without schema change. Descriptions are required by
+// Semantic Discipline — every reference entity carries one. Dimension
+// keys are identifier-safe; display_name is what bankers see in the
+// Size form's Topic / dimension dropdown.
+// ============================================================
+
+async function seedSizingDimensions() {
+  // Working-capital / cash-flow dimensions (Jenny + cross-Member)
+  const slowSeasonRevenueGap = await prisma.sizingDimension.create({
+    data: {
+      key: "slow_season_revenue_gap",
+      display_name: "Slow-season revenue gap",
+      description:
+        "Dollar amount by which slow-season revenue falls short of the fixed-cost baseline. Captured per quarter or per month depending on the rhythm of the Member's business cycle. Drives working capital line sizing.",
+    },
+  });
+  const customerPaymentExtension = await prisma.sizingDimension.create({
+    data: {
+      key: "customer_payment_extension",
+      display_name: "Customer payment extension",
+      description:
+        "Average number of days customers pay beyond invoiced terms. Higher values indicate working capital stress driven by receivables timing rather than absolute revenue shortfall. Distinct from slow_season_revenue_gap.",
+    },
+  });
+  const fixedOverheadBaseline = await prisma.sizingDimension.create({
+    data: {
+      key: "fixed_overhead_baseline",
+      display_name: "Fixed overhead baseline",
+      description:
+        "Monthly fixed costs the Member must cover regardless of revenue (rent, payroll, insurance, equipment leases). Provides the floor against which slow-season gap and capacity utilization are sized.",
+    },
+  });
+  const seasonalRevenueSwing = await prisma.sizingDimension.create({
+    data: {
+      key: "seasonal_revenue_swing",
+      display_name: "Seasonal revenue swing",
+      description:
+        "Magnitude of revenue variation between peak and trough quarters, expressed as a percentage of peak revenue. Used to dimension the working-capital cushion needed to bridge the trough.",
+    },
+  });
+  const workingCapitalCycleDays = await prisma.sizingDimension.create({
+    data: {
+      key: "working_capital_cycle_days",
+      display_name: "Working capital cycle (days)",
+      description:
+        "Days from cash outflow (paying suppliers, payroll) to cash inflow (collecting receivables). Longer cycles indicate higher working capital needs at any given revenue level.",
+    },
+  });
+
+  // Capacity / fleet dimensions (Northland + cross-Member)
+  const declinedWorkVolume = await prisma.sizingDimension.create({
+    data: {
+      key: "declined_work_volume",
+      display_name: "Declined work volume",
+      description:
+        "Dollar volume of work declined per period due to capacity constraints (insufficient trucks, technicians, or production hours). Direct sizing input for fleet expansion or capacity-add financing.",
+    },
+  });
+  const revenuePerTruck = await prisma.sizingDimension.create({
+    data: {
+      key: "revenue_per_truck",
+      display_name: "Revenue per truck",
+      description:
+        "Average annualized revenue per service vehicle. Combined with declined work volume to size fleet expansion: declined_volume / revenue_per_truck approximates the number of additional vehicles justified.",
+    },
+  });
+  const fleetUtilizationRate = await prisma.sizingDimension.create({
+    data: {
+      key: "fleet_utilization_rate",
+      display_name: "Fleet utilization rate",
+      description:
+        "Percentage of available service hours that are actually billed. High utilization (>85%) with declined work indicates capacity constraint; low utilization indicates demand or scheduling problems instead.",
+    },
+  });
+  const serviceRadiusCapacity = await prisma.sizingDimension.create({
+    data: {
+      key: "service_radius_capacity",
+      display_name: "Service radius capacity",
+      description:
+        "Geographic reach the current fleet can profitably cover (in miles or counties). Constrains where the Member can accept work; expansion increases this radius.",
+    },
+  });
+
+  // Manufacturing / capital-event dimensions (Cygnus + cross-Member)
+  const capacityUtilizationRate = await prisma.sizingDimension.create({
+    data: {
+      key: "capacity_utilization_rate",
+      display_name: "Capacity utilization rate",
+      description:
+        "Percentage of production capacity currently being used. Sustained high utilization (>90%) combined with growth commitments is the signal for capacity-expansion financing.",
+    },
+  });
+  const customerConcentrationPercentage = await prisma.sizingDimension.create({
+    data: {
+      key: "customer_concentration_percentage",
+      display_name: "Customer concentration",
+      description:
+        "Share of revenue concentrated in the top customer (or top 3). High concentration is both a credit risk factor and an opportunity signal — large customer growth commitments often trigger capacity expansion.",
+    },
+  });
+  const productionThroughputTarget = await prisma.sizingDimension.create({
+    data: {
+      key: "production_throughput_target",
+      display_name: "Production throughput target",
+      description:
+        "Targeted production output (units, tons, or batches per period) the Member is committing to deliver. Anchors capacity-expansion sizing against contractual obligations rather than aspirational growth.",
+    },
+  });
+
+  return {
+    slowSeasonRevenueGap,
+    customerPaymentExtension,
+    fixedOverheadBaseline,
+    seasonalRevenueSwing,
+    workingCapitalCycleDays,
+    declinedWorkVolume,
+    revenuePerTruck,
+    fleetUtilizationRate,
+    serviceRadiusCapacity,
+    capacityUtilizationRate,
+    customerConcentrationPercentage,
+    productionThroughputTarget,
   };
 }
 
@@ -748,6 +884,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
   // Jenny's Catering — products held: Business Checking, Business Visa
   const jenny = await prisma.member.create({
     data: {
+      slug: "jenny",
       legal_name: "Jenny's Catering LLC",
       doing_business_as: "Jenny's Catering",
       industry_family_id: industryFamilies.eventDriven.id,
@@ -798,6 +935,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
   // Northland Heating & Cooling — products held: Business Checking, Business Visa, Equipment Loan
   const northland = await prisma.member.create({
     data: {
+      slug: "northland",
       legal_name: "Northland Heating & Cooling Inc.",
       doing_business_as: "Northland HVAC",
       industry_family_id: industryFamilies.tradesConstruction.id,
@@ -860,6 +998,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
   // Cygnus Bioscience — products held: Business Checking + Treasury, Commercial Credit Card, Working Capital LOC
   const cygnus = await prisma.member.create({
     data: {
+      slug: "cygnus",
       legal_name: "Cygnus Bioscience Inc.",
       doing_business_as: "Cygnus Bioscience",
       industry_family_id: industryFamilies.specialtyManufacturing.id,
@@ -1088,11 +1227,15 @@ const SIZE_CAPTURE_SCHEMA = {
 const SHOW_CAPTURE_SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   type: "object",
-  required: ["artifact_id", "parameters_used", "member_reaction", "shared_afterward"],
+  // member_reaction removed in Sprint 1 review fix #4 — the schema collapse
+  // moved that signal canonically onto Recommendation.response. The Show
+  // step now captures only how the artifact was rendered and whether it was
+  // sent as takeaway; how the member ultimately responded is the
+  // Recommendation's response field, captured at Resolve-step closure.
+  required: ["artifact_id", "parameters_used", "shared_afterward"],
   properties: {
     artifact_id: { type: "string" },
     parameters_used: { type: "object" },
-    member_reaction: { type: "string", enum: ["engaged", "skeptical", "already_knew", "confused", "missed_it"] },
     followup_questions_asked: { type: "array", items: { type: "string" } },
     shared_afterward: { type: "boolean" },
     their_words: { type: "string" },
@@ -1383,6 +1526,8 @@ async function seedGrowthTracks(
       name: "Smooth seasonal cash flow with LOC for small caterer",
       description:
         "Surfaces seasonal cash flow stress for small caterers, quantifies the gap, renders a parameterized smoothing chart, and closes with a sized LOC proposal. Designed for owner-operator catering businesses in their first three years where seasonality is the dominant cash flow shape.",
+      banker_facing_purpose:
+        "Walk Jenny through how a $75K line of credit would smooth her slow months and capture revenue she's currently leaving on the table during winter.",
       target_member_type: { connect: { id: memberTypes.smallCatererStarting.id } },
       target_blocker_topics: { connect: [{ id: topics.blockerSeasonal.id }] },
       author: { connect: { id: bankers.priya.id } },
@@ -1405,6 +1550,8 @@ async function seedGrowthTracks(
       name: "Unlock growth capacity with fleet financing",
       description:
         "Surfaces capacity constraint for growing trades businesses, quantifies declined work, renders a fleet ROI projection, and closes with a sized vehicle/fleet loan proposal. Designed for HVAC, electrical, plumbing, and similar trades businesses that have proven their model and are constrained by execution capacity rather than demand.",
+      banker_facing_purpose:
+        "Walk Dan through how financing two new trucks would let him capture the ~70 service calls he's been turning away each peak season.",
       target_member_type: { connect: { id: memberTypes.hvacGrowing.id } },
       target_blocker_topics: { connect: [{ id: topics.blockerCapacity.id }] },
       author: { connect: { id: bankers.priya.id } },
@@ -1427,6 +1574,8 @@ async function seedGrowthTracks(
       name: "Earn the capital event with the right team in the room",
       description:
         "Surfaces the capital event evaluation for established specialty manufacturers, discovers the customer-volume or qualification driver, demonstrates Blaze's coordinated commercial banking capability via the partnership map, and hands off to the CRE specialist before any formal RFP starts. Designed to address the recurring failure mode where established manufacturers default to regional commercial banks for capital events because their primary credit union 'isn't really set up for that'.",
+      banker_facing_purpose:
+        "Bring Marcus into the conversation early — Margaret's leadership team is moving on a $4-7M expansion and Blaze should be the bank that earns this deal.",
       target_member_type: { connect: { id: memberTypes.specialtyManufacturerEstablished.id } },
       target_trigger_topics: {
         connect: [
@@ -1643,7 +1792,7 @@ async function seedJennyConversations(
         topic_id: topics.blockerSeasonal.id,
         severity: "painful",
         their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
-        recency: "acute_recent",
+        recency: "recent",
         confidence: "member_stated",
       },
       executed_at: iso("2026-04-08"),
@@ -1659,7 +1808,7 @@ async function seedJennyConversations(
       topic_id: topics.blockerSeasonal.id,
       severity: "painful",
       their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
-      recency: "acute_recent",
+      recency: "recent",
       confidence: "member_stated",
       active: true,
       captured_at: iso("2026-04-08"),
@@ -1709,7 +1858,6 @@ async function seedJennyConversations(
           monthly_high: 95000,
           proposed_loc_size: 75000,
         },
-        member_reaction: "engaged",
         followup_questions_asked: ["size", "rate", "flexibility"],
         shared_afterward: true,
         their_words: "this is exactly what I needed to see — wow",
@@ -1732,8 +1880,17 @@ async function seedJennyConversations(
       confidence_band: "high",
       response: "leaning_yes",
       primary_concern: "spouse",
-      status: "surfaced",
+      // Sprint 4 §A.3 — structured size capture (Sprint 3 review §3a).
+      // size_low === size_high → display layer renders "$75K" (single value).
+      size_low: 75000,
+      size_high: 75000,
+      // Sprint 4 §A.3 — product sub-type within Working Capital LOC family.
+      product_subtype: "seasonal_smoothing",
       rule_id_that_fired: rules.rule1Id,
+      // Sprint 2 Prompt 2 §C — opportunity ownership. Jenny's relationship
+      // banker (Scott) also owns the LOC opportunity — no specialist
+      // handoff for this product. Demo case for owner === primary_banker.
+      owned_by_id: bankers.scott.id,
       responds_to_signals: {
         connect: [
           { id: seasonalSignal.id },
@@ -1742,6 +1899,7 @@ async function seedJennyConversations(
       },
       their_words: "this is exactly what I needed to see — wow",
       created_at: iso("2026-04-08"),
+      updated_at: iso("2026-04-08"),
     },
   });
 
@@ -1772,7 +1930,7 @@ async function seedJennyConversations(
       topic_id: topics.indecisionAuthority.id,
       severity: "manageable",
       their_words: "I want to talk to my husband before we commit to anything this size",
-      recency: "acute_recent",
+      recency: "recent",
       confidence: "member_stated",
       active: true,
       captured_at: iso("2026-04-08"),
@@ -1989,7 +2147,6 @@ async function seedNorthlandConversations(
           financing_term_months: 60,
           financing_rate_pct: 7.5,
         },
-        member_reaction: "engaged",
         followup_questions_asked: ["structure_options", "rate", "speed_of_approval"],
         shared_afterward: true,
         their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
@@ -2012,10 +2169,19 @@ async function seedNorthlandConversations(
       confidence_band: "high",
       response: "leaning_yes",
       primary_concern: "cpa",
-      status: "surfaced",
+      // Sprint 4 §A.3 — structured size capture (firm size).
+      size_low: 180000,
+      size_high: 180000,
+      // Two service vehicles for a residential/light-commercial trades fleet.
+      product_subtype: "service_van",
       rule_id_that_fired: rules.rule2Id,
+      // Sprint 2 Prompt 2 §C — Northland's fleet loan also owned by Scott
+      // (Northland's primary banker); no specialist handoff for fleet
+      // financing.
+      owned_by_id: bankers.scott.id,
       their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
       created_at: iso("2026-04-15"),
+      updated_at: iso("2026-04-15"),
       responds_to_signals: {
         connect: [
           { id: capSignal.id },
@@ -2052,7 +2218,7 @@ async function seedNorthlandConversations(
       topic_id: topics.indecisionInformation.id,
       severity: "manageable",
       their_words: "I need to run the numbers by my accountant before I commit to something this size",
-      recency: "acute_recent",
+      recency: "recent",
       confidence: "member_stated",
       active: true,
       captured_at: iso("2026-04-15"),
@@ -2297,7 +2463,6 @@ async function seedCygnusConversations(
           current_blaze_relationships: ["treasury", "loc"],
           cre_specialist_id: bankers.marcus.id,
         },
-        member_reaction: "engaged",
         followup_questions_asked: ["timeline_for_decision", "blaze_capacity_for_deal_size", "marcus_webb_background"],
         shared_afterward: false,
         their_words: "this is the conversation I've been wanting to have with you",
@@ -2320,10 +2485,24 @@ async function seedCygnusConversations(
       confidence_band: "medium",
       response: "leaning_yes",
       primary_concern: "bank_capability",
-      status: "surfaced",
+      // Sprint 4 §A.3 — structured range capture (Sprint 3 review §3a).
+      // size_low < size_high → display layer renders "$4M-$7M" (range).
+      // The legacy size_proposed field stays null for this Recommendation
+      // since the range is the truer capture; the rationale prose carries
+      // the size context.
+      size_low: 4000000,
+      size_high: 7000000,
+      product_subtype: "manufacturing_facility",
       rule_id_that_fired: rules.rule3Id,
+      // Sprint 2 Prompt 2 §C — Cygnus's CRE opportunity is owned by Marcus
+      // Webb (CRE specialist), distinct from the Member's primary banker
+      // (Scott Brynjolffson). The architecturally important demo case:
+      // ownership routes specialty product opportunities to the right
+      // expert while the relationship banker remains the primary contact.
+      owned_by_id: bankers.marcus.id,
       their_words: "this is the conversation I've been wanting to have with you",
       created_at: iso("2026-04-21"),
+      updated_at: iso("2026-04-21"),
       responds_to_signals: {
         connect: [
           { id: cygnusCapacityEvalSignal.id },
@@ -2437,7 +2616,12 @@ async function generateMemberSummarySnapshot(memberId: string, conversationId: s
       industry_family: { select: { name: true } },
       primary_banker: { select: { display_name: true } },
       recommendations: {
-        where: { status: { in: ["surfaced"] } },
+        // Sprint 2 §A.2 — status field retired; gate on response instead.
+        // Mid-journey responses (engaged through committed) represent
+        // active opportunities the snapshot prose should mention.
+        where: {
+          response: { in: ["engaged", "leaning_yes", "neutral", "leaning_no", "committed"] },
+        },
         orderBy: { created_at: "desc" },
         take: 1,
         include: { product: { select: { name: true } } },
@@ -2491,6 +2675,102 @@ async function generateMemberSummarySnapshot(memberId: string, conversationId: s
 }
 
 // ============================================================
+// Step 7 — Macros (Sprint 4 §B).
+//
+// Three sample Macros per the prompt's §B and per
+// INSIGHT_ENGINE_DESIGN_NOTES.md §3. Each Macro affects exactly one of
+// the demo's three Member Types so the Macro context banner (Prompt 4.1b
+// work) has something to surface for each Member profile.
+//
+// Authorship: external_label is used for all three demo Macros — Marcus
+// Wei (Chief Economist) and Sarah Chen (Sector Specialist) aren't seeded
+// as Banker entities in this demo, and adding them as Banker rows would
+// inflate the banker dropdown with non-relationship-banker identities.
+// Logged as Q-023 in OPEN_QUESTIONS for Pilot-phase reconsideration.
+//
+// Affected entities (industry_families / member_types / topics) are stored
+// as Json arrays of ID strings since SQLite doesn't support String[].
+// ============================================================
+
+async function seedMacros(
+  industryFamilies: IndustryFamilies,
+  memberTypes: MemberTypes,
+  topics: Topics,
+) {
+  // Macro 1 — Q3 supplier payment compression (affects Small Caterer · Starting)
+  await prisma.macro.create({
+    data: {
+      title: "Q3 supplier payment compression — Small Caterers",
+      summary:
+        "Small caterers across the metro are reporting 20-30% extension in customer payment terms during Q3 2025 through Q1 2026. Driven by tightened working capital across customers in the corporate hospitality segment, particularly mid-sized firms responding to elevated cost-of-capital. Members exposed to corporate event catering are most affected.",
+      authored_by_external_label: "Marcus Wei (Chief Economist)",
+      authored_at: iso("2026-04-12"),
+      effective_period_start: iso("2026-04-12"),
+      effective_period_end: null, // Still effective
+      affected_industry_families: [industryFamilies.eventDriven.id],
+      affected_member_types: [memberTypes.smallCatererStarting.id],
+      recommended_response:
+        "Surface seasonal cash flow stress during Ask phase. Quantify customer-payment-extension impact in Size phase. Working Capital LOC Track is well-suited; size at one quarter of slow-season revenue gap. Reference this Macro in Suggested opening to the Member as part of the conversational on-ramp.",
+      evidence_links: [
+        "https://www.minneapolisfed.org/research/srr/q3-2025-payments-compression",
+        "https://blaze-internal.example.com/research/2026-04-12-small-caterer-cash-flow",
+      ],
+      related_topics: [
+        topics.blockerSeasonal.id,
+        topics.blockerReceivables.id,
+        topics.goalCashFlowSmoothing.id,
+      ],
+    },
+  });
+
+  // Macro 2 — Light commercial fleet ROI window (affects HVAC & Trades · Growing)
+  await prisma.macro.create({
+    data: {
+      title: "Light commercial fleet ROI window — HVAC & Trades",
+      summary:
+        "Vehicle and equipment financing rates are at a 24-month low; meanwhile capacity-constrained HVAC and trades businesses are reporting elevated declined-call rates from limited fleet capacity. The combination creates a roughly 18-24 month ROI window where financed fleet expansion captures previously-declined revenue meaningfully faster than its debt service. Window expected to close in late Q3 2026 as financing rates normalize upward.",
+      authored_by_external_label: "Sarah Chen (Sector Specialist, Skilled Trades)",
+      authored_at: iso("2026-04-10"),
+      effective_period_start: iso("2026-04-10"),
+      effective_period_end: iso("2026-09-30"), // Window expected to close
+      affected_industry_families: [industryFamilies.tradesConstruction.id],
+      affected_member_types: [memberTypes.hvacGrowing.id],
+      recommended_response:
+        "Surface capacity-vs-demand tension during Ask phase. Quantify declined-call value in Size phase. Vehicle/Fleet Loan Track demonstrates payback within the ROI window. Use the fleet ROI projection chart Artifact during Show phase.",
+      evidence_links: [
+        "https://blaze-internal.example.com/research/2026-04-10-fleet-roi-window",
+        "https://www.federalreserve.gov/data/h15/current/h15.htm",
+      ],
+      related_topics: [topics.goalFleet.id, topics.blockerCapacity.id],
+    },
+  });
+
+  // Macro 3 — Specialty manufacturer capital events (affects Specialty Manufacturer · Established)
+  await prisma.macro.create({
+    data: {
+      title: "Specialty manufacturer capital event opportunities",
+      summary:
+        "Specialty manufacturers in the Twin Cities region are reporting elevated rates of anchor-customer-driven capacity expansion conversations. Many of these capital events qualify for owner-occupied CRE financing combined with equipment lending. Members in the $20M-$100M revenue band are most likely to face these decisions in 2026.",
+      authored_by_external_label: "Sarah Chen (Sector Specialist, Skilled Trades)",
+      authored_at: iso("2026-04-05"),
+      effective_period_start: iso("2026-04-05"),
+      effective_period_end: null, // Still effective
+      affected_industry_families: [industryFamilies.specialtyManufacturing.id],
+      affected_member_types: [memberTypes.specialtyManufacturerEstablished.id],
+      recommended_response:
+        "Probe capital event evaluation during Ask phase. Discover the timing driver. CRE specialist introduction (Connect step) is likely the right path. Capital event partnership map Artifact demonstrates Blaze's coordinated commercial banking capability.",
+      evidence_links: [
+        "https://blaze-internal.example.com/research/2026-04-05-specialty-mfg-capital-events",
+      ],
+      related_topics: [
+        topics.triggerCapacityEval.id,
+        topics.goalCustomerGrowth.id,
+      ],
+    },
+  });
+}
+
+// ============================================================
 // Main
 // ============================================================
 
@@ -2502,6 +2782,7 @@ async function main() {
   const bankers = await seedBankers();
   const industryFamilies = await seedIndustryFamilies();
   const topics = await seedTopics();
+  await seedSizingDimensions();
   const products = await seedProducts();
   const memberTypes = await seedMemberTypes(industryFamilies, topics, products);
   await seedRules(memberTypes, topics);
@@ -2553,6 +2834,9 @@ async function main() {
     await generateMemberSummarySnapshot(m.id, featured.id, NOW);
   }
 
+  console.log("Step 7 — Macros (Sprint 4 §B)");
+  await seedMacros(industryFamilies, memberTypes, topics);
+
   // Final row counts.
   const counts = {
     bankers: await prisma.banker.count(),
@@ -2571,6 +2855,8 @@ async function main() {
     actionCards: await prisma.actionCard.count(),
     recommendations: await prisma.recommendation.count(),
     memberSummarySnapshots: await prisma.memberSummarySnapshot.count(),
+    macros: await prisma.macro.count(),
+    artifactParameterCaptures: await prisma.artifactParameterCapture.count(),
   };
   console.log("\nRow counts after full seed:");
   console.table(counts);

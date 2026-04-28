@@ -15,6 +15,8 @@
 
 import { useRef } from "react";
 import { SeasonalSmoothingChart } from "./seasonal-smoothing-chart";
+import { FleetRoiProjectionChart } from "./fleet-roi-projection-chart";
+import { CapitalEventPartnershipMap } from "./capital-event-partnership-map";
 
 export type ArtifactPreviewData = {
   title: string;
@@ -23,7 +25,10 @@ export type ArtifactPreviewData = {
   template: string;
   parameters_used: Record<string, unknown>;
   shared_on_iso: string;
-  member_reaction: string;
+  // member_reaction removed in Sprint 1 review fix #4 — see lib/enum-descriptions.ts
+  // RECOMMENDATION_RESPONSE_DESCRIPTIONS for the canonical home of "how the member
+  // responded." The dialog still surfaces the share-record fact (date + takeaway)
+  // but the engagement-quality signal lives on Recommendation.response now.
   shared_afterward: boolean;
   conversation_date_iso: string;
 };
@@ -127,9 +132,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
                   day: "numeric",
                 })}
               </span>
-              . Member reaction:{" "}
-              <span className="font-medium text-blaze-charcoal">{artifact.member_reaction}</span>
-              .
+.
               {artifact.shared_afterward
                 ? " Sent as takeaway after the meeting."
                 : " Not sent as takeaway."}
@@ -137,21 +140,33 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           </section>
 
           <section>
-            <ModalSectionLabel label="Chart" />
+            {/* Sprint 3 §C/§D — Artifact renderer dispatches on template.
+                Three templates currently registered: Jenny's seasonal
+                smoothing chart, Northland's fleet ROI projection, Cygnus's
+                capital event partnership map (custom SVG schematic, not a
+                Recharts chart). Section label adapts to the artifact type
+                so "Chart" doesn't appear above a relationship diagram. */}
+            <ModalSectionLabel
+              label={artifact.type === "comparison" ? "Schematic" : "Chart"}
+            />
             <div className="mt-3">
               {artifact.template === "seasonal_smoothing_chart_v1" ? (
                 <SeasonalSmoothingChart />
+              ) : artifact.template === "fleet_roi_composed_chart_v1" ? (
+                <FleetRoiProjectionChart />
+              ) : artifact.template === "capital_event_map_v1" ? (
+                <CapitalEventPartnershipMap />
               ) : (
                 <div className="border border-dashed border-blaze-rule p-6 text-center">
                   <p className="text-xs font-semibold text-blaze-grey-body">
-                    Chart rendering
+                    Renderer not registered
                   </p>
                   <p className="mt-1 text-sm text-blaze-grey-body">
-                    Renderer for template{" "}
+                    No registered renderer for template{" "}
                     <code className="font-mono text-blaze-charcoal">
                       {artifact.template}
-                    </code>{" "}
-                    plugs in alongside the seasonal smoothing chart on a future day.
+                    </code>
+                    .
                   </p>
                 </div>
               )}

@@ -101,20 +101,171 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default for now:** Snapshots are written by the seed (and by Conversation save in production) but are not rendered in any Member profile, Insight Engine, or admin view in the demo. This proves out the persistence architecture without committing to UX semantics that need stakeholder input.
 - **Status:** Open / Deferred to post-demo discussion. Reopen with leadership and compliance before any production rollout of user-facing snapshot views.
 
-### Q-016 · `Recommendation.responds_to_signals` — surfacing the Signal→Recommendation link
+### Q-008 · Demo data persistence model
 
-- **Date logged:** 2026-04-25 (Day-2 step (b))
-- **Question:** The original schema captures provenance via `Recommendation.growth_step_execution_id` (the execution that surfaced the recommendation) and `Recommendation.rule_id_that_fired` (the rule that triggered the suggestion), but does not directly capture *which active Signals* a recommendation responds to. Francisco's review surfaced this as a real gap: the Member profile UI needs to render "Working Capital LOC at $75K — responds to: seasonal cash flow stress (blocker), cash flow smoothing (goal)" inline on each Recommendation. This is not derivable cleanly from the existing relations — Rule.conditions reference Topic IDs but not the specific Signal instances that satisfied the rule at fire time.
-- **Why it matters:** Without an explicit relation, the UI either invents the linkage at render time (brittle, doesn't survive future Signal/Topic edits) or fails to surface a relationship that's central to the demo's narrative ("the recommendation responds to specific things you've heard from this Member"). The relationship is also a queryable property the Insight Engine will want when it ships ("which Signals most often produce funded outcomes?").
-- **Affects:** Schema (one new m-n relation), seed (populate for the three featured Recommendations), Member profile UI (render the linkage), `lib/relation-names.ts` registry.
-- **Resolution date:** 2026-04-25
-- **Decision:** Add `Recommendation.responds_to_signals Signal[]` as an implicit Prisma m-n relation (`@relation("RecommendationRespondsToSignal")`). Reverse side on `Signal` is `recommendations_responding_to_this Recommendation[]` under the same relation name. Stored under SQLite as a single hidden join table `_RecommendationRespondsToSignal`.
-- **Migration approach:** A clean Prisma `migrate dev` since the join table is new and no existing rows depend on it. Backfill happens in the seed (`prisma/seed.ts`) for the three featured Recommendations:
-  - Jenny's $75K LOC → `[blocker.cash_flow_seasonal, goal.cash_flow_smoothing]`
-  - Northland's $180K Fleet Loan → `[blocker.capacity_constrained, goal.fleet_expansion]`
-  - Cygnus's CRE Term Loan → `[trigger.capacity_expansion_evaluation, trigger.customer_volume_commitment, goal.customer_growth]`
-- **Reasoning:** Implicit m-n is the lowest-friction Prisma-on-SQLite shape for this — no extra model, no order column needed, and the relationship is naturally bidirectional. The Insight Engine's future queries ("most-funded-from Signal types") become a simple aggregate over the join table. The relation name `responds_to` is added to `lib/relation-names.ts` per Two-File Rule.
-- **Resolved by:** Francisco (via the Day-2 step (b) plan).
+- **Date logged:** Pre-build (new for build phase)
+- **Question:** When a demo viewer runs a Meeting recap and saves, does the new data persist permanently (until reset) for all viewers, or is it scoped to the viewer's browser session?
+- **Why it matters:** If permanent, multiple stakeholders viewing the demo will see each other's experimental conversations, which could be confusing. If scoped to session, each viewer has a clean Jenny's Catering to work with.
+- **Affects:** Demo storage model; possibly the architecture (browser-local storage vs server SQLite).
+- **Conservative default:** Server-side SQLite with the admin reset button. Multi-viewer experimentation is a known limitation; acceptable for demo phase given resetability. If the demo gets significant concurrent viewing, revisit.
+- **Status:** Open. Could be resolved by adding session-scoped data layer, but adds complexity.
+
+### Q-023 · Macro authors not seeded as Banker entities
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1a)
+- **Question:** Macro 1 names "Marcus Wei (Chief Economist)" as author; Macros 2 and 3 name "Sarah Chen (Sector Specialist, Skilled Trades)". Neither exists as a `Banker` row in the demo seed (the seed has Scott / Marcus Webb / Priya Patel — all relationship/specialty bankers). Should Marcus Wei and Sarah Chen be seeded as Bankers, or kept as `authored_by_external_label` strings?
+- **Why it matters:** As Banker rows they'd surface in the banker dropdown (Sprint 6) and gain referential integrity. As external labels they stay invisible to relationship-banker UI but lose queryability. The `Macro.authored_by_banker_id` field is FK-nullable specifically to support this dual mode; the current demo path uses external_label.
+- **Affects:** Demo polish; Pilot phase considerations for whether non-relationship-banker authors get Banker records.
+- **Conservative default:** External labels (`authored_by_external_label`). Sprint 4 ships with this; Pilot phase reconsiders.
+- **Status:** Open / Deferred to Pilot.
+
+### Q-024 · `ArtifactParameterCapture` table empty in seed
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1a)
+- **Question:** The `ArtifactParameterCapture` schema landed in Prompt 4.1a but no rows are seeded. The capture flow (Show step pre-population + banker overrides) is Sprint 4 Prompt 4.2 work. Should we backfill rows for the three featured Recommendations now (with `banker_assumption` provenance) so the Insight Engine has data to work with?
+- **Why it matters:** Empty table means Sprint 5's parameter-provenance correlation analysis has nothing to compute. Backfill would give the Insight Engine substrate for the demo; it'd also create rows that the Sprint 4 Prompt 4.2 capture flow would need to either honor or replace.
+- **Affects:** Sprint 5 Insight Engine view richness; Sprint 4 Prompt 4.2 capture-flow design.
+- **Conservative default:** Leave empty in 4.1a. Sprint 4 Prompt 4.2 will populate via the Show capture form; Sprint 5 view renders empty-state until then.
+- **Status:** Open / Resolves naturally as Sprint 4 progresses.
+
+### Q-025 · Signal supersession schema unused in seed
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1a)
+- **Question:** `Signal.superseded_by_signal_id` and `superseded_at` fields landed in Prompt 4.1a; no Signals are superseded in the demo seed. Sprint 4 Prompt 4.2 will create supersession chains when bankers update stale captures. Should we backfill a synthetic supersession in the seed (e.g., a prior Conversation captured a `painful` cash flow Signal that the Apr 8 Conversation superseded with a `manageable` recovery Signal) to give the demo viewer something to look at?
+- **Why it matters:** Without seeded supersessions, the Sprint 4 Prompt 4.2 audit trail UI has no fixture to render against. Demo viewers would see "no supersession history" until they actually create one through Growth Conversations.
+- **Affects:** Demo richness; Sprint 4 Prompt 4.2 visual review.
+- **Conservative default:** Leave empty in 4.1a. Sprint 4 Prompt 4.2 visual review will surface whether synthetic seeded supersession is needed.
+- **Status:** Open / Revisit during Sprint 4 Prompt 4.2.
+
+### Q-026 · GrowthStepExecution skip-state schema unused in seed
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1a)
+- **Question:** `GrowthStepExecution.was_skipped`, `skip_confirmed_*`, and `skip_reason` fields landed in Prompt 4.1a; no executions are skipped in the demo seed. Should we backfill a synthetic skip (e.g., Northland's Resolve step that captured `member_response = leaning_yes` could have a sibling skipped Size step demonstrating "banker skipped Size, went straight to Show") to populate the Sprint 5 stage-skip analytics view?
+- **Why it matters:** Same shape as Q-024 / Q-025 — the analytics view has nothing until Sprint 4 Prompt 4.3 ships the skip flow.
+- **Affects:** Sprint 5 stage-skip view; Sprint 4 Prompt 4.3 visual review.
+- **Conservative default:** Leave empty in 4.1a. Sprint 4 Prompt 4.3 may seed synthetic skips if the analytics view needs substrate.
+- **Status:** Open / Revisit during Sprint 4 Prompt 4.3.
+
+### Q-028 · Stale signal threshold
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
+- **Question:** The Ask form's augmenting summary marks Signals captured more than 6 months ago as "stale" (italic date + " · stale" suffix + tooltip prompt). The 6-month threshold is a guess. Should the threshold differ by Signal type (e.g., Goals can hold longer than Triggers; Indecisions probably get stale fastest)?
+- **Why it matters:** Per-type thresholds reflect real-world half-lives more accurately, but configuration cost rises and the UI gets more complex.
+- **Affects:** Ask form UX; future Size / Show / Resolve / Connect form UX (likely the same pattern).
+- **Conservative default:** 6 months across all Signal types. Configurable in code (`STALE_DAYS` constant in `ask-section.tsx`).
+- **Status:** Open. Validate during Sprint 5 Insight Engine work when stale-signal patterns aggregate.
+
+### Q-029 · Track-agnostic GrowthStepExecution.step_phase architectural choice
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
+- **Question:** Approach 2 from the prompt was implemented: `GrowthStepExecution.growth_step_id` made nullable, new `step_phase` enum (StepShape) field added. Track-agnostic Ask + Size captures populate `step_phase` only; track-specific Show / Resolve / Connect populate both. Approach 1 (synthetic "track-agnostic" Track + dedicated GrowthSteps) was rejected as polluting reference data.
+- **Why it matters:** The Size capture form (Sprint 4 Prompt 4.2) will exercise this further. If issues surface (e.g., Insight Engine queries become awkward with mixed null / non-null growth_step_ids), Approach 1 may need reconsideration.
+- **Affects:** Sprint 4 Prompt 4.2 Size form; Sprint 5 Insight Engine track-step analytics.
+- **Conservative default:** Approach 2 (current implementation).
+- **Status:** Open / Resolves with experience during Sprint 4 Prompts 4.2–4.5.
+
+### Q-030 · Conversation defaults for Growth Conversations sessions
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
+- **Question:** When the Ask form creates a fresh Conversation record (no prior session conversation), the Server Action defaults `meeting_type = "check_in"`, `channel = "in_person"`, `sentiment = "receptive"`. Sprint 4 Prompt 4.4 will add explicit capture for these on the Resolve stage. Until then, all GC-created Conversations have these defaults.
+- **Why it matters:** Insight Engine views over conversation type / channel / sentiment will reflect defaults rather than reality if Resolve doesn't ship before the views.
+- **Affects:** Sprint 4 Prompt 4.4 Resolve form; Sprint 5 Insight Engine views.
+- **Conservative default:** check_in / in_person / receptive. Documented in `actions.ts → saveAskCaptures`.
+- **Status:** Open / Resolves in Sprint 4 Prompt 4.4.
+
+### Q-031 · Multi-tab editing of the same Member's captures
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
+- **Question:** Two browser tabs open on `/growth-conversations/jenny`, both with pending Ask captures. Both Save → two independent Conversation rows + two independent execution rows. Last-write-wins semantics. Acceptable for demo; potential UX issue for production.
+- **Why it matters:** Production deployment with multiple bankers (or one banker with multiple tabs) needs clearer semantics — either lock-on-edit, last-write-wins with notification, or explicit "active session" concept.
+- **Affects:** Production UX; demo unaffected.
+- **Conservative default:** No locking; no notification; both saves succeed. Documented as known gap.
+- **Status:** Open / Deferred to Pilot phase.
+
+### Q-027 · Anchor progress bar small-viewport behavior
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1a)
+- **Question:** The right-column anchor progress bar is hidden below the `lg` breakpoint (1024px). On tablets and mobile, the page becomes single-column scrolling with no anchor navigation. Is this acceptable for the demo? Production may need a collapsed mobile treatment (top-edge sticky bar with horizontal pipe-separated stage labels, similar to TrackProgressDots).
+- **Why it matters:** EVP demo will likely happen on desktop (1280px+); tablet review during meetings is plausible. If the demo gets reviewed on tablet, the missing anchor bar may surface as a gap.
+- **Affects:** Demo polish; Sprint 4 Prompt 4.1b visual review on small viewports.
+- **Conservative default:** Hidden below `lg`. Sprint 4 Prompt 4.1b visual review will surface whether a small-viewport treatment is needed.
+- **Status:** Open / Revisit during Sprint 4 Prompt 4.1b.
+
+### Q-032 · Persistent Macro context banner dismissal
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1d)
+- **Question:** The Macro context banner on the Member profile is dismissible per Sprint 4 §4.1d Block A.4, but dismissal is session-scoped only — refreshing the page brings the banner back. Production likely needs persistent dismissal: per-banker preferences (acknowledged Macros suppressed for that banker) and automatic dismissal when a Macro's `effective_period_end` passes. Where do per-banker preferences live (a new `BankerMacroDismissal` join table? a JSON field on `Banker`?), and what's the auto-dismissal trigger (page render check vs. nightly job)?
+- **Why it matters:** Banker UX in production. A banker who's already absorbed the Macro's recommended response shouldn't re-see the banner every time they open the Member profile. Without persistent state, the banner becomes noise quickly.
+- **Affects:** Schema (new field or table); UX flow; possibly a backend job for expiry sweeps.
+- **Conservative default:** Session-scoped dismissal only for demo. Component holds local React state; refresh restores. Documented in `app/members/[id]/macro-context-banner.tsx`.
+- **Status:** Open / Deferred to post-demo. Pilot phase decides persistence shape.
+
+### Q-033 · Stage label hyperlinks for stages without capture interfaces
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1d)
+- **Question:** Stage label hyperlinks on the Member profile's TrackProgressDots now route to `/growth-conversations/[memberId]#stage-{shape}` anchors per Sprint 4 §4.1d Block B. Sprint 4 Prompt 4.1c shipped the Ask capture interface; Size / Show / Resolve / Connect are still placeholder summaries until Sprint 4 Prompt 4.2. A banker clicking "Show" today lands on a section with a stage anchor but no capture form — the page renders the prefilled summary text. Is this an acceptable interim state, or should links to not-yet-built stages render as plain text (no hyperlink) until 4.2 lands?
+- **Why it matters:** Demo polish during the EVP review window. If 4.2 doesn't land in time, "Show" linking to a read-only summary may feel incomplete; if 4.2 does land, the links will route to functional capture forms and the question evaporates.
+- **Affects:** Sprint 4 Prompt 4.2 sequencing; demo experience between 4.1d and 4.2.
+- **Conservative default:** Hyperlinks all stages today. The Growth Conversations page renders prefilled-summary sections for non-Ask stages, which is at minimum a useful read-only reference. If 4.2 lands before EVP review, the question is moot; if not, revisit.
+- **Status:** Open / Resolves naturally as Sprint 4 Prompt 4.2 lands.
+
+### Q-034 · Macro authorship governance
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a; raised during 4.1d visual review)
+- **Question:** Where does Macro content come from in production? Who can author a Macro (Chief Economist? Sector specialists? Any senior banker?). What review process applies before a Macro reaches relationship bankers' Member-profile banners (peer review? compliance sign-off? sector head approval?). How are recipients scoped (all bankers? bankers serving the affected_member_types only? opt-in subscription model?). What distinguishes a Macro from a less-formal Note shared in Slack — is the threshold "applies to a defined Member Type cohort" sufficient, or should accuracy / data-validation be required? The demo uses external_label strings ("Marcus Wei (Chief Economist)") with no governance scaffold.
+- **Why it matters:** Macros are high-leverage — they shape banker conversations directly via the profile banner. Wrong, stale, or biased Macro content has outsized impact on Member outcomes. Production needs an editorial layer (some combination of role-gated authoring + peer review + portfolio-data validation) before Macros are widely deployed.
+- **Affects:** Pilot phase Macro authoring tooling; Banker role schema (new "macro_author" role flag?); editorial workflow design.
+- **Conservative default for now:** External_label strings on Macros; no governance scaffold; manual seeding only. Demo phase ships with three Macros authored verbatim into the seed.
+- **Status:** Open / Deferred to Pilot phase. Reopen with leadership before any production rollout of Macro authoring.
+
+### Q-035 · Topic-level question library — example phrasings per Topic per Member Type
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a)
+- **Question:** The Ask form's "+ Add" buttons spawn sub-forms with a Topic dropdown but no example phrasings or sample questions to scaffold the banker's actual conversational prompt. Sprint 4 §4.2a's stage guidance scaffolds the *purpose* of each phase per Member Type, but doesn't go down to the Topic level. Should each (Topic, Member Type) pair carry a small library of example phrasings — verbatim banker-tested questions a primary banker can use as a starting point? E.g., for `blockerSeasonal` × Small Caterer: "Which months does your business typically slow down? About how much does revenue drop?". Editorial governance would parallel the Macro question (Q-034) — who authors, who reviews.
+- **Why it matters:** Stage guidance answers "what is this phase for?" but bankers also benefit from "what's a good way to ask?". A question library closes the gap between intent and execution. Without it, junior bankers may struggle to translate guidance into dialogue.
+- **Affects:** Pilot phase content authoring scope; Topic schema (new optional `example_phrasings` field or join table); Ask form UI (could surface 1-3 example phrasings under the Topic dropdown when a Topic is selected).
+- **Conservative default:** Stage guidance only for the demo. Topic-level question library deferred.
+- **Status:** Open / Deferred to Pilot phase. Same governance shape as Q-034.
+
+### Q-036 · `SizingMeasurement.confidence` — should it be required?
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a Block B)
+- **Question:** The Size capture form's Confidence dropdown (`high / moderate / low / banker_estimate`) is currently optional. Should it become required so every SizingMeasurement carries an explicit confidence axis the Insight Engine can aggregate against? Cost: one more required click per measurement. Benefit: Sprint 5 analytics can correlate "high-confidence Size measurements at quarter-end" vs "banker estimates" across the portfolio, surfacing patterns where banker estimation diverges systematically from member-stated values.
+- **Why it matters:** Required-fields drive cleaner aggregations downstream. But over-required forms breed click-fatigue and bankers default to "moderate" to move on, defeating the analytic value. The right answer probably depends on whether Insight Engine views surface confidence-stratified analytics meaningfully — to be tested during Sprint 5.
+- **Affects:** Size form UX; SizingMeasurement schema (currently `confidence: String?`, would become `String` — non-trivial migration once data exists); Insight Engine analytical surfaces.
+- **Conservative default:** Optional (`String?`) for the demo. Field rendered with optional asterisk treatment; banker may skip.
+- **Status:** Open / Revisit during Sprint 5 Insight Engine work.
+
+### Q-037 · Resolve ActionCard owner default — current banker vs Recommendation.owned_by
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a Block C)
+- **Question:** When the Resolve form creates an ActionCard, the owner currently defaults to the current banker (the Member's primary banker, since the demo has no banker-switcher). Should it default to `Recommendation.owned_by` instead? Sprint 2 Prompt 2 introduced `Recommendation.owned_by` to support cross-banker handoff — Cygnus's CRE opportunity is owned by Marcus Webb (CRE specialist) even though Scott Brynjolffson is the relationship banker. If Scott captures the Resolve and the ActionCard defaults to Scott, the cross-banker handoff doesn't surface unless Scott manually changes the owner.
+- **Why it matters:** Demo correctness — Cygnus's specialist scenario is exactly the case the cross-banker pattern was built to demonstrate. Defaulting to `Recommendation.owned_by` makes the handoff implicit and correct; defaulting to current banker requires a manual override every time. But: not every Track has `owned_by` set (it's nullable; falls back to primary_banker). The fallback chain matters.
+- **Affects:** ResolveSection default owner logic; the demo's ability to surface cross-banker handoff without manual action.
+- **Conservative default:** Current banker for now. Banker can manually pick from the dropdown (Marcus Webb is in the active bankers list). Verify behavior with Cygnus's flow during visual review of Sprint 4 Prompt 4.2a; if the handoff is confusing or invisible, switch the default to `Recommendation.owned_by ?? primary_banker`.
+- **Status:** Open / Verify during Sprint 4 Prompt 4.2a visual review; resolve based on demo experience.
+
+### Q-038 · Closing notes persistence — `Conversation.banker_note` vs dedicated entity
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a refinement pass)
+- **Question:** Closing notes captured on Resolve forms for `declined` / `dismissive` responses save to `Conversation.banker_note`. The choice was forced by `ActionCard.due_at` being NOT NULL — closing notes have no due date by definition, so they don't fit the ActionCard shape. But `Conversation.banker_note` is a generic free-text field that's also used for non-Resolve banker notes; conflating "this is the closure context for a declined opportunity" with "this is a generic conversation note" loses semantic separation. Should there be a dedicated `RecommendationClosure` entity (or `Recommendation.closure_notes` field) so the closing-context case has its own first-class home?
+- **Why it matters:** Pilot phase analytics — "what reasons do members give for declining?" is a high-value Insight Engine query. If closing notes are mixed into generic banker notes, the analytic surface needs a way to disambiguate. A dedicated field/entity makes the query trivial; staying on `banker_note` requires a tag or category convention. Right now the demo has only the Resolve form writing to `banker_note`, so the conflation is theoretical, but it'll surface as soon as bankers start using `banker_note` for non-Resolve notes.
+- **Affects:** Schema (new field or entity); Resolve form save behavior; Insight Engine "decline-reason" analytics surface.
+- **Conservative default:** `Conversation.banker_note` for the demo. The semantic conflation is acceptable because the demo's banker_note is empty for everything except Resolve closing notes — i.e., everything currently in banker_note IS a closing note. Pilot phase needs to address this before banker_note grows multi-purpose.
+- **Status:** Open / Deferred to Pilot phase. Revisit when generic banker-note capture is added (likely Sprint 4 Prompt 4.4 or pilot-phase work).
+
+### Q-039 · Lifecycle stage transitions — state-machine derivation vs explicit transition events
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a refinement pass)
+- **Question:** Track lifecycle states (Decision pending, Funded / Specialist engagement, Closed / Closing) are currently derived from `Recommendation.response` — a state-machine read where the response value implies the lifecycle position. This is sufficient for the demo's static visualization. Sprint 5 Insight Engine analytics that compute *duration at lifecycle stage* (e.g., "average time in Decision pending before commitment", "median Closing-to-Funded interval") will require explicit transition events — when did the Member enter Decision pending, when did they exit, when did funding clear. Should there be a `RecommendationLifecycleEvent` table (or extend `GrowthStepExecution` with lifecycle-stage rows) that records each entry/exit timestamp?
+- **Why it matters:** State-machine derivation tells you *where* a Member is now; event-log derivation tells you *how long* they've been there and *when* they transitioned. Insight Engine's most valuable analytics are duration-based: which Member Types take longest in Decision pending, which Tracks have the highest Closing-to-Funded conversion rate, which primary concerns correlate with longer commitment-to-funding intervals. Without an event log, those analytics are impossible.
+- **Affects:** Schema (new entity or extension of GrowthStepExecution); Resolve form save behavior (must emit transition events on every state change); Insight Engine view design.
+- **Conservative default:** State-machine derivation for the demo (current implementation). Lifecycle dot states computed inline in `computeTrackStages` from `recommendation_response`. Pilot phase or Sprint 5 architectural pass should design the event-log entity before Insight Engine analytics ship; backfill from the existing `Recommendation.updated_at` history is feasible but lossy (only records the most-recent transition timestamp).
+- **Status:** Open / Pilot phase architectural decision. Revisit when Sprint 5 Insight Engine analytics scope is defined.
+
+---
+
+## Resolved
 
 ### Q-018 · `Recommendation.rationale_summary` — progressive disclosure of the dense rationale
 
@@ -132,18 +283,20 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Reasoning:** A rendered field is the right home for this — it's content the Growth lead curates per recommendation, not derivable mechanically from `rationale_text`. Storing it lets the Insight Engine aggregate "median summary length per Member Type" or similar quality signals later. Keeping it nullable lets us roll out without a coordinated edit to all rationale templates.
 - **Resolved by:** Francisco (via the step-(c)-prep §4 instruction).
 
-### Q-008 · Demo data persistence model
+### Q-016 · `Recommendation.responds_to_signals` — surfacing the Signal→Recommendation link
 
-- **Date logged:** Pre-build (new for build phase)
-- **Question:** When a demo viewer runs a Meeting recap and saves, does the new data persist permanently (until reset) for all viewers, or is it scoped to the viewer's browser session?
-- **Why it matters:** If permanent, multiple stakeholders viewing the demo will see each other's experimental conversations, which could be confusing. If scoped to session, each viewer has a clean Jenny's Catering to work with.
-- **Affects:** Demo storage model; possibly the architecture (browser-local storage vs server SQLite).
-- **Conservative default:** Server-side SQLite with the admin reset button. Multi-viewer experimentation is a known limitation; acceptable for demo phase given resetability. If the demo gets significant concurrent viewing, revisit.
-- **Status:** Open. Could be resolved by adding session-scoped data layer, but adds complexity.
-
----
-
-## Resolved
+- **Date logged:** 2026-04-25 (Day-2 step (b))
+- **Question:** The original schema captures provenance via `Recommendation.growth_step_execution_id` (the execution that surfaced the recommendation) and `Recommendation.rule_id_that_fired` (the rule that triggered the suggestion), but does not directly capture *which active Signals* a recommendation responds to. Francisco's review surfaced this as a real gap: the Member profile UI needs to render "Working Capital LOC at $75K — responds to: seasonal cash flow stress (blocker), cash flow smoothing (goal)" inline on each Recommendation. This is not derivable cleanly from the existing relations — Rule.conditions reference Topic IDs but not the specific Signal instances that satisfied the rule at fire time.
+- **Why it matters:** Without an explicit relation, the UI either invents the linkage at render time (brittle, doesn't survive future Signal/Topic edits) or fails to surface a relationship that's central to the demo's narrative ("the recommendation responds to specific things you've heard from this Member"). The relationship is also a queryable property the Insight Engine will want when it ships ("which Signals most often produce funded outcomes?").
+- **Affects:** Schema (one new m-n relation), seed (populate for the three featured Recommendations), Member profile UI (render the linkage), `lib/relation-names.ts` registry.
+- **Resolution date:** 2026-04-25
+- **Decision:** Add `Recommendation.responds_to_signals Signal[]` as an implicit Prisma m-n relation (`@relation("RecommendationRespondsToSignal")`). Reverse side on `Signal` is `recommendations_responding_to_this Recommendation[]` under the same relation name. Stored under SQLite as a single hidden join table `_RecommendationRespondsToSignal`.
+- **Migration approach:** A clean Prisma `migrate dev` since the join table is new and no existing rows depend on it. Backfill happens in the seed (`prisma/seed.ts`) for the three featured Recommendations:
+  - Jenny's $75K LOC → `[blocker.cash_flow_seasonal, goal.cash_flow_smoothing]`
+  - Northland's $180K Fleet Loan → `[blocker.capacity_constrained, goal.fleet_expansion]`
+  - Cygnus's CRE Term Loan → `[trigger.capacity_expansion_evaluation, trigger.customer_volume_commitment, goal.customer_growth]`
+- **Reasoning:** Implicit m-n is the lowest-friction Prisma-on-SQLite shape for this — no extra model, no order column needed, and the relationship is naturally bidirectional. The Insight Engine's future queries ("most-funded-from Signal types") become a simple aggregate over the join table. The relation name `responds_to` is added to `lib/relation-names.ts` per Two-File Rule.
+- **Resolved by:** Francisco (via the Day-2 step (b) plan).
 
 ### Q-017 · Dec-2025 `receivables_timing` Signal — magnitude was banker prose, not structured
 

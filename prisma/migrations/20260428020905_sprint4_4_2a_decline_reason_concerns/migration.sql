@@ -1,0 +1,24 @@
+-- Sprint 4 Prompt 4.2a refinement #3 — extend RecommendationPrimaryConcern
+-- enum with declined-context reasons so the Resolve form can offer two
+-- contextual option sets (open-thread vs decline-reason) without a
+-- separate field.
+--
+-- SQLite stores enum columns as TEXT, so adding new enum values is a
+-- TypeScript-type change only — no DDL is required at the database
+-- layer. This migration exists for change-history tracking; the actual
+-- type widening happens in `prisma/schema.prisma`.
+--
+-- New values added to RecommendationPrimaryConcern:
+--   terms_unfavorable
+--   going_with_competitor
+--   no_longer_needed
+--   does_not_qualify
+--   lost_interest
+--   found_alternative
+--   circumstances_changed
+--
+-- Existing rows are unaffected; the new values only appear in records
+-- written after this migration deploys.
+
+-- (no-op SQL — see schema.prisma for the actual enum extension)
+SELECT 1;

@@ -50,7 +50,13 @@ export type RelationName =
   // "surfaced" (past-tense). The bare "surfaces" verb here on Rule is unambiguous
   // because the source column always names the entity.
   // Recommendation relations (additional — see Recommendation row below)
-  | "responds_to"; // Recommendation → Signal (Q-016)
+  | "responds_to" // Recommendation → Signal (Q-016)
+  // Sprint 4 §F.4 additions
+  | "supersedes" // Signal → Signal (a newer Signal supersedes a stale prior capture)
+  | "captured_during" // ArtifactParameterCapture → GrowthStepExecution
+  | "authored_by" // Macro → Banker (when authored internally)
+  | "affects_industry" // Macro → IndustryFamily (Json-indexed many-to-many)
+  | "affects_member_type"; // Macro → MemberType (Json-indexed many-to-many)
 
 /**
  * The canonical mapping. Read each entry as a sentence: subject + verb-phrase + object.
@@ -90,6 +96,21 @@ export const RELATION_NAMES = [
   { source: "Rule", verb: "surfaces", target: "GrowthTrack" },
 
   { source: "Recommendation", verb: "responds_to", target: "Signal" },
+
+  // Sprint 4 §F.4 — Signal supersession (longevity tracking).
+  { source: "Signal", verb: "supersedes", target: "Signal" },
+
+  // Sprint 4 §F.4 — ArtifactParameterCapture provenance link.
+  {
+    source: "ArtifactParameterCapture",
+    verb: "captured_during",
+    target: "GrowthStepExecution",
+  },
+
+  // Sprint 4 §F.4 — Macro authorship + targeting.
+  { source: "Macro", verb: "authored_by", target: "Banker" },
+  { source: "Macro", verb: "affects_industry", target: "IndustryFamily" },
+  { source: "Macro", verb: "affects_member_type", target: "MemberType" },
 ] as const satisfies ReadonlyArray<{ source: string; verb: RelationName; target: string }>;
 
 /**

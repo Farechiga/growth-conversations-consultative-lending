@@ -51,3 +51,6 @@ next-env.d.ts
 
 # Claude Code user-local settings
 .claude/settings.local.json
+
+# Microsoft Office lock files (Word/Excel temp files prefixed `~$`)
+~$*

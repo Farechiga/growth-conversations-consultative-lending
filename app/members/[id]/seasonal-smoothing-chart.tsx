@@ -98,7 +98,10 @@ export function SeasonalSmoothingChart() {
             }}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [fmtTooltipValue(value), name]}
+            formatter={(value, name) => [
+              fmtTooltipValue(typeof value === "number" ? value : Number(value ?? 0)),
+              String(name),
+            ]}
             contentStyle={{
               fontFamily: "Inter, system-ui, sans-serif",
               fontSize: 12,
