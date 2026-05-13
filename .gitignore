@@ -48,6 +48,13 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 /prisma/*.db*
+# Sprint 6 — committed seed snapshot ships with the Vercel deployment.
+# Refresh via `pnpm db:snapshot` before deploying.
+!/prisma/seed.db
+
+# Playwright verification screenshot output dumps. Regenerated locally
+# whenever the verify/probe scripts run; not source-of-truth.
+scripts/.*-out/
 
 # Claude Code user-local settings
 .claude/settings.local.json

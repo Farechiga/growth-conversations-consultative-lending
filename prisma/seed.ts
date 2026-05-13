@@ -44,6 +44,22 @@ import {
   SUMMARIZE_MEMBER_TEMPLATE_VERSION,
   type MemberSummaryInput,
 } from "../lib/summaries";
+import {
+  seedBusinessFactorMatrix,
+  seedFactorCapturesForFixtures,
+  _seedCounts as _matrixCounts,
+} from "./seed-matrix";
+import {
+  seedInsightPatterns,
+  seedInsightsForFixtures,
+} from "./seed-insights";
+import {
+  seedArtifactTemplates,
+  migrateCygnusModelToTemplate,
+  seedFixtureMultiTrack,
+} from "./seed-artifact-templates";
+import { seedStageSkipFixture } from "./seed-stage-skip";
+import { recomputeAllWorkflowStates } from "../lib/workflow-state";
 
 // Prisma 7 requires an explicit driver adapter. The DATABASE_URL is "file:./dev.db"
 // but better-sqlite3 wants a plain filesystem path; strip the file: prefix.
@@ -63,6 +79,20 @@ const NOW = new Date("2026-04-25T12:00:00Z");
 // Helper to build ISO dates without timezone surprises in the seed.
 const iso = (yyyymmdd: string) => new Date(`${yyyymmdd}T12:00:00Z`);
 
+// Sprint 5e Block D — relative date helper. All capture-related dates
+// (Signals, FactorCaptures, featured Conversations, Models, ShowEvents,
+// Reactions) compute from "now" so the demo stays inside a recent
+// window every time the seed runs. Historical anchors (tenure_started_at,
+// account-opening Conversations, GrowthStep promoted_at) keep the
+// hardcoded `iso()` dates because those represent established facts
+// that don't slide forward with time.
+const daysAgo = (n: number) => {
+  const d = new Date();
+  d.setUTCHours(12, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d;
+};
+
 // ============================================================
 // Step 0 — Clear existing data (idempotent)
 // ============================================================
@@ -74,6 +104,30 @@ async function clear() {
   await prisma.artifactParameterCapture.deleteMany();
   await prisma.macro.deleteMany();
   await prisma.memberSummarySnapshot.deleteMany();
+  // Sprint 5a.3 hygiene — FactorCapture (Sprint 5a.1) and v2 entities
+  // (Sprint 4.7) were missing from the cleanup. Reseeds were succeeding
+  // on fresh databases but failing FK-cascade on subsequent runs once
+  // data was present. Listed before sizingMeasurement / reaction since
+  // they reference Signal + Reaction + SizingMeasurement.
+  // Sprint 5b.2 — MemberWorkflowState references Member (1:1); drop
+  // first so Member.deleteMany doesn't FK-cascade-fail.
+  await prisma.memberWorkflowState.deleteMany();
+  // Sprint 5b.1 — Insight + InsightPattern + SpecialistHandoff added
+  // ahead of FactorCapture (Insight references InsightPattern; both
+  // reference Member).
+  await prisma.specialistHandoff.deleteMany();
+  await prisma.insight.deleteMany();
+  await prisma.insightPattern.deleteMany();
+  await prisma.factorCapture.deleteMany();
+  await prisma.matrixEntry.deleteMany();
+  // Sprint 5d Block A — ArtifactTemplate references TrackTemplate;
+  // drop before TrackTemplate to avoid FK violation.
+  await prisma.artifactTemplate.deleteMany();
+  await prisma.trackTemplate.deleteMany();
+  await prisma.businessFactor.deleteMany();
+  await prisma.reaction.deleteMany();
+  await prisma.showEvent.deleteMany();
+  await prisma.model.deleteMany();
   await prisma.sizingMeasurement.deleteMany();
   await prisma.recommendation.deleteMany();
   await prisma.actionCard.deleteMany();
@@ -664,11 +718,18 @@ async function seedMemberTypes(industryFamilies: IndustryFamilies, topics: Topic
   // default_growth_tracks intentionally left empty here. Growth tracks are authored
   // in step 4 (featured conversations). Member Types are updated to point at their
   // canonical track at that time.
-  const smallCatererStarting = await prisma.memberType.create({
+  // Sprint 5d-pre — renamed "Small Caterer · Starting" → "Event services"
+  // per CONTENT_REWRITE_v1.md Section 1. Coverage broadened beyond
+  // catering to include event planners, venue operators, mobile
+  // bartenders, party rental companies, wedding services, corporate
+  // event management. The stage descriptor ("Starting") moves out of
+  // the display name into the existing `stage` field; banker-facing
+  // surfaces show short Member-Type label + separate stage chip.
+  const eventServices = await prisma.memberType.create({
     data: {
-      name: "Small Caterer · Starting",
+      name: "Event services",
       description:
-        "Small event-driven catering businesses in their first three years of operations, typically with one to ten employees and revenue under $1.5M. These members face lumpy event-based revenue, perishable inventory risk, surge labor needs, and chronic working capital strain during slow seasons. They are typically owner-operated with the principal personally guaranteeing most credit decisions.",
+        "Event-driven service businesses whose revenue follows discrete events rather than ongoing service relationships. Includes caterers, event planners, venue operators, mobile bartenders, party rental companies, wedding services, and corporate event management. Members face lumpy event-based revenue, perishable inventory risk, surge labor needs, and seasonal concentration around weddings, corporate events, and holiday cycles. Often owner-operated with personal guarantees on credit decisions.",
       industry_family_id: industryFamilies.eventDriven.id,
       stage: "starting",
       size_band: "small",
@@ -691,11 +752,16 @@ async function seedMemberTypes(industryFamilies: IndustryFamilies, topics: Topic
     },
   });
 
-  const hvacGrowing = await prisma.memberType.create({
+  // Sprint 5d-pre — renamed "HVAC & Trades · Growing" → "Maintenance
+  // services". Coverage broadened beyond HVAC to include plumbing,
+  // electrical, mechanical contractors, landscapers, pool service,
+  // pest control, cleaning services. Stage descriptor moves to the
+  // separate `stage` field.
+  const maintenanceServices = await prisma.memberType.create({
     data: {
-      name: "HVAC & Trades · Growing",
+      name: "Maintenance services",
       description:
-        "Established residential and light-commercial trade businesses (HVAC, electrical, plumbing) in their 8th-15th year of operations, with 10-30 employees and revenue between $2M and $10M. These members have proven their model and are at the inflection point where growth requires capital — fleet expansion, additional crews, equipment upgrades, sometimes second locations. Cash flow is steady and seasonal, but capital expenditure financing is the dominant capital question. Owner-operated with strong relationships in their service area; growth is constrained more by execution capacity than by demand.",
+        "Recurring-service businesses (HVAC, plumbing, electrical, mechanical contractors, landscapers, pool service, pest control, cleaning services) typically in their 8th-15th year of operations with 10-30 employees and revenue between $2M and $10M. These members have proven their model and are at the inflection point where growth requires capital — fleet expansion, additional crews, equipment upgrades, sometimes second locations. Cash flow is steady and seasonal; capital expenditure financing is the dominant capital question. Owner-operated with strong relationships in their service area; growth is constrained more by execution capacity than by demand.",
       industry_family_id: industryFamilies.tradesConstruction.id,
       stage: "growing",
       size_band: "mid",
@@ -725,11 +791,15 @@ async function seedMemberTypes(industryFamilies: IndustryFamilies, topics: Topic
     },
   });
 
-  const specialtyManufacturerEstablished = await prisma.memberType.create({
+  // Sprint 5d-pre — renamed "Specialty Manufacturer · Established" →
+  // "Specialty manufacturer". Coverage covers mid-market manufacturers,
+  // industrial fabrication, custom production, contract manufacturing.
+  // Stage descriptor moves to the separate `stage` field.
+  const specialtyManufacturer = await prisma.memberType.create({
     data: {
-      name: "Specialty Manufacturer · Established",
+      name: "Specialty manufacturer",
       description:
-        "Established specialty manufacturers (precision components, contract manufacturing, specialty chemicals, medical device subassemblies) typically 15-30 years old, with 50-200 employees and revenue between $15M and $80M. These members serve concentrated B2B customer bases — often Fortune 500 or large mid-market — under multi-year contracts. Cash flow is steady but capital-intensive; growth requires periodic large capital events for facility expansion, equipment qualification, or capacity additions. Owner-operated or owner-led, often with a small leadership team and a CFO. Banking needs are sophisticated: treasury, FX in some cases, term financing, and commercial real estate. The competition for these relationships is regional and national commercial banks, not credit unions; Blaze wins these by combining deep-relationship attentiveness with sophisticated commercial banking capability.",
+        "Mid-market manufacturers (precision components, contract manufacturing, industrial fabrication, custom production, specialty chemicals, medical device subassemblies) typically 15-30 years old, with 50-200 employees and revenue between $15M and $80M. These members serve concentrated B2B customer bases — often Fortune 500 or large mid-market — under multi-year contracts. Cash flow is steady but capital-intensive; growth requires periodic large capital events for facility expansion, equipment qualification, or capacity additions. Owner-operated or owner-led, often with a small leadership team and a CFO. Banking needs are sophisticated: treasury, term financing, and commercial real estate. The competition for these relationships is regional and national commercial banks, not credit unions; Blaze wins by combining deep-relationship attentiveness with sophisticated commercial banking capability.",
       industry_family_id: industryFamilies.specialtyManufacturing.id,
       stage: "established",
       size_band: "mid",
@@ -764,7 +834,7 @@ async function seedMemberTypes(industryFamilies: IndustryFamilies, topics: Topic
     },
   });
 
-  return { smallCatererStarting, hvacGrowing, specialtyManufacturerEstablished };
+  return { eventServices, maintenanceServices, specialtyManufacturer };
 }
 
 // ============================================================
@@ -786,7 +856,7 @@ async function seedRules(memberTypes: MemberTypes, topics: Topics) {
         operands: [
           {
             type: "member_type_match",
-            params: { member_type_id: memberTypes.smallCatererStarting.id },
+            params: { member_type_id: memberTypes.eventServices.id },
           },
           {
             type: "signal_match",
@@ -815,7 +885,7 @@ async function seedRules(memberTypes: MemberTypes, topics: Topics) {
         operands: [
           {
             type: "member_type_match",
-            params: { member_type_id: memberTypes.hvacGrowing.id },
+            params: { member_type_id: memberTypes.maintenanceServices.id },
           },
           {
             type: "signal_match",
@@ -840,7 +910,7 @@ async function seedRules(memberTypes: MemberTypes, topics: Topics) {
         operands: [
           {
             type: "member_type_match",
-            params: { member_type_id: memberTypes.specialtyManufacturerEstablished.id },
+            params: { member_type_id: memberTypes.specialtyManufacturer.id },
           },
           {
             operator: "or",
@@ -890,7 +960,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
       industry_family_id: industryFamilies.eventDriven.id,
       stage: "starting",
       size_band: "small",
-      member_type_id: memberTypes.smallCatererStarting.id,
+      member_type_id: memberTypes.eventServices.id,
       primary_banker_id: bankers.scott.id,
       tenure_started_at: iso("2023-06-15"),
       consent_state: baseConsentState,
@@ -929,6 +999,45 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
         },
       },
       private_notes: [],
+      // Sprint 4.7 Block D — v2 key facts strip per ARCHITECTURE_V2
+      // §6.2. Hand-curated for the demo. source_id stays null in
+      // Turn 1; Turn 2's key-facts click handler will resolve to
+      // specific captured-evidence records.
+      key_facts: [
+        { label: "slow-season gap", value: "$48K/quarter", source_type: "sizing_measurement", source_id: null },
+        { label: "LOC sized", value: "$75K", source_type: "recommendation", source_id: null },
+        { label: "response", value: "leaning yes / spouse pending", source_type: "recommendation", source_id: null },
+        { label: "last touch", value: "Apr 8", source_type: "conversation", source_id: null },
+      ],
+      // Sprint 4.7 Block M — Tracks-supported-by-current-evidence cohort.
+      // FIXME(Francisco): review and refine the per-Member rationales
+      // before EVP demo. Per Q-M1 — CC drafts; Francisco refines.
+      // Compliance-careful framing per ARCHITECTURE_V2 §10.2 verbatim.
+      tracks_by_evidence_strength: {
+        strong: [
+          {
+            track_name: "Working Capital LOC",
+            evidence_count: 4,
+            rationale:
+              "Trigger (corporate-client late payments) captured; slow-season gap quantified at $48K; seasonal smoothing chart shown; Member reacted leaning yes.",
+          },
+        ],
+        moderate: [
+          {
+            track_name: "Cash Management upgrade",
+            evidence_count: 2,
+            rationale:
+              "Persistent cashflow volatility band + seasonal payment-timing pattern suggest treasury / sweep upgrade could absorb stress; banker has not yet surfaced.",
+          },
+        ],
+        insufficient: [
+          {
+            track_name: "Equipment Loan",
+            rationale:
+              "No equipment-investment trigger captured. Catering equipment refresh has not surfaced as a stated need.",
+          },
+        ],
+      },
     },
   });
 
@@ -941,7 +1050,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
       industry_family_id: industryFamilies.tradesConstruction.id,
       stage: "growing",
       size_band: "mid",
-      member_type_id: memberTypes.hvacGrowing.id,
+      member_type_id: memberTypes.maintenanceServices.id,
       primary_banker_id: bankers.scott.id,
       tenure_started_at: iso("2018-09-22"),
       consent_state: baseConsentState,
@@ -992,6 +1101,40 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
         },
       },
       private_notes: [],
+      // Sprint 4.7 Block D — v2 key facts strip.
+      key_facts: [
+        { label: "fleet target", value: "$180K", source_type: "recommendation", source_id: null },
+        { label: "payback", value: "18 months", source_type: "sizing_measurement", source_id: null },
+        { label: "response", value: "leaning yes / awaiting advisor", source_type: "recommendation", source_id: null },
+        { label: "last touch", value: "Apr 5", source_type: "conversation", source_id: null },
+      ],
+      // Sprint 4.7 Block M — Tracks-supported-by-current-evidence cohort.
+      // FIXME(Francisco): review and refine.
+      tracks_by_evidence_strength: {
+        strong: [
+          {
+            track_name: "Vehicle/Fleet Loan",
+            evidence_count: 4,
+            rationale:
+              "Capacity goal captured (declining 20-25% bread-and-butter work); fleet target sized at $180K; ROI projection shown; Member reacted leaning yes pending CPA review.",
+          },
+        ],
+        moderate: [
+          {
+            track_name: "SBA 7(a) structuring",
+            evidence_count: 2,
+            rationale:
+              "Revenue growth pattern + technician-hiring constraint suggest SBA structure could fit fleet + working capital combined; not surfaced in current capture.",
+          },
+        ],
+        insufficient: [
+          {
+            track_name: "Owner-Occupied CRE",
+            rationale:
+              "No real estate trigger captured. Northland currently rents the service bay; ownership has not been raised as a goal.",
+          },
+        ],
+      },
     },
   });
 
@@ -1004,7 +1147,7 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
       industry_family_id: industryFamilies.specialtyManufacturing.id,
       stage: "established",
       size_band: "mid",
-      member_type_id: memberTypes.specialtyManufacturerEstablished.id,
+      member_type_id: memberTypes.specialtyManufacturer.id,
       primary_banker_id: bankers.scott.id,
       tenure_started_at: iso("2006-04-10"),
       consent_state: baseConsentState,
@@ -1072,6 +1215,49 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
         },
       },
       private_notes: [],
+      // Sprint 4.7 Block D — v2 key facts strip.
+      key_facts: [
+        { label: "CRE need", value: "$4M-$7M", source_type: "recommendation", source_id: null },
+        { label: "trigger", value: "capital event", source_type: "signal", source_id: null },
+        // Sprint 6 Block C — Cygnus's primary Track is SBA 504 (TRACK-008)
+        // per Sprint 5c v3 addendum. SBA 504 specialist coordination
+        // involves the SBA specialist + CDC partner, not the conventional
+        // CRE specialist. Updated to reflect that.
+        { label: "specialist", value: "SBA + CDC partner engaged", source_type: "recommendation", source_id: null },
+        { label: "last touch", value: "Apr 21", source_type: "conversation", source_id: null },
+      ],
+      // Sprint 4.7 Block M — Tracks-supported-by-current-evidence cohort.
+      // Sprint 6 Block C — Cygnus's primary Track shifted from
+      // conventional CRE Term Loan to SBA 504 in Sprint 5c (per
+      // MEMBER_TYPE_GUIDANCE_v3_addendum); this cohort updated to
+      // match the live Track ranking. Specialist references shifted
+      // from CRE-only (Marcus Webb) to SBA specialist + CDC partner
+      // coordination per the Sprint 5d Section 9.8 roadmap.
+      tracks_by_evidence_strength: {
+        strong: [
+          {
+            track_name: "SBA 504",
+            evidence_count: 5,
+            rationale:
+              "Capital event trigger captured; owner-occupancy confirmed; capacity utilization (85%) + customer growth commitments quantified; SBA specialist + CDC partner coordination underway; Member committed to working with Blaze if structural depth is shown.",
+          },
+        ],
+        moderate: [
+          {
+            track_name: "Treasury Services upgrade",
+            evidence_count: 2,
+            rationale:
+              "Multi-customer payment flow complexity + 20-year banking continuity goal suggest cash management refresh could attach to the capital event; not currently surfaced in capture.",
+          },
+        ],
+        insufficient: [
+          {
+            track_name: "Conventional CRE Term Loan",
+            rationale:
+              "Owner-occupancy makes SBA 504 the structurally-stronger fit. Conventional CRE retained for completeness; demoted by the negative owner-occupancy entry on TRACK-003.",
+          },
+        ],
+      },
     },
   });
 
@@ -1153,7 +1339,7 @@ async function seedArtifacts(reviewedByBankerId: string) {
     data: {
       title: "Capital event partnership map",
       description:
-        "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the reframe is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty Manufacturer · Established and adjacent established Member Types.",
+        "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the reframe is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty manufacturer and adjacent established Member-Types.",
       type: "comparison",
       parameter_schema: {
         $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1289,7 +1475,7 @@ async function seedGrowthSteps(
       content:
         "How has cash flow been feeling over the last few months — particularly through the slower stretches? Tell me where it's been hardest.",
       capture_schema: ASK_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      target_member_types: { connect: [{ id: memberTypes.eventServices.id }] },
       trigger_signals: { connect: [{ id: topics.blockerSeasonal.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
@@ -1307,7 +1493,7 @@ async function seedGrowthSteps(
       content:
         "Roughly how big does the cash gap feel during your slowest months — in dollars, in weeks of payroll, however you think about it?",
       capture_schema: SIZE_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      target_member_types: { connect: [{ id: memberTypes.eventServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-01"),
@@ -1325,7 +1511,7 @@ async function seedGrowthSteps(
         "I want to show you what your year would look like with a working capital line of credit sized for your business — let's walk through it together.",
       capture_schema: SHOW_CAPTURE_SCHEMA,
       artifact_id: artifacts.seasonalSmoothing.id,
-      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      target_member_types: { connect: [{ id: memberTypes.eventServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-01"),
@@ -1342,7 +1528,7 @@ async function seedGrowthSteps(
       content:
         "Where does this leave you for the next step? What do you want me to have ready for our next conversation?",
       capture_schema: RESOLVE_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.smallCatererStarting.id }] },
+      target_member_types: { connect: [{ id: memberTypes.eventServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-01"),
@@ -1360,7 +1546,7 @@ async function seedGrowthSteps(
       content:
         "How did your last peak season go for you — were you able to get to all the work, or were there calls you couldn't take?",
       capture_schema: ASK_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      target_member_types: { connect: [{ id: memberTypes.maintenanceServices.id }] },
       trigger_signals: { connect: [{ id: topics.blockerCapacity.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
@@ -1378,7 +1564,7 @@ async function seedGrowthSteps(
       content:
         "Roughly how many calls do you think you had to turn away during peak — and what's a typical call worth to you?",
       capture_schema: SIZE_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      target_member_types: { connect: [{ id: memberTypes.maintenanceServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-15"),
@@ -1396,7 +1582,7 @@ async function seedGrowthSteps(
         "Let me show you what financing two more trucks would look like against the work you've been turning down. This isn't a pitch; it's the math.",
       capture_schema: SHOW_CAPTURE_SCHEMA,
       artifact_id: artifacts.fleetROI.id,
-      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      target_member_types: { connect: [{ id: memberTypes.maintenanceServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-15"),
@@ -1413,7 +1599,7 @@ async function seedGrowthSteps(
       content:
         "Where does this leave you? Want me to put together the full projection for you to take to your CPA, or is there a different next step?",
       capture_schema: RESOLVE_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.hvacGrowing.id }] },
+      target_member_types: { connect: [{ id: memberTypes.maintenanceServices.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-02-15"),
@@ -1431,7 +1617,7 @@ async function seedGrowthSteps(
       content:
         "Tell me more about what you're weighing on the floor space — what's driving the timing, and how sure are you that something has to give?",
       capture_schema: ASK_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturer.id }] },
       trigger_signals: { connect: [{ id: topics.triggerCapacityEval.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
@@ -1449,7 +1635,7 @@ async function seedGrowthSteps(
       content:
         "What's making this particular moment the right time — anything from your customer side that's pushing the timing?",
       capture_schema: ASK_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturer.id }] },
       trigger_signals: { connect: [{ id: topics.triggerVolume.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
@@ -1468,7 +1654,7 @@ async function seedGrowthSteps(
         "Let me show you how a deal like this typically comes together at Blaze, so you can see what we'd actually bring to the table — products, specialists, timing.",
       capture_schema: SHOW_CAPTURE_SCHEMA,
       artifact_id: artifacts.capitalEventMap.id,
-      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturer.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-03-01"),
@@ -1485,7 +1671,7 @@ async function seedGrowthSteps(
       content:
         "I'd like to bring in our CRE specialist Marcus Webb early so you can hear directly from him on a deal of this size. Would you be open to a 30-minute working session in the next two weeks?",
       capture_schema: CONNECT_CAPTURE_SCHEMA,
-      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturerEstablished.id }] },
+      target_member_types: { connect: [{ id: memberTypes.specialtyManufacturer.id }] },
       author_id: bankers.priya.id,
       status: "canonical",
       promoted_at: iso("2026-03-01"),
@@ -1528,7 +1714,7 @@ async function seedGrowthTracks(
         "Surfaces seasonal cash flow stress for small caterers, quantifies the gap, renders a parameterized smoothing chart, and closes with a sized LOC proposal. Designed for owner-operator catering businesses in their first three years where seasonality is the dominant cash flow shape.",
       banker_facing_purpose:
         "Walk Jenny through how a $75K line of credit would smooth her slow months and capture revenue she's currently leaving on the table during winter.",
-      target_member_type: { connect: { id: memberTypes.smallCatererStarting.id } },
+      target_member_type: { connect: { id: memberTypes.eventServices.id } },
       target_blocker_topics: { connect: [{ id: topics.blockerSeasonal.id }] },
       author: { connect: { id: bankers.priya.id } },
       status: "canonical",
@@ -1552,7 +1738,7 @@ async function seedGrowthTracks(
         "Surfaces capacity constraint for growing trades businesses, quantifies declined work, renders a fleet ROI projection, and closes with a sized vehicle/fleet loan proposal. Designed for HVAC, electrical, plumbing, and similar trades businesses that have proven their model and are constrained by execution capacity rather than demand.",
       banker_facing_purpose:
         "Walk Dan through how financing two new trucks would let him capture the ~70 service calls he's been turning away each peak season.",
-      target_member_type: { connect: { id: memberTypes.hvacGrowing.id } },
+      target_member_type: { connect: { id: memberTypes.maintenanceServices.id } },
       target_blocker_topics: { connect: [{ id: topics.blockerCapacity.id }] },
       author: { connect: { id: bankers.priya.id } },
       status: "canonical",
@@ -1576,7 +1762,7 @@ async function seedGrowthTracks(
         "Surfaces the capital event evaluation for established specialty manufacturers, discovers the customer-volume or qualification driver, demonstrates Blaze's coordinated commercial banking capability via the partnership map, and hands off to the CRE specialist before any formal RFP starts. Designed to address the recurring failure mode where established manufacturers default to regional commercial banks for capital events because their primary credit union 'isn't really set up for that'.",
       banker_facing_purpose:
         "Bring Marcus into the conversation early — Margaret's leadership team is moving on a $4-7M expansion and Blaze should be the bank that earns this deal.",
-      target_member_type: { connect: { id: memberTypes.specialtyManufacturerEstablished.id } },
+      target_member_type: { connect: { id: memberTypes.specialtyManufacturer.id } },
       target_trigger_topics: {
         connect: [
           { id: topics.triggerCapacityEval.id },
@@ -1608,15 +1794,15 @@ async function linkMemberTypesAndRulesToTracks(
   growthTracks: Awaited<ReturnType<typeof seedGrowthTracks>>,
 ) {
   await prisma.memberType.update({
-    where: { id: memberTypes.smallCatererStarting.id },
+    where: { id: memberTypes.eventServices.id },
     data: { default_growth_tracks: { connect: [{ id: growthTracks.seasonalCashFlow.id }] } },
   });
   await prisma.memberType.update({
-    where: { id: memberTypes.hvacGrowing.id },
+    where: { id: memberTypes.maintenanceServices.id },
     data: { default_growth_tracks: { connect: [{ id: growthTracks.fleetFinancing.id }] } },
   });
   await prisma.memberType.update({
-    where: { id: memberTypes.specialtyManufacturerEstablished.id },
+    where: { id: memberTypes.specialtyManufacturer.id },
     data: { default_growth_tracks: { connect: [{ id: growthTracks.capitalEvent.id }] } },
   });
 
@@ -1692,8 +1878,8 @@ async function seedJennyConversations(
       sentiment: "receptive",
       moment_quote: "winter was tough",
       banker_note: "Year-end review; Jenny mentioned 'winter was tough' but didn't elaborate. In hindsight this was the first surface of seasonal cash flow stress; not formally captured as a Signal at the time. A goal Signal (cash flow smoothing) was banker_inferred from the comment and added retroactively when reviewing the relationship for the April 2026 meeting.",
-      created_at: iso("2024-03-12"),
-      closed_at: iso("2024-03-12"),
+      created_at: daysAgo(52),
+      closed_at: daysAgo(52),
     },
   });
 
@@ -1708,7 +1894,7 @@ async function seedJennyConversations(
       recency: "ongoing",
       confidence: "banker_inferred",
       active: true,
-      captured_at: iso("2024-03-12"),
+      captured_at: daysAgo(52),
     },
   });
 
@@ -1735,23 +1921,29 @@ async function seedJennyConversations(
       channel: "call",
       sentiment: "uncertain",
       banker_note: "Inquiry about a corporate client paying 45+ days late. Scott offered guidance, no Growth track run.",
-      created_at: iso("2025-12-04"),
-      closed_at: iso("2025-12-04"),
+      created_at: daysAgo(35),
+      closed_at: daysAgo(35),
     },
   });
 
-  await prisma.signal.create({
+  // Sprint 5a.3 Block A — naming this Signal so Sprint 5a.3's
+  // FactorCapture source linkage can reference it by variable in
+  // seed-matrix.ts. Behavior unchanged; previously anonymous.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const jennyReceivablesBlockerSignal = await prisma.signal.create({
     data: {
       conversation_id: dec2025.id,
       member_id: m.id,
       type: "blocker",
       topic_id: topics.blockerReceivables.id,
       severity: "manageable",
-      their_words: "they keep slipping past 30 days and I have to keep pinging them",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1 (selected from
+      // MEMBER_FIXTURE_QUOTE_ENRICHMENT_v1.md).
+      their_words: "Some big accounts paying 60+ days now. Used to be 30.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2025-12-04"),
+      captured_at: daysAgo(35),
       // Magnitude backfilled per Q-017. The 45-days-late detail was originally
       // captured only as banker_note prose on the conversation; making it a
       // structured field on the Signal lets the Insight Engine aggregate
@@ -1776,8 +1968,8 @@ async function seedJennyConversations(
       duration_min: 32,
       moment_quote: "this is exactly what I needed to see — wow",
       banker_note: "Husband is the financial decision-maker; include him next time",
-      created_at: iso("2026-04-08"),
-      closed_at: iso("2026-04-08"),
+      created_at: daysAgo(17),
+      closed_at: daysAgo(17),
     },
   });
 
@@ -1791,11 +1983,11 @@ async function seedJennyConversations(
         signal_type: "blocker",
         topic_id: topics.blockerSeasonal.id,
         severity: "painful",
-        their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
+        their_words: "January and February kill us every year. Holiday parties end the second week of December and then nothing till spring.",
         recency: "recent",
         confidence: "member_stated",
       },
-      executed_at: iso("2026-04-08"),
+      executed_at: daysAgo(17),
     },
   });
 
@@ -1807,11 +1999,11 @@ async function seedJennyConversations(
       type: "blocker",
       topic_id: topics.blockerSeasonal.id,
       severity: "painful",
-      their_words: "this corporate client paying late really hit us, and our slow months are tough as it is",
+      their_words: "January and February kill us every year. Holiday parties end the second week of December and then nothing till spring.",
       recency: "recent",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-08"),
+      captured_at: daysAgo(17),
     },
   });
 
@@ -1829,7 +2021,7 @@ async function seedJennyConversations(
         feeling: "frustrated",
         quantification_confidence: "banker_estimated_from_cues",
       },
-      executed_at: iso("2026-04-08"),
+      executed_at: daysAgo(17),
     },
   });
 
@@ -1860,9 +2052,11 @@ async function seedJennyConversations(
         },
         followup_questions_asked: ["size", "rate", "flexibility"],
         shared_afterward: true,
-        their_words: "this is exactly what I needed to see — wow",
+        // Sprint 4.7 Block P — quote enrichment per Q-P1.
+        their_words:
+          "Oh, I see what you're doing — the line just covers the dip. That's actually... yeah, that's helpful to see it laid out.",
       },
-      executed_at: iso("2026-04-08"),
+      executed_at: daysAgo(17),
     },
   });
 
@@ -1879,7 +2073,11 @@ async function seedJennyConversations(
         "Member showed acute seasonal cash flow stress quantified at approximately $12K per quarter, against a long-running goal of smoothing lumpy cash flow into manageable shape. A $75K LOC sized at roughly one quarter of the slow-season revenue gap provides smoothing capacity with comfortable headroom. Member's existing Visa demonstrates payment discipline; primary guarantee from the owner is appropriate given the size.",
       confidence_band: "high",
       response: "leaning_yes",
-      primary_concern: "spouse",
+      // Sprint 4.6 Block A — value migrated from "spouse" to
+      // "co_decision_maker_household" per COMPLIANCE.md §6.3 business-
+      // factor-only taxonomy. Same semantic meaning; direction-explicit
+      // framing.
+      primary_concern: "co_decision_maker_household",
       // Sprint 4 §A.3 — structured size capture (Sprint 3 review §3a).
       // size_low === size_high → display layer renders "$75K" (single value).
       size_low: 75000,
@@ -1897,9 +2095,11 @@ async function seedJennyConversations(
           { id: jennyCashFlowSmoothingGoalSignal.id },
         ],
       },
-      their_words: "this is exactly what I needed to see — wow",
-      created_at: iso("2026-04-08"),
-      updated_at: iso("2026-04-08"),
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      their_words:
+        "Seventy-five thousand. Okay. That's bigger than I was thinking but if I'm only drawing during the slow months...",
+      created_at: daysAgo(17),
+      updated_at: daysAgo(17),
     },
   });
 
@@ -1917,7 +2117,7 @@ async function seedJennyConversations(
         due_date: "2026-04-22",
         member_stated_reason: "I want to talk to my husband before we commit to anything this size",
       },
-      executed_at: iso("2026-04-08"),
+      executed_at: daysAgo(17),
     },
   });
 
@@ -1929,11 +2129,13 @@ async function seedJennyConversations(
       type: "indecision",
       topic_id: topics.indecisionAuthority.id,
       severity: "manageable",
-      their_words: "I want to talk to my husband before we commit to anything this size",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      their_words:
+        "I'd want Mike to look at the numbers before I sign anything that big. He handles the books with me.",
       recency: "recent",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-08"),
+      captured_at: daysAgo(17),
     },
   });
 
@@ -1958,10 +2160,10 @@ async function seedJennyConversations(
         "Jenny was 'leaning yes' on the $75K LOC after seeing the seasonal smoothing chart but wants to discuss with her husband before committing. De-risk by sending her the parameterized chart and offering a joint call next week.",
       suggested_opening:
         "Hi Jenny — attaching the projection we walked through. Happy to set up a quick call with you and Mike if that would be helpful before deciding.",
-      due_at: iso("2026-04-22"),
+      due_at: daysAgo(3),
       status: "open",
-      status_changed_at: iso("2026-04-08"),
-      created_at: iso("2026-04-08"),
+      status_changed_at: daysAgo(17),
+      created_at: daysAgo(17),
     },
   });
 }
@@ -2033,8 +2235,8 @@ async function seedNorthlandConversations(
       channel: "in_person",
       sentiment: "receptive",
       banker_note: "Visa limit increase approved; Dan mentioned needing one more truck. Captured as a goal Signal (fleet expansion). The capacity-constraint blocker comes through as the structural counterpart in the April 2026 conversation when Dan reframes the same situation as 'turning people away'.",
-      created_at: iso("2025-02-22"),
-      closed_at: iso("2025-02-22"),
+      created_at: daysAgo(47),
+      closed_at: daysAgo(47),
     },
   });
 
@@ -2045,11 +2247,13 @@ async function seedNorthlandConversations(
       type: "goal",
       topic_id: topics.goalFleet.id,
       severity: "manageable",
-      their_words: "we're going to need another truck before next summer",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      their_words:
+        "We could probably do another 20-25% volume if we had the trucks and bodies. Demand isn't the problem.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2025-02-22"),
+      captured_at: daysAgo(47),
     },
   });
 
@@ -2064,8 +2268,8 @@ async function seedNorthlandConversations(
       duration_min: 35,
       moment_quote: "I've been doing this all wrong — paying cash for used trucks while declining work",
       banker_note: "Daughter's vehicle loan also approved separately; that conversation went well too.",
-      created_at: iso("2026-04-15"),
-      closed_at: iso("2026-04-15"),
+      created_at: daysAgo(18),
+      closed_at: daysAgo(18),
     },
   });
 
@@ -2079,11 +2283,11 @@ async function seedNorthlandConversations(
         signal_type: "blocker",
         topic_id: topics.blockerCapacity.id,
         severity: "painful",
-        their_words: "we just couldn't get to all the calls last summer — felt awful turning people away",
+        their_words: "I came in to look at financing for my own truck because mine's done, but maybe what I really need is to think about the whole fleet.",
         recency: "ongoing",
         confidence: "member_stated",
       },
-      executed_at: iso("2026-04-15"),
+      executed_at: daysAgo(18),
     },
   });
 
@@ -2095,11 +2299,11 @@ async function seedNorthlandConversations(
       type: "blocker",
       topic_id: topics.blockerCapacity.id,
       severity: "painful",
-      their_words: "we just couldn't get to all the calls last summer — felt awful turning people away",
+      their_words: "I came in to look at financing for my own truck because mine's done, but maybe what I really need is to think about the whole fleet.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-15"),
+      captured_at: daysAgo(18),
     },
   });
 
@@ -2117,7 +2321,7 @@ async function seedNorthlandConversations(
         feeling: "frustrated",
         quantification_confidence: "banker_estimated_from_cues",
       },
-      executed_at: iso("2026-04-15"),
+      executed_at: daysAgo(18),
     },
   });
 
@@ -2149,9 +2353,9 @@ async function seedNorthlandConversations(
         },
         followup_questions_asked: ["structure_options", "rate", "speed_of_approval"],
         shared_afterward: true,
-        their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
+        their_words: "I hear you. Let me chew on it. I want to talk to my CPA before pulling the trigger on something this size.",
       },
-      executed_at: iso("2026-04-15"),
+      executed_at: daysAgo(18),
     },
   });
 
@@ -2168,7 +2372,10 @@ async function seedNorthlandConversations(
         "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season (roughly $49K of annual lost revenue), against a stated objective of fleet expansion. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
       confidence_band: "high",
       response: "leaning_yes",
-      primary_concern: "cpa",
+      // Sprint 4.6 Block A — value migrated from "cpa" to
+      // "external_advisor" per COMPLIANCE.md §6.3 business-factor-only
+      // taxonomy. Same semantic meaning; direction-explicit framing.
+      primary_concern: "external_advisor",
       // Sprint 4 §A.3 — structured size capture (firm size).
       size_low: 180000,
       size_high: 180000,
@@ -2179,9 +2386,9 @@ async function seedNorthlandConversations(
       // (Northland's primary banker); no specialist handoff for fleet
       // financing.
       owned_by_id: bankers.scott.id,
-      their_words: "I've been doing this all wrong — paying cash for used trucks while declining work",
-      created_at: iso("2026-04-15"),
-      updated_at: iso("2026-04-15"),
+      their_words: "I hear you. Let me chew on it. I want to talk to my CPA before pulling the trigger on something this size.",
+      created_at: daysAgo(18),
+      updated_at: daysAgo(18),
       responds_to_signals: {
         connect: [
           { id: capSignal.id },
@@ -2203,9 +2410,9 @@ async function seedNorthlandConversations(
         next_step_description: "Send Dan the projection report; schedule call after he meets with his CPA",
         next_step_owner_id: bankers.scott.id,
         due_date: "2026-04-29",
-        member_stated_reason: "I need to run the numbers by my accountant before I commit to something this size",
+        member_stated_reason: "I want to run this past my CPA before I commit. He handles all the tax stuff and I want him on board with the structure.",
       },
-      executed_at: iso("2026-04-15"),
+      executed_at: daysAgo(18),
     },
   });
 
@@ -2217,11 +2424,11 @@ async function seedNorthlandConversations(
       type: "indecision",
       topic_id: topics.indecisionInformation.id,
       severity: "manageable",
-      their_words: "I need to run the numbers by my accountant before I commit to something this size",
+      their_words: "I want to run this past my CPA before I commit. He handles all the tax stuff and I want him on board with the structure.",
       recency: "recent",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-15"),
+      captured_at: daysAgo(18),
     },
   });
 
@@ -2243,10 +2450,10 @@ async function seedNorthlandConversations(
         "Dan was leaning yes on fleet financing after seeing the ROI projection but wants to verify with his CPA before committing. De-risk by sending him the projection report and scheduling a follow-up call after his CPA meeting.",
       suggested_opening:
         "Hi Dan — attaching the projection we walked through. Take it to your CPA and let's schedule a call once you've had that conversation. No pressure on timing.",
-      due_at: iso("2026-04-29"),
+      due_at: daysAgo(8),
       status: "open",
-      status_changed_at: iso("2026-04-15"),
-      created_at: iso("2026-04-15"),
+      status_changed_at: daysAgo(18),
+      created_at: daysAgo(18),
     },
   });
 }
@@ -2285,8 +2492,8 @@ async function seedCygnusConversations(
       channel: "in_person",
       sentiment: "receptive",
       banker_note: "Annual treasury review; Margaret mentioned anchor customers signaling volume growth — captured as a forward-looking goal.",
-      created_at: iso("2024-11-15"),
-      closed_at: iso("2024-11-15"),
+      created_at: daysAgo(48),
+      closed_at: daysAgo(48),
     },
   });
 
@@ -2297,11 +2504,13 @@ async function seedCygnusConversations(
       type: "goal",
       topic_id: topics.goalCustomerGrowth.id,
       severity: "manageable",
-      their_words: "two of our customers are signaling we should plan for more volume next year",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      their_words:
+        "We're at about eighty-five percent capacity utilization. Three of our anchor customers are signaling fifteen to twenty-five percent volume growth over the next eighteen months. The math is clear — we have to expand or we have to start telling customers no.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2024-11-15"),
+      captured_at: daysAgo(48),
     },
   });
 
@@ -2329,23 +2538,32 @@ async function seedCygnusConversations(
       sentiment: "receptive",
       moment_quote: "they're naming us a preferred supplier on the platform consolidation",
       banker_note: "Margaret described a customer 'platform consolidation' naming Cygnus a preferred supplier; surfaced concentration risk as the structural counterpart. No Growth track existed for this pattern at the time.",
-      created_at: iso("2025-06-22"),
-      closed_at: iso("2025-06-22"),
+      created_at: daysAgo(32),
+      closed_at: daysAgo(32),
     },
   });
 
-  await prisma.signal.create({
+  // Sprint 5a.3 Block A — named for source-linkage availability.
+  // Currently unlinked from any FactorCapture per Sprint 5a.3 audit;
+  // Pilot may route a future FACTOR-022 customer_concentration capture
+  // through this grounding (architectural Note 1 — many-to-many
+  // FactorCapture-to-Signal linkage decision).
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const cygnusConcentrationBlockerSignal = await prisma.signal.create({
     data: {
       conversation_id: jun2025.id,
       member_id: m.id,
       type: "blocker",
       topic_id: topics.blockerConcentration.id,
       severity: "manageable",
-      their_words: "three customers are getting really big as a share of our book",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1. Captures the
+      // memorable "lost-2019-deal" recall (Francisco's E4 demo pick).
+      their_words:
+        "Last expansion we went with regional. They had a CRE team that knew the building type. We weren't unhappy but the relationship cost more than the rate did. I'd rather not do that again if we have a choice.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2025-06-22"),
+      captured_at: daysAgo(32),
     },
   });
 
@@ -2374,8 +2592,8 @@ async function seedCygnusConversations(
       duration_min: 55,
       moment_quote: "this is the conversation I've been wanting to have with you",
       banker_note: "Margaret still references the 2019 deal we lost; this is the chance to make that right.",
-      created_at: iso("2026-04-21"),
-      closed_at: iso("2026-04-21"),
+      created_at: daysAgo(7),
+      closed_at: daysAgo(7),
     },
   });
 
@@ -2393,7 +2611,7 @@ async function seedCygnusConversations(
         recency: "ongoing",
         confidence: "member_stated",
       },
-      executed_at: iso("2026-04-21"),
+      executed_at: daysAgo(7),
     },
   });
 
@@ -2409,7 +2627,7 @@ async function seedCygnusConversations(
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-21"),
+      captured_at: daysAgo(7),
     },
   });
 
@@ -2423,12 +2641,18 @@ async function seedCygnusConversations(
         signal_type: "trigger",
         topic_id: topics.triggerVolume.id,
         severity: "painful",
-        their_words:
-          "three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source",
+        // Sprint 4.7.1 Block H — restore quote-topic alignment. Block P
+      // had overwritten this with the RFP-vs-relationship Indecision
+      // quote, which doesn't match the triggerVolume topic. Restored to
+      // the canonical MEMBER_FIXTURE_BRIEF §5.4 customer-volume-commitment
+      // quote so the two Cygnus triggers render as distinct, faithful
+      // captures (capacity_eval + customer_volume_commitment).
+      their_words:
+          "Three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source.",
         recency: "ongoing",
         confidence: "member_stated",
       },
-      executed_at: iso("2026-04-21"),
+      executed_at: daysAgo(7),
     },
   });
 
@@ -2440,12 +2664,13 @@ async function seedCygnusConversations(
       type: "trigger",
       topic_id: topics.triggerVolume.id,
       severity: "painful",
+      // Sprint 4.7.1 Block H — restored canonical volume-trigger quote.
       their_words:
-        "three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source",
+        "Three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source.",
       recency: "ongoing",
       confidence: "member_stated",
       active: true,
-      captured_at: iso("2026-04-21"),
+      captured_at: daysAgo(7),
     },
   });
 
@@ -2465,9 +2690,10 @@ async function seedCygnusConversations(
         },
         followup_questions_asked: ["timeline_for_decision", "blaze_capacity_for_deal_size", "marcus_webb_background"],
         shared_afterward: false,
-        their_words: "this is the conversation I've been wanting to have with you",
+        // Sprint 4.7 Block P — quote enrichment per Q-P1.
+their_words: "Bring me the specialist. We'll work through structure together.",
       },
-      executed_at: iso("2026-04-21"),
+      executed_at: daysAgo(7),
     },
   });
 
@@ -2478,13 +2704,22 @@ async function seedCygnusConversations(
       product_id: products.creTermLoan.id,
       size_proposed: null,
       structure: "standard",
+      // Sprint 6 Block C — Cygnus shifted from conventional CRE to
+      // SBA 504 in Sprint 5c. Recommendation narrative updated to
+      // reflect SBA specialist + CDC partner coordination.
       rationale_summary:
-        "$4M-$7M CRE financing for the anchor-customer-driven capacity expansion. CRE specialist Marcus Webb engaged early; coordination by Scott.",
+        "$4M-$7M SBA 504 financing for the owner-occupied capacity expansion. SBA specialist + CDC partner engaged early; relationship coordination by Scott.",
       rationale_text:
-        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. CRE specialist Marcus Webb engaged; relationship coordination by Scott Brynjolffson.",
+        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Owner-occupancy confirmed, which makes SBA 504 structurally stronger than conventional CRE (longer-term fixed CDC piece, lower equity requirement). Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. SBA specialist + CDC partner engaged; relationship coordination by Scott Brynjolffson.",
       confidence_band: "medium",
       response: "leaning_yes",
-      primary_concern: "bank_capability",
+      // Sprint 4.6 Block A — value migrated from "bank_capability" to
+      // "service_or_capability_concern" per COMPLIANCE.md §6.3
+      // business-factor-only taxonomy. The new value is the shared
+      // engaged-and-decline-context value. Cygnus's concern is the
+      // bank's ability to deliver a CRE deal of this size — a service /
+      // capability question, not a UDAAP-risky "doesn't trust" framing.
+      primary_concern: "service_or_capability_concern",
       // Sprint 4 §A.3 — structured range capture (Sprint 3 review §3a).
       // size_low < size_high → display layer renders "$4M-$7M" (range).
       // The legacy size_proposed field stays null for this Recommendation
@@ -2500,9 +2735,10 @@ async function seedCygnusConversations(
       // ownership routes specialty product opportunities to the right
       // expert while the relationship banker remains the primary contact.
       owned_by_id: bankers.marcus.id,
-      their_words: "this is the conversation I've been wanting to have with you",
-      created_at: iso("2026-04-21"),
-      updated_at: iso("2026-04-21"),
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+their_words: "Bring me the specialist. We'll work through structure together.",
+      created_at: daysAgo(7),
+      updated_at: daysAgo(7),
       responds_to_signals: {
         connect: [
           { id: cygnusCapacityEvalSignal.id },
@@ -2526,7 +2762,7 @@ async function seedCygnusConversations(
           "Capital event evaluation underway; CRE and structured term financing required; bringing CRE specialist in early to earn the relationship before any RFP process. Member explicitly receptive to Blaze handling the deal.",
         member_receptiveness: "eager",
       },
-      executed_at: iso("2026-04-21"),
+      executed_at: daysAgo(7),
     },
   });
 
@@ -2541,10 +2777,10 @@ async function seedCygnusConversations(
         "Capital event evaluation underway at Cygnus Bioscience. Member is at ~85% capacity utilization with 3 anchor customers indicating 15-25% volume growth over 18 months. Expansion size estimated at $4-7M. Member is explicitly receptive to Blaze handling the deal but is keeping options open. Bring CRE specialist in early to earn the relationship before any RFP process. Note: Cygnus financed their 2019 expansion through a regional commercial bank — Margaret still mentions this; this is an opportunity to make that right.",
       suggested_opening:
         "Margaret, Scott told me you're starting to think about your floor space situation. I lead our commercial real estate and structured financing work — I'd love to spend 30 minutes understanding what you're weighing, with no expectation that we're the right answer. When works for you?",
-      due_at: iso("2026-04-26"),
+      due_at: daysAgo(5),
       status: "open",
-      status_changed_at: iso("2026-04-21"),
-      created_at: iso("2026-04-21"),
+      status_changed_at: daysAgo(7),
+      created_at: daysAgo(7),
     },
   });
 
@@ -2562,8 +2798,8 @@ async function seedCygnusConversations(
         "Margaret — wanted to follow up on our conversation last week. Did Marcus reach out? And is there anything else you've been thinking about that we should put on the next agenda?",
       due_at: iso("2026-05-05"),
       status: "open",
-      status_changed_at: iso("2026-04-21"),
-      created_at: iso("2026-04-21"),
+      status_changed_at: daysAgo(7),
+      created_at: daysAgo(7),
     },
   });
 }
@@ -2683,7 +2919,7 @@ async function generateMemberSummarySnapshot(memberId: string, conversationId: s
 // work) has something to surface for each Member profile.
 //
 // Authorship: external_label is used for all three demo Macros — Marcus
-// Wei (Chief Economist) and Sarah Chen (Sector Specialist) aren't seeded
+// Wei (Chief Economist) and Margot Desandre (Sector Specialist) aren't seeded
 // as Banker entities in this demo, and adding them as Banker rows would
 // inflate the banker dropdown with non-relationship-banker identities.
 // Logged as Q-023 in OPEN_QUESTIONS for Pilot-phase reconsideration.
@@ -2697,10 +2933,10 @@ async function seedMacros(
   memberTypes: MemberTypes,
   topics: Topics,
 ) {
-  // Macro 1 — Q3 supplier payment compression (affects Small Caterer · Starting)
+  // Macro 1 — Q3 supplier payment compression (affects Event services)
   await prisma.macro.create({
     data: {
-      title: "Q3 supplier payment compression — Small Caterers",
+      title: "Q3 supplier payment compression — Event services",
       summary:
         "Small caterers across the metro are reporting 20-30% extension in customer payment terms during Q3 2025 through Q1 2026. Driven by tightened working capital across customers in the corporate hospitality segment, particularly mid-sized firms responding to elevated cost-of-capital. Members exposed to corporate event catering are most affected.",
       authored_by_external_label: "Marcus Wei (Chief Economist)",
@@ -2708,7 +2944,7 @@ async function seedMacros(
       effective_period_start: iso("2026-04-12"),
       effective_period_end: null, // Still effective
       affected_industry_families: [industryFamilies.eventDriven.id],
-      affected_member_types: [memberTypes.smallCatererStarting.id],
+      affected_member_types: [memberTypes.eventServices.id],
       recommended_response:
         "Surface seasonal cash flow stress during Ask phase. Quantify customer-payment-extension impact in Size phase. Working Capital LOC Track is well-suited; size at one quarter of slow-season revenue gap. Reference this Macro in Suggested opening to the Member as part of the conversational on-ramp.",
       evidence_links: [
@@ -2723,18 +2959,18 @@ async function seedMacros(
     },
   });
 
-  // Macro 2 — Light commercial fleet ROI window (affects HVAC & Trades · Growing)
+  // Macro 2 — Light commercial fleet ROI window (affects Maintenance services)
   await prisma.macro.create({
     data: {
-      title: "Light commercial fleet ROI window — HVAC & Trades",
+      title: "Light commercial fleet ROI window — Maintenance services",
       summary:
         "Vehicle and equipment financing rates are at a 24-month low; meanwhile capacity-constrained HVAC and trades businesses are reporting elevated declined-call rates from limited fleet capacity. The combination creates a roughly 18-24 month ROI window where financed fleet expansion captures previously-declined revenue meaningfully faster than its debt service. Window expected to close in late Q3 2026 as financing rates normalize upward.",
-      authored_by_external_label: "Sarah Chen (Sector Specialist, Skilled Trades)",
+      authored_by_external_label: "Margot Desandre (Sector Specialist, Skilled Trades)",
       authored_at: iso("2026-04-10"),
       effective_period_start: iso("2026-04-10"),
       effective_period_end: iso("2026-09-30"), // Window expected to close
       affected_industry_families: [industryFamilies.tradesConstruction.id],
-      affected_member_types: [memberTypes.hvacGrowing.id],
+      affected_member_types: [memberTypes.maintenanceServices.id],
       recommended_response:
         "Surface capacity-vs-demand tension during Ask phase. Quantify declined-call value in Size phase. Vehicle/Fleet Loan Track demonstrates payback within the ROI window. Use the fleet ROI projection chart Artifact during Show phase.",
       evidence_links: [
@@ -2745,18 +2981,18 @@ async function seedMacros(
     },
   });
 
-  // Macro 3 — Specialty manufacturer capital events (affects Specialty Manufacturer · Established)
+  // Macro 3 — Specialty manufacturer capital events (affects Specialty manufacturer)
   await prisma.macro.create({
     data: {
       title: "Specialty manufacturer capital event opportunities",
       summary:
         "Specialty manufacturers in the Twin Cities region are reporting elevated rates of anchor-customer-driven capacity expansion conversations. Many of these capital events qualify for owner-occupied CRE financing combined with equipment lending. Members in the $20M-$100M revenue band are most likely to face these decisions in 2026.",
-      authored_by_external_label: "Sarah Chen (Sector Specialist, Skilled Trades)",
+      authored_by_external_label: "Margot Desandre (Sector Specialist, Skilled Trades)",
       authored_at: iso("2026-04-05"),
       effective_period_start: iso("2026-04-05"),
       effective_period_end: null, // Still effective
       affected_industry_families: [industryFamilies.specialtyManufacturing.id],
-      affected_member_types: [memberTypes.specialtyManufacturerEstablished.id],
+      affected_member_types: [memberTypes.specialtyManufacturer.id],
       recommended_response:
         "Probe capital event evaluation during Ask phase. Discover the timing driver. CRE specialist introduction (Connect step) is likely the right path. Capital event partnership map Artifact demonstrates Blaze's coordinated commercial banking capability.",
       evidence_links: [
@@ -2837,6 +3073,37 @@ async function main() {
   console.log("Step 7 — Macros (Sprint 4 §B)");
   await seedMacros(industryFamilies, memberTypes, topics);
 
+  console.log("Step 8 — v2 entities (Sprint 4.7 Block P / B)");
+  await seedV2Entities(members, bankers, artifacts);
+
+  console.log("Step 9 — Business Factor Matrix (Sprint 5a.1)");
+  await seedBusinessFactorMatrix(prisma);
+  await seedFactorCapturesForFixtures(prisma, members, bankers.scott.id);
+
+  console.log("Step 10 — Insight architecture (Sprint 5b.1)");
+  await seedInsightPatterns(prisma);
+  await seedInsightsForFixtures(prisma, members, bankers.scott.id);
+
+  console.log("Step 11 — ArtifactTemplate seed (Sprint 5d Block B)");
+  await seedArtifactTemplates(prisma);
+  await migrateCygnusModelToTemplate(prisma);
+
+  console.log("Step 12 — Stage-skip fixture (Sprint 5d Block I)");
+  await seedStageSkipFixture({
+    prisma,
+    bankerId: bankers.scott.id,
+    industryFamilyEventDrivenId: industryFamilies.eventDriven.id,
+    memberTypeEventServicesId: memberTypes.eventServices.id,
+  });
+  console.log("  Seeded Riverside Catering (event_services, TRACK-001 stage-skip)");
+
+  console.log("Step 12b — Fixture multi-Track (Sprint 8 Block G)");
+  await seedFixtureMultiTrack(prisma);
+
+  console.log("Step 13 — Workflow state recompute (Sprint 5b.2)");
+  const wfCount = await recomputeAllWorkflowStates(prisma);
+  console.log(`  Workflow state computed for ${wfCount} Members`);
+
   // Final row counts.
   const counts = {
     bankers: await prisma.banker.count(),
@@ -2857,11 +3124,216 @@ async function main() {
     memberSummarySnapshots: await prisma.memberSummarySnapshot.count(),
     macros: await prisma.macro.count(),
     artifactParameterCaptures: await prisma.artifactParameterCapture.count(),
+    // Sprint 4.7 v2 entities.
+    models: await prisma.model.count(),
+    showEvents: await prisma.showEvent.count(),
+    reactions: await prisma.reaction.count(),
+    // Sprint 5a.1 — business factor matrix.
+    businessFactors: await prisma.businessFactor.count(),
+    trackTemplates: await prisma.trackTemplate.count(),
+    matrixEntries: await prisma.matrixEntry.count(),
+    factorCaptures: await prisma.factorCapture.count(),
   };
   console.log("\nRow counts after full seed:");
   console.table(counts);
 
   console.log("\nSeed complete (Steps 1-6).");
+}
+
+// ============================================================
+// Sprint 4.7 Block P — v2 entity seeds.
+//
+// Seeds Model + ShowEvent + Reaction rows for each Member's featured
+// conversation, populating the v2 captured-feed with realistic
+// banker-built models, artifact-rendering events, and Member-quote
+// reactions. Quotes selected from MEMBER_FIXTURE_QUOTE_ENRICHMENT_v1.md
+// per Q-P1 resolution; Francisco reviews before EVP demo.
+// ============================================================
+
+async function seedV2Entities(
+  members: Members,
+  bankers: Bankers,
+  artifacts: Artifacts,
+) {
+  // ── Jenny — Apr 8 conversation; LOC sized + seasonal smoothing chart shown ──
+  const jennyApr8 = await prisma.conversation.findFirstOrThrow({
+    where: { member_id: members.jenny.id, created_at: daysAgo(17) },
+    select: { id: true },
+  });
+
+  const jennyModel = await prisma.model.create({
+    data: {
+      member_id: members.jenny.id,
+      conversation_id: jennyApr8.id,
+      artifact_id: artifacts.seasonalSmoothing.id,
+      built_with_member: true,
+      parameters: {
+        name: "Seasonal cashflow projection",
+        rows: [
+          { key: "monthly_low", value: "$35,000" },
+          { key: "monthly_high", value: "$95,000" },
+          { key: "proposed_loc_size", value: "$75,000" },
+          { key: "slow_season_months", value: "Jan-Feb" },
+        ],
+      },
+      assumptions: [
+        "Customer payment timing stays at 60-day average for top accounts",
+        "Slow season runs Jan-Feb with ~$48K aggregate gap",
+        "Member draws only during slow months and pays down by April",
+      ],
+      output_summary:
+        "$75K LOC covers the slow-season gap with 30% headroom. Member draws ~$48K in Jan-Feb and pays down by April collections.",
+      built_by_banker_id: bankers.scott.id,
+      built_at: daysAgo(17),
+    },
+  });
+
+  const jennyShowEvent = await prisma.showEvent.create({
+    data: {
+      member_id: members.jenny.id,
+      conversation_id: jennyApr8.id,
+      artifact_id: artifacts.seasonalSmoothing.id,
+      model_id: jennyModel.id,
+      shown_by_banker_id: bankers.scott.id,
+      context_note: "Walked through during in-person check-in",
+      shown_at: daysAgo(17),
+    },
+  });
+
+  await prisma.reaction.create({
+    data: {
+      member_id: members.jenny.id,
+      conversation_id: jennyApr8.id,
+      show_event_id: jennyShowEvent.id,
+      response_value: "leaning_yes",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1 (Francisco's E4
+      // memorability pick: the moment Jenny sees the smoothing logic).
+      member_quote:
+        "Oh, I see what you're doing — the line just covers the dip. That's actually... yeah, that's helpful to see it laid out.",
+      captured_by_banker_id: bankers.scott.id,
+      captured_at: daysAgo(17),
+    },
+  });
+
+  // ── Northland — Apr 15 conversation; fleet ROI projection shown ──
+  const northlandApr15 = await prisma.conversation.findFirstOrThrow({
+    where: { member_id: members.northland.id, created_at: daysAgo(18) },
+    select: { id: true },
+  });
+
+  const northlandModel = await prisma.model.create({
+    data: {
+      member_id: members.northland.id,
+      conversation_id: northlandApr15.id,
+      artifact_id: artifacts.fleetROI.id,
+      built_with_member: true,
+      parameters: {
+        name: "Fleet expansion ROI projection",
+        rows: [
+          { key: "current_fleet_size", value: "8 trucks" },
+          { key: "proposed_addition", value: "2 trucks" },
+          { key: "service_call_avg_value", value: "$700" },
+          { key: "financing_term_months", value: "60" },
+          { key: "financing_rate_pct", value: "7.5" },
+        ],
+      },
+      assumptions: [
+        "Declined service-call backlog stays at current ~70 calls/peak season",
+        "Two new trucks each cover 35 additional calls per peak season",
+        "Technician hiring keeps pace with truck delivery",
+      ],
+      output_summary:
+        "Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season.",
+      built_by_banker_id: bankers.scott.id,
+      built_at: daysAgo(18),
+    },
+  });
+
+  const northlandShowEvent = await prisma.showEvent.create({
+    data: {
+      member_id: members.northland.id,
+      conversation_id: northlandApr15.id,
+      artifact_id: artifacts.fleetROI.id,
+      model_id: northlandModel.id,
+      shown_by_banker_id: bankers.scott.id,
+      context_note: "Walked through ROI breakeven and cumulative gain",
+      shown_at: daysAgo(18),
+    },
+  });
+
+  await prisma.reaction.create({
+    data: {
+      member_id: members.northland.id,
+      conversation_id: northlandApr15.id,
+      show_event_id: northlandShowEvent.id,
+      response_value: "engaged",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      member_quote: "Okay, the math holds. I see how the volume covers the payment.",
+      captured_by_banker_id: bankers.scott.id,
+      captured_at: daysAgo(18),
+    },
+  });
+
+  // ── Cygnus — Apr 21 conversation; capital event partnership map shown ──
+  const cygnusApr21 = await prisma.conversation.findFirstOrThrow({
+    where: { member_id: members.cygnus.id, created_at: daysAgo(7) },
+    select: { id: true },
+  });
+
+  const cygnusModel = await prisma.model.create({
+    data: {
+      member_id: members.cygnus.id,
+      conversation_id: cygnusApr21.id,
+      artifact_id: artifacts.capitalEventMap.id,
+      built_with_member: true,
+      parameters: {
+        name: "Capital event partnership map",
+        rows: [
+          { key: "company_revenue_band", value: "$25M-$50M" },
+          { key: "expansion_size_estimate", value: "$4M-$7M" },
+          { key: "current_blaze_relationships", value: "Treasury, LOC" },
+          { key: "specialist_coordination", value: "SBA specialist + CDC partner" },
+        ],
+      },
+      assumptions: [
+        "Anchor customer volume commitments hold at 15-25% growth over 18 months",
+        "Capacity expansion lands at $4-7M including facility, equipment qualification, validation",
+        "Board calendar requires three financing scenarios before September meeting",
+      ],
+      // Sprint 6 Block C — output summary aligned with SBA 504 narrative
+      // (Cygnus's primary Track per Sprint 5c v3 addendum).
+      output_summary:
+        "Pathway from initial conversation to closing with milestone calendar. SBA specialist + CDC partner engaged; relationship coordination by Scott.",
+      built_by_banker_id: bankers.scott.id,
+      built_at: daysAgo(7),
+    },
+  });
+
+  const cygnusShowEvent = await prisma.showEvent.create({
+    data: {
+      member_id: members.cygnus.id,
+      conversation_id: cygnusApr21.id,
+      artifact_id: artifacts.capitalEventMap.id,
+      model_id: cygnusModel.id,
+      shown_by_banker_id: bankers.scott.id,
+      context_note: "Walked Margaret + Robert through the pathway",
+      shown_at: daysAgo(7),
+    },
+  });
+
+  await prisma.reaction.create({
+    data: {
+      member_id: members.cygnus.id,
+      conversation_id: cygnusApr21.id,
+      show_event_id: cygnusShowEvent.id,
+      response_value: "engaged",
+      // Sprint 4.7 Block P — quote enrichment per Q-P1.
+      member_quote:
+        "Yes, please. The sooner the better. Have him reach out directly to Robert and me.",
+      captured_by_banker_id: bankers.scott.id,
+      captured_at: daysAgo(7),
+    },
+  });
 }
 
 main()

@@ -155,15 +155,6 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default:** 6 months across all Signal types. Configurable in code (`STALE_DAYS` constant in `ask-section.tsx`).
 - **Status:** Open. Validate during Sprint 5 Insight Engine work when stale-signal patterns aggregate.
 
-### Q-029 · Track-agnostic GrowthStepExecution.step_phase architectural choice
-
-- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
-- **Question:** Approach 2 from the prompt was implemented: `GrowthStepExecution.growth_step_id` made nullable, new `step_phase` enum (StepShape) field added. Track-agnostic Ask + Size captures populate `step_phase` only; track-specific Show / Resolve / Connect populate both. Approach 1 (synthetic "track-agnostic" Track + dedicated GrowthSteps) was rejected as polluting reference data.
-- **Why it matters:** The Size capture form (Sprint 4 Prompt 4.2) will exercise this further. If issues surface (e.g., Insight Engine queries become awkward with mixed null / non-null growth_step_ids), Approach 1 may need reconsideration.
-- **Affects:** Sprint 4 Prompt 4.2 Size form; Sprint 5 Insight Engine track-step analytics.
-- **Conservative default:** Approach 2 (current implementation).
-- **Status:** Open / Resolves with experience during Sprint 4 Prompts 4.2–4.5.
-
 ### Q-030 · Conversation defaults for Growth Conversations sessions
 
 - **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
@@ -254,14 +245,202 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default:** `Conversation.banker_note` for the demo. The semantic conflation is acceptable because the demo's banker_note is empty for everything except Resolve closing notes — i.e., everything currently in banker_note IS a closing note. Pilot phase needs to address this before banker_note grows multi-purpose.
 - **Status:** Open / Deferred to Pilot phase. Revisit when generic banker-note capture is added (likely Sprint 4 Prompt 4.4 or pilot-phase work).
 
-### Q-039 · Lifecycle stage transitions — state-machine derivation vs explicit transition events
+### Q-042 · Pre-application structural-fit observation handling (proposed)
 
-- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a refinement pass)
-- **Question:** Track lifecycle states (Decision pending, Funded / Specialist engagement, Closed / Closing) are currently derived from `Recommendation.response` — a state-machine read where the response value implies the lifecycle position. This is sufficient for the demo's static visualization. Sprint 5 Insight Engine analytics that compute *duration at lifecycle stage* (e.g., "average time in Decision pending before commitment", "median Closing-to-Funded interval") will require explicit transition events — when did the Member enter Decision pending, when did they exit, when did funding clear. Should there be a `RecommendationLifecycleEvent` table (or extend `GrowthStepExecution` with lifecycle-stage rows) that records each entry/exit timestamp?
-- **Why it matters:** State-machine derivation tells you *where* a Member is now; event-log derivation tells you *how long* they've been there and *when* they transitioned. Insight Engine's most valuable analytics are duration-based: which Member Types take longest in Decision pending, which Tracks have the highest Closing-to-Funded conversion rate, which primary concerns correlate with longer commitment-to-funding intervals. Without an event log, those analytics are impossible.
-- **Affects:** Schema (new entity or extension of GrowthStepExecution); Resolve form save behavior (must emit transition events on every state change); Insight Engine view design.
-- **Conservative default:** State-machine derivation for the demo (current implementation). Lifecycle dot states computed inline in `computeTrackStages` from `recommendation_response`. Pilot phase or Sprint 5 architectural pass should design the event-log entity before Insight Engine analytics ship; backfill from the existing `Recommendation.updated_at` history is feasible but lossy (only records the most-recent transition timestamp).
-- **Status:** Open / Pilot phase architectural decision. Revisit when Sprint 5 Insight Engine analytics scope is defined.
+- **Date logged:** 2026-04-29
+- **Question:** During consultative conversations, bankers may observe that a Member's credit profile, DTI, or collateral position would likely block formal underwriting. This observation is real and useful for relationship management, but pre-application screening creates fair-lending paper-trail risk per FFIEC Interagency Fair Lending Examination Procedures Part II. Where, if anywhere, does this observation get captured in Member Signals?
+- **Why it matters:** Affects schema design for Pilot. If captured as structured data, requires explicit retention/access policy and disparate-impact testing infrastructure. If not captured, bankers may use free-text fields or out-of-system notes.
+- **Affects:** Pilot only. Demo and v2 explicitly do not capture this observation as structured data per COMPLIANCE.md §8.
+- **Conservative default for demo:** Not captured as structured field. The `does_not_qualify` enum value is removed from v2 entirely. If a banker notices a structural fit issue, they have two options: (1) mention it in optional Closing notes free-text (subject to [FL:BANKER-PROSE] discipline including helper text and submit-time scan), or (2) discuss outside Member Signals.
+- **Pilot consideration:** If structured capture is added at Pilot, implementation must include: dedicated [FL:PRE-APP-OBS] tag with retention/access policy, suppression from Insight Engine cross-portfolio aggregations (anonymizeForBanker drops it for non-self queries), suppression from Member-facing surfaces, periodic disparate-impact correlation testing, and counsel review of the data flow before deployment.
+- **Status:** Open — Pilot deferral.
+
+### Q-043 · v2 vs v1 cohabitation strategy
+
+- **Date logged:** 2026-04-29
+- **Question:** How long does v1 stay live alongside v2? When does v1 retire? What does cross-linking between them look like during the cohabitation period?
+- **Why it matters:** Affects routing, demo strategy, and cleanup work. If v1 is deprecated immediately, v1 routes can be removed (saves bundle size, reduces test surface). If v1 remains live indefinitely, cross-linking patterns must be designed and maintained.
+- **Affects:** Demo + Pilot. Demo ships v2 as primary surface with v1 retained for fallback; Pilot decision is whether v1 retires or persists for senior-RM preference.
+- **Conservative default for demo:** v1 stays live indefinitely. v2 is opt-in via feature flag (banker setting or query string `?v2=true`). v2 includes a "Classic view ↗" affordance that links to the equivalent v1 page; v1 includes a "Try the new view →" affordance pointing at v2. Both views share the same captured-data URLs for Conversations, Signals, ActionCards. Notifications and email links route to whichever view the user prefers.
+- **Status:** Open — Pilot decision. Demo phase pattern is committed.
+
+### Q-044 · Confidence-band thresholds for "Tracks supported by current evidence"
+
+- **Date logged:** 2026-04-29
+- **Question:** What evidence counts and quality patterns map to "strong support / moderate support / insufficient evidence yet" per Track? In demo, hand-curated thresholds per fixture; in Pilot, parameterized rules with explainable scoring per Phase II framework's "Confidence-band scoring logic — explicit, explainable—not opaque ML" commitment.
+- **Why it matters:** The bands directly inform what bankers see when they click the Identify objective. Wrong thresholds produce noise (too many "strong support" displays = banker tunes out) or silence (too few = system never surfaces useful patterns).
+- **Affects:** Pilot. Demo uses hand-curated thresholds per fixture.
+- **Conservative default for demo:** Per fixture, manually curated by Francisco against the EVIDENCE_FRAMEWORK.md catalog. Documentation that "in production, this surface uses parameterized rules with periodic review."
+- **Pilot consideration:** Authority for rule authoring is a Pilot governance question. Compliance officer review required before deployment. Periodic threshold review documented as Pilot governance commitment.
+- **Status:** Open — Pilot deferral.
+
+### Q-045 · Inquiry-tracks data infrastructure at scale
+
+- **Date logged:** 2026-04-29
+- **Question:** The inquiry-tracks panel ("tracks that worked for similar Members") relies on cohort queries at production data volume. Specifically: real `anonymizeForBanker()` invocation, sufficient data volume for statistical patterns to emerge, possibly cohort-clustering logic that doesn't exist yet, plus periodic refresh frequency.
+- **Why it matters:** v2 demo can hand-curate cohort data per fixture, but Pilot needs the real query infrastructure. Without it, the v2 inquiry-tracks panel ships in demo and breaks in production.
+- **Affects:** Pilot only. Demo uses hand-curated data with explicit "production scale" annotation.
+- **Conservative default for demo:** Hand-curated cohort data per Member fixture. Annotation visible in the UI: "In production, this surface draws from cohort queries across your peer bankers' anonymized portfolios."
+- **Pilot consideration:** Implementation requires: cohort-clustering logic (Member Type + revenue band + lifecycle stage matching), cached query results with periodic refresh, monitoring of anonymization compliance, and explicit query thresholds (e.g., minimum N=5 before surfacing patterns).
+- **Status:** Open — Pilot deferral.
+
+### Q-046 · Multi-objective evidence support
+
+- **Date logged:** 2026-04-29
+- **Question:** When a single capture (e.g., a Member quote that's both a Goal and supplies evidence for Quantification) advances multiple objectives, how is this represented in the schema and rendered in the UI?
+- **Why it matters:** Affects EVIDENCE_FRAMEWORK.md catalog completeness. Currently the catalog specifies primary and optional secondary objective contributions per evidence type. Real captures may advance more than two objectives in some cases.
+- **Affects:** v2 phase 2 (post-EVP) and Pilot. v2 phase 1 ships single-primary-objective per capture for simplicity.
+- **Conservative default for v2 phase 1:** Each capture advances one primary objective per the EVIDENCE_FRAMEWORK.md catalog mapping. If secondary contribution is meaningful, it's documented in the framework but not rendered as a separate dot. Single capture → single primary dot.
+- **Future consideration:** Multi-objective rendering could use multi-color dot stacking or per-objective evidence weight scoring. v2 phase 2 design decision.
+- **Status:** Open — v2 phase 2 design.
+
+### Q-047 · Coach surface content authoring at scale
+
+- **Date logged:** 2026-04-29
+- **Question:** v2 phase 1 reuses v1's existing 18 Member-Type-aware stage-guidance paragraphs (from Sprint 4 Prompt 4.2a Block A) reorganized under v2's four objectives. Pilot may need new content authored specifically for v2's two-layer model. Editorial scope and authority TBD.
+- **Why it matters:** The "show ?" coach surface is the path for system-authored coaching content to reach less-senior RMs. v2 strips this content from primary view per the Path C-modified design philosophy; if the coach content is poor or absent, junior bankers lose support.
+- **Affects:** v2 phase 1 (reuses existing content), Pilot (may require new authoring).
+- **Conservative default for demo:** Reuse existing 18 paragraphs reorganized under four objectives. Explicit annotation that Pilot may revise.
+- **Pilot consideration:** Coach content authoring authority — who writes it, who approves, refresh cadence. Banker training program is itself a CMS element per FFIEC examination practice.
+- **Status:** Open — Pilot deferral.
+
+### Q-048 · Per-Member objective customization
+
+- **Date logged:** 2026-04-29
+- **Question:** Are objectives universal (always 4) or per-Track (different objectives for different product types)? E.g., a Working Capital LOC Track might have the four standard objectives; a Specialist Engagement Track (like Cygnus's CRE pathway) might have different objectives reflecting the handoff arc.
+- **Why it matters:** Affects schema design and CC implementation complexity. Universal objectives are simpler; per-Track objectives are more accurate to consultative reality but require more configuration.
+- **Affects:** v2 phase 2 and Pilot. v2 phase 1 ships universal four objectives.
+- **Conservative default for v2 phase 1:** Universal four objectives (Land / Understand / Consult / Formalize) for all Members regardless of Track. Cygnus's Specialist Engagement Track's specifics surface within the Consult and Formalize objectives.
+- **Pilot consideration:** Per-Track objective customization requires Track-template definitions and per-Track UI variations. Significant additional complexity. Probably worth solving only if user research at Pilot confirms bankers find universal objectives insufficient.
+- **Status:** Open — v2 phase 2 / Pilot consideration.
+
+### Q-A1 · Per-objective evidence detail panel — full implementation
+
+- **Date logged:** 2026-04-30 (per ARCHITECTURE_V2 §13)
+- **Question:** Click on Measure / Consult / Navigate objectives currently surfaces a placeholder panel showing the objective's coach paragraph. The full per-objective evidence panel — captured signals organized by type with edit affordances + dot-state-driven sub-panels — ships post-Sprint-4.7.2. What's the right shape: tabbed views (one tab per evidence type) or a unified scrollable panel with grouped sections?
+- **Why it matters:** The full panel is the canonical "where banker reviews accumulated evidence and acts on gaps" surface. Wrong shape pushes bankers to keep using the dialpad instead.
+- **Affects:** Sprint 5 popup-as-workflow.
+- **Conservative default through Sprint 4.7.2:** Placeholder panel with the objective's coach paragraph + "v2 phase 2" note. Discover objective is the exception — it surfaces the Tracks-supported panel directly per Block M.
+- **Status (2026-05-04):** Deferred to **Sprint 5 (popup-as-workflow surface)** per Sprint 4.7.2 Block J.4 resolution. The full panel design lives alongside Sprint 5's CTAs / structured-evidence-display work since the panel is fundamentally a workflow surface, not a static drill-in. Current placeholder treatment is acceptable for EVP demo.
+- **Resolution (Sprint 5a.2, 2026-05-04):** **Resolved as a unified scrollable panel with two grouped zones.** Implemented in `app/v2/members/[id]/objective-popup.tsx` as `ObjectivePopup`. Modal overlay with header (`OBJECTIVE · for Track name` + verbatim question); top zone `to strengthen this candidate, capture` listing missing-factor CTAs in matrix-template priority order, each clicking through to the corresponding capture form with factor pre-selection (Sprint 5a.2 Block E); bottom zone `already captured` listing structured `CapturedRow` items with type chip + value + member-quote blockquote + capture metadata. All four objectives (Discover/Measure/Consult/Navigate) route to the same popup; Discover's prior `TracksSupportedPanel` routing replaced by a "view comparison ↗" link in the Track context header. Tab pattern rejected — banker doesn't switch evidence types within an objective enough to justify the cognitive overhead; the unified two-zone layout matches the consultative arc (capture-what-supports vs review-what-was-captured). The placeholder `ObjectivePlaceholderPanel` was removed. Resolved.
+
+### Q-A2 · Open-thread badge content heuristic for tied urgent items
+
+- **Date logged:** 2026-04-30 (per ARCHITECTURE_V2 §13)
+- **Question:** Default heuristic resolves ties by recency. Edge cases: two ActionCards with the same due date; a Recommendation primary_concern updated the same day as an ActionCard. Is recency the right tiebreaker, or should one item type take precedence over the other?
+- **Why it matters:** Affects which open thread the banker sees in the header. Wrong choice surfaces a less-urgent item.
+- **Affects:** Demo + Pilot. v2 phase 1 implements default heuristic (ActionCard nearest-due wins; Recommendation primary_concern fallback; ties break by recency).
+- **Conservative default:** ActionCard wins over Recommendation; recency breaks ActionCard-vs-ActionCard ties. Sprint 4.7.1 Block A simplified the badge heuristic to render only when an active engaged-spectrum Recommendation exists, with ActionCard contributing the date context only.
+- **Status (2026-05-04):** Deferred to **Sprint 5** per Sprint 4.7.2 Block J.4. The heuristic is best-effort; tied-item edge cases are unlikely in the demo (each Member has a single active Recommendation + at most one open ActionCard). Sprint 5 may revisit when state-dependent dot rendering surfaces richer ranking signals.
+
+### Q-A3 · Mobile / narrow-viewport behavior
+
+- **Date logged:** 2026-04-30 (per ARCHITECTURE_V2 §13)
+- **Question:** Workstation is designed for desktop banker use (180px sidebar + main panel + sticky dialpad). Mobile / tablet behavior is not specified. Stack vertically? Hide sidebar behind a hamburger? Hide dialpad behind a FAB?
+- **Why it matters:** Field bankers (especially Northland-pattern trades-business RMs) sometimes capture in the field on mobile.
+- **Affects:** Pilot. v2 phase 1 ships desktop-only.
+- **Conservative default:** Desktop-only for demo and Pilot v1.
+- **Status (2026-05-04):** Deferred to **Pilot** per Sprint 4.7.2 Block J.4. Mobile work is post-EVP. The current desktop-only design ships unchanged through Sprint 5.
+
+### Q-A4 · Notification routing v1 vs v2
+
+- **Date logged:** 2026-04-30 (per ARCHITECTURE_V2 §13)
+- **Question:** Pilot will ship banker notifications (e.g., "ActionCard due tomorrow"). Should notifications deep-link to v1 or v2 surfaces? When v2 becomes default, all v1 notifications need migration.
+- **Why it matters:** Notification copy + URL routing affects both surfaces. Inconsistency confuses bankers.
+- **Affects:** Pilot.
+- **Conservative default:** Out of scope for Sprint 4.7.x. Pilot decides based on v2 default-flip timing.
+- **Status (2026-05-04):** Deferred to **Pilot** per Sprint 4.7.2 Block J.4. Tied to Q-X1 (v2 default-flip timing) — both resolve in the same Pilot architecture conversation.
+
+### Q-A5 · Inquiry-tracks panel data source-of-truth at Pilot scale
+
+- **Date logged:** 2026-04-30 (per ARCHITECTURE_V2 §13) — likely overlaps with Q-045 (inquiry-tracks data infrastructure).
+- **Question:** At Pilot scale (50+ Members per banker), the Tracks-supported-by-current-evidence panel needs an authoritative data source for cross-Member evidence-strength scoring. Where does the data live: derived view computed at request time, materialized view refreshed nightly, or persisted as a denormalized cohort field on Member?
+- **Why it matters:** Performance + correctness tradeoff. Demo's hand-curated `tracks_by_evidence_strength` Json column is a fixture-only solution.
+- **Affects:** Pilot.
+- **Cross-reference:** Q-045 (Inquiry-tracks data infrastructure at scale) — same underlying question, slightly different framing. Treat as one question; resolve together.
+- **Status (2026-05-04):** **Still open** — cross-referenced to Q-045 Pilot deferral per Sprint 4.7.2 Block J.4. Demo phase ships the hand-curated cohort; Pilot architecture conversation resolves the runtime path.
+
+### Q-F4 · Geographic spatial visualization (deferred)
+
+- **Date logged:** 2026-05-08 (Sprint 7a-patch §H.5)
+- **Question:** Sprint 7a's custom-SVG Minnesota basemap with 28 branch markers was dropped in Sprint 7a-patch §C in favor of three-region alphabetical bar lists (Twin Cities Metro / Northern Minnesota / Southern Minnesota). Visual review concluded that spatial approximation didn't add navigation value for EVP-scale review — bar lists organized by region serve banker portfolio scanning better. Pilot may want a real Leaflet/Mapbox basemap with branch markers for sales-planning workflows (geographic concentration, regional coverage gaps, branch territory boundaries).
+- **Why it matters:** Sales planning at Blaze production scale uses geographic clustering. Pilot needs real basemap if branch-territory visualization becomes a load-bearing workflow.
+- **Affects:** Pilot.
+- **Conservative default:** Three-region bar list ships in Sprint 7a-patch. No basemap dependency added.
+- **Status (2026-05-08):** **Deferred to Pilot** — the bar-list redesign satisfies EVP review needs.
+
+### Q-F5 · Temporal momentum visualization (dropped from dashboard)
+
+- **Date logged:** 2026-05-08 (Sprint 7a-patch §H.5)
+- **Question:** Sprint 7a's Temporal momentum view (90-day daily activity stream with featured event annotations) was dropped in Sprint 7a-patch §E. Visual review noted: shows cyclicality without actionable signal. EVP doesn't act on weekly rhythm. The view also overlaps conceptually with Banker activity (per-banker heatmap already shows time-series rhythm with vacation gaps). Sprint 7b's insight authorship pipeline view may provide a more sophisticated temporal surface focused on Insight production momentum rather than aggregate event flow.
+- **Why it matters:** Avoiding visualization sprawl. The dashboard should not include views that don't drive a decision.
+- **Affects:** Sprint 7b (authorship pipeline view).
+- **Conservative default:** Drop entirely from Sprint 7a-patch dashboard. Daily-activity data + featured-events data preserved in generator output for potential Sprint 7b consumption.
+- **Status (2026-05-08):** **Resolved (dropped from demo dashboard); revisit in Sprint 7b** when authorship pipeline view is scoped.
+
+### Q-F6 · Synthetic Member detail pages at Pilot scale
+
+- **Date logged:** 2026-05-08 (Sprint 7a-patch §H.5)
+- **Question:** Sprint 7a-patch §G routes synthetic Member clicks to one of the 4 fixture workstation pages (Jenny / Northland / Cygnus / Riverside), with a "Sample conversation arc — representative example" notation banner. This preserves demo clickability without authoring 216 detail pages. Pilot will need real Member detail pages for every Member; the notation banner is a demo affordance, not a production pattern.
+- **Why it matters:** EVP demo shows the routing pattern works; Pilot must replace the substitution with real Member workstation data, which depends on real data ingest (Symitar/Jack Henry integration scoped out of demo).
+- **Affects:** Pilot.
+- **Conservative default:** Notation banner + Member-Type → fixture mapping ships in Sprint 7a-patch. Banner copy honestly frames the substitution.
+- **Status (2026-05-08):** **Deferred to Pilot** — tied to data-ingest infrastructure work.
+
+### Q-F7 · SQLite read-only persistence on Vercel runtime
+
+- **Date logged:** 2026-05-11 (Sprint 6 §F.2)
+- **Question:** Sprint 6 ships the demo on Vercel with SQLite via a bundled snapshot at `prisma/seed.db`, copied to `/tmp/blaze.db` on Lambda cold start (`lib/db-path.ts`). Reads + writes both succeed for the Lambda instance lifetime, but writes vanish when Vercel recycles. The "live Insight authoring" demo beat surfaces matching feedback immediately (correct), but the authored Insight does not persist across page refreshes or longer idle windows. Acceptable for the EVP demo arc; Pilot needs durable writes.
+- **Why it matters:** Pilot use cases assume durable writes (real banker authoring sessions across days, audit trail for compliance, multi-banker collaboration on the same Member). Read-only persistence is a demo-only crutch.
+- **Affects:** Pilot.
+- **Conservative default:** Demo accepts the constraint and surfaces it honestly in DEMO_RUNBOOK §6 ("Demo phase runs on SQLite; Pilot moves to Postgres"). DATABASE_URL → Postgres is a one-line `provider` change in `prisma.config.ts` per CLAUDE.md §2.
+- **Status (2026-05-11):** **Deferred to Pilot** — straightforward migration when Pilot infrastructure is provisioned. Tracked in BUILD_LOG Note 18.
+
+### Q-G1 · Multi-Track cultivation for synthetic Members
+
+- **Date logged:** 2026-05-12 (Sprint 8 §I.2)
+- **Question:** Sprint 8 adds multi-Track support (`Member.active_track_ids`) and the sidebar Track-switcher + URL encoding to all Members. Fixtures (Cygnus / Northland / Jenny) populate two Tracks each; Riverside stays single-Track. The 216 synthetic Members in `lib/synthetic-data/generator.ts` remain single-Track per fixture-only scope. Pilot will need multi-Track on real Members where bankers are cultivating multiple lending products in parallel.
+- **Why it matters:** The architecture supports it cleanly; only the synthetic-data generator needs extending. The dashboard's aggregate metrics (pipeline value, Member count) need to decide between "one Member, multiple Tracks" and "Track-weighted Member counts." Demo currently uses one-Member-one-pipeline-value, which keeps the $147M total clean but understates per-Track activity for multi-Track Members.
+- **Affects:** Pilot.
+- **Conservative default:** Demo scope is fixture-only. Pilot decides the pipeline-value aggregation discipline.
+- **Status (2026-05-12):** **Deferred to Pilot.**
+
+### Q-G2 · Two-mode capture surface on every + Quantify form
+
+- **Date logged:** 2026-05-12 (Sprint 8 §I.2)
+- **Question:** Sprint 8's `FactorCapture.capture_mode` dichotomy (`member_confirmed` vs `banker_estimate`) surfaces in the UI only at artifact missing-parameter CTAs (the "Banker estimate" button on the missing-param card). Standard + Quantify forms default to `member_confirmed` and don't show a mode toggle. Should every + Quantify carry the mode choice for consistency?
+- **Why it matters:** Bankers may want to capture banker-estimate values outside the artifact-CTA path (e.g., pre-meeting prep). Currently they'd have to take an extra step (open the artifact, click the missing-param CTA). On the other hand, surfacing mode on every form may add cognitive load on the common case (capturing a confirmed value mid-conversation).
+- **Affects:** Pilot.
+- **Conservative default:** Demo keeps the mode surface bounded to artifact CTAs. Pilot decides whether to expose the mode toggle universally based on banker UX research.
+- **Status (2026-05-12):** **Deferred to Pilot.**
+
+### Q-H1 · Visualization rendering at Pilot scale
+
+- **Date logged:** 2026-05-12 (Sprint 9 §J.5)
+- **Question:** Sprint 9 renders each visualization synchronously when the artifact tile / dialog opens. With 4 fixtures × 2 Tracks each, this is trivial. At Pilot scale (banker working a portfolio of 50+ Members with multi-Track artifacts each), banker may open many artifacts in a session — and each visualization recomputes from raw inputs every render. Consider: background rendering, memoization at the page level, or caching pre-rendered series in `Model.parameters` so visualizations skip the projection math.
+- **Why it matters:** Demo doesn't surface this; Pilot will if banker UX gets sluggish on heavy days.
+- **Affects:** Pilot.
+- **Conservative default:** Ship Sprint 9 with on-demand computation; revisit if Pilot performance review surfaces a regression.
+- **Status (2026-05-12):** **Deferred to Pilot performance review.**
+
+### Q-H2 · Member-facing print/share format for visualizations
+
+- **Date logged:** 2026-05-12 (Sprint 9 §J.5)
+- **Question:** Demo visualizations are banker-screen Recharts SVGs. Pilot may want PDF export, shareable links, or printable views for Members who want to take the analysis home. The visualizations render on the banker's screen during Consult; the Member doesn't currently get a copy.
+- **Why it matters:** "Take this home and review with my spouse / CFO / board" is a common Consult-phase request. Demo accepts the constraint; Pilot needs an answer.
+- **Affects:** Pilot.
+- **Conservative default:** Demo phase is screen-only. Pilot evaluates PDF generation (e.g., via headless rendering of the dialog).
+- **Status (2026-05-12):** **Deferred to Pilot.**
+
+### Q-G3 · FactorCapture audit trail for banker_estimate → member_confirmed conversions
+
+- **Date logged:** 2026-05-12 (Sprint 8 §I.2)
+- **Question:** When a banker-estimate FactorCapture is re-captured as member_confirmed (e.g., banker confirmed the value with the Member in a follow-up), `factorCaptureOrUpdate` converts the existing row in place — bumps `captured_at`, updates `capture_mode`, preserves the value. The audit trail of "this was once banker_estimate before confirmation" is lost. Pilot may want explicit conversion history for compliance review.
+- **Why it matters:** "When was this value first captured as banker assumption, and when was it confirmed?" is a question audit may ask. Currently we can't reconstruct it.
+- **Affects:** Pilot.
+- **Cross-reference:** Related to Q-C2 (FactorCapture audit trail at scale).
+- **Conservative default:** Demo treats the conversion as in-place. Pilot may extend `FactorCapture` with a `confirmed_at DateTime?` column or a separate `FactorCaptureModeHistory` table.
+- **Status (2026-05-12):** **Deferred to Pilot.**
 
 ---
 
@@ -335,6 +514,7 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Reasoning:** When reality demands a new categorical value, Principle 3 says add it with a description rather than collapse to `other` or to free-form. `bank_capability` is structurally distinct from `rate` (price), `speed` (timing), and `commitment` (binding nature) — it deserves to be queryable as a first-class category in the Insight Engine, not buried in `other` notes. The description lets summary templates render it as natural-language prose.
 - **Propagation:** Schema enum updated. Description stored in `app/lib/enum-descriptions.ts` keyed under `RECOMMENDATION_PRIMARY_CONCERN_DESCRIPTIONS`. Summary templates pull from that store so prose stays in one place. Insight Engine views over `primary_concern` will treat `bank_capability` as a first-class category. Data Framework §4.4 will need an erratum at next review.
 - **Resolved by:** Francisco.
+- **Subsequent resolution (2026-04-29):** Closed enum kept; refactored to business-factor-only with two context-dependent value sets per COMPLIANCE.md §6.3. Open-thread context (engaged/leaning_yes/committed) — 8 values reflecting business-decision-process facts. Decline-reason context (declined/dismissive) — 10 values reflecting member-stated business reasons. All values member-direction; no bank-side underwriting determinations comingled (those are deferred to Q-042). Reasoning: the original closed enum (rate, timing, spouse, cpa, partner, bank_capability, other) needed both directional and stigmatizing-language refactoring (per Q-041). The Insight Engine View 3 — indecision diagnostics — needs queryable categories, so closed enum stays; structured for analytics. Implementation: v2 ships the resolved taxonomy from the start; v1 receives field-label refactor and enum-value softening as part of Sprint 4.6 (Compliance posture floor). **Resolved by:** Francisco.
 
 ### Q-014 · Resolve-shape Growth step produces a Signal *and* an ActionCard for indecision
 
@@ -386,6 +566,60 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Decision:** Use the Radix component library with the Mira preset when running `pnpm dlx shadcn@latest init`.
 - **Reasoning:** User specified both explicitly in the session prompt. Radix is the best-established backend for shadcn/ui and matches the original shadcn lineage; Mira is an approved visual preset. Documented here so the choice is retrievable.
 - **Resolved by:** Francisco (via session prompt), recorded by Claude.
+
+### Q-029 · Track-agnostic GrowthStepExecution.step_phase architectural choice
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.1c)
+- **Question:** Approach 2 from the prompt was implemented: `GrowthStepExecution.growth_step_id` made nullable, new `step_phase` enum (StepShape) field added. Track-agnostic Ask + Size captures populate `step_phase` only; track-specific Show / Resolve / Connect populate both. Approach 1 (synthetic "track-agnostic" Track + dedicated GrowthSteps) was rejected as polluting reference data.
+- **Why it matters:** The Size capture form (Sprint 4 Prompt 4.2) will exercise this further. If issues surface (e.g., Insight Engine queries become awkward with mixed null / non-null growth_step_ids), Approach 1 may need reconsideration.
+- **Affects:** Sprint 4 Prompt 4.2 Size form; Sprint 5 Insight Engine track-step analytics.
+- **Conservative default:** Approach 2 (current implementation).
+- **Resolution date:** 2026-04-29
+- **Decision:** Superseded by v2 four-objective model. The step_phase enum persists in the schema for v1 backward compatibility but has no future architectural extension. v2 surfaces never depend on it.
+- **Reasoning:** The track-agnostic step_phase enum was a v1 architectural device for managing different stage sequences across Track types. v2 replaces stages with objectives, retiring the entire step_phase concept from v2 surfaces. v1 retains step_phase for the existing Member Profile and Growth Conversations pages. The Insight Engine in v2 style queries against captured evidence and objectives, not stages.
+- **Resolved by:** v2 architectural decision.
+
+### Q-039 · Lifecycle stage transitions — state-machine derivation vs explicit transition events
+
+- **Date logged:** 2026-04-27 (Sprint 4 Prompt 4.2a refinement pass)
+- **Question:** Track lifecycle states (Decision pending, Funded / Specialist engagement, Closed / Closing) are currently derived from `Recommendation.response` — a state-machine read where the response value implies the lifecycle position. This is sufficient for the demo's static visualization. Sprint 5 Insight Engine analytics that compute *duration at lifecycle stage* (e.g., "average time in Decision pending before commitment", "median Closing-to-Funded interval") will require explicit transition events — when did the Member enter Decision pending, when did they exit, when did funding clear. Should there be a `RecommendationLifecycleEvent` table (or extend `GrowthStepExecution` with lifecycle-stage rows) that records each entry/exit timestamp?
+- **Why it matters:** State-machine derivation tells you *where* a Member is now; event-log derivation tells you *how long* they've been there and *when* they transitioned. Insight Engine's most valuable analytics are duration-based: which Member Types take longest in Decision pending, which Tracks have the highest Closing-to-Funded conversion rate, which primary concerns correlate with longer commitment-to-funding intervals. Without an event log, those analytics are impossible.
+- **Affects:** Schema (new entity or extension of GrowthStepExecution); Resolve form save behavior (must emit transition events on every state change); Insight Engine view design.
+- **Conservative default:** State-machine derivation for the demo (current implementation). Lifecycle dot states computed inline in `computeTrackStages` from `recommendation_response`. Pilot phase or Sprint 5 architectural pass should design the event-log entity before Insight Engine analytics ship; backfill from the existing `Recommendation.updated_at` history is feasible but lossy (only records the most-recent transition timestamp).
+- **Resolution date:** 2026-04-29
+- **Decision:** Event-log architecture (event-sourcing pattern). State at any time = fold over events up to that time. Stage transitions are derived from captured events, not stored as explicit state machine transitions.
+- **Reasoning:** Event-log architecture is the regulatory-grade answer for lending workflows. Per the FFIEC CMS framework, examiners need to reconstruct decisions on demand. State-machine-only architectures don't preserve the input events that produced state changes; event-log architectures do. The ARCHITECTURE_V2.md §11 immutable trace log specification (deferred per Path C-modified to Pilot) is the canonical implementation. Demo uses lightweight derivation from captured Signal/SizingMeasurement/Recommendation/etc. timestamps.
+- **Resolved by:** v2 architectural decision. Pilot implementation deferred per COMPLIANCE.md §12.
+
+### Q-040 · Committed-vs-funded visual distinction (legacy v1 question)
+
+- **Date logged:** 2026-04-27
+- **Question:** In the v1 stage-progression dot system, committed and funded states render identically (both show the Funded dot with ring/filled treatments that visually overlap). How do bankers distinguish "formalities pending" from "loan disbursed"?
+- **Why it matters:** Affects v1 Member profile and Growth Conversations pages. A banker glancing at a Member's progress dots cannot tell whether a loan has actually funded or is still in closing.
+- **Affects:** v1 only. v2 retires the stage-progression dot system; this question becomes moot for v2.
+- **Conservative default:** v1 fix shipped via the "Closing" relabel pattern (Sprint 4 Refinement Pass #2 / 2026-04-28): committed state shows label "Closing" with ring; funded state shows label "Funded" with filled dot. URL anchor `#stage-funded` continues to resolve regardless of state.
+- **Resolution date:** 2026-04-28
+- **Decision:** "Closing" relabel pattern shipped in Sprint 4 Refinement Pass #2. Committed state shows label "Closing" with ringed dot; funded state shows label "Funded" with filled dot. URL anchor `#stage-funded` continues to resolve regardless of state to preserve cross-page hyperlinks.
+- **Reasoning:** Relabel chosen over new dot treatment to lift semantic clarity without inventing a third visual primitive. The optional `displayLabel?: string` field on TrackStage is a clean extension to the design vocabulary, reusable for other contextual relabeling needs.
+- **Resolved by:** Francisco visual review acceptance. v2 retires the stage-progression dot system entirely so this resolution applies only to v1 routes.
+
+### Q-041 · Primary concern dropdown context-aware refactor
+
+- **Date logged:** 2026-04-27
+- **Question:** The Resolve form's "Primary concern" field needs to behave differently for engaged-spectrum responses (open-thread framing) vs declined/dismissive responses (decline-reason framing). Original framing conflated bank-decline events (member doesn't qualify) with member-decline events (member chose not to proceed) in a single enum, creating directional fallacy and fair-lending paper-trail risk.
+- **Why it matters:** Directional confusion in the captured data poisons Sprint 5 Insight Engine analytics over decline patterns. Pre-application screening logging carries FFIEC examination risk per Interagency Fair Lending Examination Procedures Part II.
+- **Affects:** v1 (Resolve form, Recommendation.primary_concern enum), v2 (Resolve activity capture form), Sprint 5 analytics, Pilot compliance posture.
+- **Conservative default:** v1 shipped a hybrid taxonomy in Sprint 4 Refinement Pass #2 (2026-04-28) that partially addressed the directional issue (consolidating doesnt_qualify_credit/collateral/dti to single does_not_qualify) without fully resolving the directional comingling.
+- **Resolution date:** 2026-04-29
+- **Decision:** Per COMPLIANCE.md §6 business-factor-only taxonomy. Open-thread context (engaged/leaning_yes/committed) gets 8 enum values reflecting business-decision-process facts; decline-reason context (declined/dismissive) gets 10 enum values reflecting member-stated business reasons. All values member-direction; bank-side underwriting determinations are explicitly excluded from this field and deferred to Q-042.
+- **Reasoning:** The hybrid taxonomy shipped in Sprint 4 Refinement Pass #2 (2026-04-28) partially addressed the directional issue but left bank-side `does_not_qualify` value in the schema. Full resolution requires:
+  - Removing `does_not_qualify` and related bank-direction values from this field entirely (deferred to Q-042 governance)
+  - Renaming field label to "Member's stated reason for declining" in decline-reason context (clarifies direction, prevents Reg B § 1002.9 adverse-action-impersonation)
+  - Renaming `bank_capability` value display to "Service or capability concern" (avoids UDAAP language risk that "Doesn't trust the institution" carried)
+  - Renaming decision-process values (`spouse` → `co_decision_maker_household`, `cpa` → `external_advisor`, `partner` → `co_owner_or_board`) for direction-explicit framing
+
+  Implementation: v2 ships the resolved taxonomy from the start; v1 receives field-label refactor and enum-value softening as part of Sprint 4.6 (Compliance posture floor) before Sprint 4.7 (v2 phase 1).
+- **Resolved by:** Francisco. Per Q-042, bank-side observations are excluded from this taxonomy and deferred to Pilot governance.
 
 ---
 

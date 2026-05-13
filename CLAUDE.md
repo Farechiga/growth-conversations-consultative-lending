@@ -90,6 +90,37 @@ Always use:
 - **Member profile** — not Member Dashboard, Account view, Member page
 - **Insight Engine** — not Patterns, Trends, Analytics
 
+### v2 workstation banker-facing terms (Sprint 4.7 → 4.7.2)
+
+The v2 prototype introduces a parallel banker-facing surface at `/v2/members/[id]`. Sprint 4.7.2 (vocabulary refactor) updated the four objectives and reduced activities from seven to five. Canonical terms:
+
+- **Workstation** — the v2 single-page-per-Member surface. Replaces the v1 split between Member profile + Growth Conversations.
+- **Objective** — persistent goal a banker is working toward across activities. The four objectives are **Discover · Measure · Consult · Navigate**.
+- **Activity** — discrete capture action a banker takes. The five activities are **+ Ask · + Quantify · + Model · + Reaction · + Action**.
+- **Dot** — UI primitive for evidence representation in the sidebar. Four states: filled (captured) · outlined (capturable) · faint (not yet relevant) · accented (open thread).
+- **Open thread** — single most-urgent item for a Member, surfaced in the workstation header.
+- **Evidence** — captured signal/magnitude/model/reaction/resolution; the substrate for objective dots.
+
+**Surface changes from Sprint 4.7.2:**
+
+- **Show** is no longer a dialpad button. ShowEvents fire two ways: automatically when + Model saves with "with Member" provenance, or explicitly via "Record show" button on the sidebar artifact preview dialog. Preview-without-record is the default (preserves the banker-rehearses-quietly use case).
+- **Resolve** is no longer a dialpad button on v2. Member responses are captured via + Reaction, which subsumes response value (7 enum values), member quote, and primary concern (contextual taxonomy per COMPLIANCE.md §6.3). v1 ResolveSection persists for v1 routes per ARCHITECTURE_V2.md §12.5.
+
+**Retired from banker-facing language** (code-internal use only):
+
+- **Stage** — replaced by *objective* (persistent) or *activity* (discrete).
+- **Phase** — replaced by *objective*.
+- **Step** — replaced by *activity*.
+- **Land · Understand · Formalize** — replaced by *Discover · Measure · Navigate* (Sprint 4.7.2 rename). Consult unchanged.
+
+**Schema retains existing identifiers per ARCHITECTURE_V2 §11.7 surface-vs-schema separation:**
+
+- `step_phase`, `StepShape` enum, `SizingMeasurement` table — unchanged.
+- The Objective abstraction is **derived state**, not a Prisma model — there is no `Objective` table or `ObjectiveType` enum in the database.
+- Sprint 4.7.2 ships two schema changes: ReactionValue enum 5 → 7 values (adds `committed`, `declined`); `Reaction.primary_concern` String column with contextual taxonomy.
+
+Translation layer lives in `lib/enum-descriptions.ts`, `lib/stage-guidance.ts` (V2Objective union literal), and v2 component files. Example: `SizingMeasurement` table → "Quantify" banker-facing label → "Sized" feed-card type tag.
+
 ### Code-internal names (TypeScript types, Prisma models, function names)
 
 The Data Framework document specifies machine-readable field names that may differ from banker-facing labels. For example: `canonical_tag` (field name in code) renders as **Topic** (banker-facing label). The pattern is: schema field names use snake_case as documented; banker-facing display strings use the labels above.
@@ -239,6 +270,15 @@ The complete documentation set for this project:
 - `CLAUDE.md` (this file)
 - `OPEN_QUESTIONS.md`
 - `docs/DEMO_BUILD_PLAN.md` (strategic source of truth above this set; six sprints, multiple prompts each)
+- `docs/DEMO_BUILD_PLAN_v3_AMENDMENTS.md` (Sprint sequence revision under Path C-modified; consult alongside DEMO_BUILD_PLAN.md until merged into v3.0)
+- `ARCHITECTURE_V2.md` (canonical v2 architecture reference; the consultative-arc model, four-objective surfaces, two-layer view structure)
+- `EVIDENCE_FRAMEWORK.md` (operational catalog of evidence types and how they map to the four objectives; companion to ARCHITECTURE_V2.md)
+- `BUSINESS_FACTOR_MATRIX_v1.md` (canonical Sprint 5a matrix data: 28 business factors, 5 Track templates, ~60 matrix entries with threshold rules and banker rationale; per-fixture demo captured-factors data; consult for any matrix-data question)
+- `INSIGHT_PATTERN_LIBRARY_v1.md` (canonical Sprint 5b.1 Insight pattern library: 36 senior-authored Patterns across 5 Tracks with implication questions; per-fixture demo Insight expectations Section 7; consult for any Pattern-data question)
+- `MEMBER_TYPE_GUIDANCE_v2.md` (canonical Sprint 5b.2 Coach content: 12 Member-Type × Objective cells with verb-led bullets; Path B discipline for Member-Type-specific operational practice)
+- `MEMBER_TYPE_GUIDANCE_v3_addendum.md` (canonical Sprint 5c Coach delta: SBA 504-aware specialty_manufacturing replacement + minor catering/HVAC cross-Track additions)
+- `INSIGHT_PATTERN_LIBRARY_v2_additions.md` (canonical Sprint 5c Pattern delta: 23 new Patterns for TRACK-006 through TRACK-011; drop list for TRACK-005 patterns)
+- `COMPLIANCE.md` (fair lending and compliance governance reference; FFIEC CMS framework; business-factor-only taxonomy for primary_concern; banker-prose discipline)
 
 **Tier 2 — Reference design (consult when relevant)**
 - `docs/design/01_Overview.docx`
@@ -246,17 +286,46 @@ The complete documentation set for this project:
 - `docs/design/03_Data_Framework.docx`
 - `docs/design/04_Module_and_Data_Flow.docx`
 - `docs/design/MEMBER_FIXTURE_BRIEF.md` (consult during fixture authoring)
-- `docs/design/INSIGHT_ENGINE_DESIGN_NOTES.md` (consult during Insight Engine work; authoritative for Insight Engine design decisions in Sprint 4 and Sprint 5)
+- `docs/design/INSIGHT_ENGINE_DESIGN_NOTES.md` (consult during Insight Engine work; authoritative for Insight Engine design decisions in Sprint 4 and Sprint 5; §9.5 addendum reflects the v2 design conversation)
 - `BLAZE_STYLE_GUIDE.md` (consult before any UI work)
+- `PROTECTED_CLASS_KEYWORD_LIST_v1.md` (source data for the compliance keyword scan; Sprint 4.6 implements `lib/compliance-keywords.ts` from this content)
 
 **Tier 3 — Living progress trackers**
 - `BUILD_LOG.md` (append-only chronological log)
 - `IMPLEMENTATION_STATUS.md` (verified-complete checklist)
 - `SCOPE.md` (in/out scope contract)
+- `DEMO_RUNBOOK.md` (Sprint 6 — pre-demo checklist + narrative arcs + talking points + backup plans for the EVP demo)
 - `docs/prompts/SPRINT_N_PROMPT_M.md` (executable sprint prompts; each is one self-contained handoff against the build plan)
 
 **Tier 4 — Generated and synced**
 - `prisma/schema.prisma` (single source of truth for table/column names)
+- `prisma/seed.ts` + `prisma/seed-matrix.ts` + `prisma/seed-insights.ts` (Sprint 5a.1 split matrix records; Sprint 5b.1 split Insight architecture records — 36 InsightPatterns + 12 per-fixture Insights with cached LLM match data)
+- `lib/factor-evaluator.ts` (Sprint 5a.1 — pure-function threshold rule parser; Sprint 5a.2 added LENGTH operator for qualitative_multi array-length comparisons)
+- `lib/track-ranker.ts` (Sprint 5a.1 — `rankTracksForMember()` returns ordered Track candidates per the matrix)
+- `lib/objective-evidence.ts` (Sprint 5a.2 — Track-relative dot derivation: `deriveDotsForObjective`, `capturedDots`, `missingEvidence`, `nextValuable`. Resolves both factor refs and symbolic refs against a Member's captured data)
+- `lib/cta-derivation.ts` (Sprint 5b.1 Block A — bounded CTA derivation across three layers: missing template evidence; threshold-uplift; specialist handoff. `deriveNextActions()` returns ranked CTA[]; empty array is valid when work is genuinely complete)
+- `lib/insight-matching.ts` (Sprint 5b.1 Block E — Anthropic API integration for live Insight matching during banker authoring. 5s timeout + graceful fallback to novel-state. Seed Insights ship cached match data; live API only fires for banker-authored Insights during a demo session)
+- `lib/workflow-state.ts` (Sprint 5b.2 Block A — `recomputeWorkflowState(prisma, memberId)` materializes denormalized workflow signals for portfolio queries. Called from v2 server actions after capture writes via `recomputeAndRevalidate`)
+- `lib/recapture-detection.ts` (Sprint 5b.2 Block F — `factorCaptureOrUpdate` + `reactionOrUpdate`. Same value re-captured → timestamp update; different value → new row with prior preserved by newest-by-captured_at queries)
+- `lib/portfolio-queries.ts` (Sprint 5b.2 — `memberRoster`, `trackPerformanceData`, `openIndecisionData`, `stageSkipData`. Pure-function transforms over Prisma rows for the four Insight Engine surfaces)
+- `app/v2/insight-engine/layout.tsx` + `page.tsx` (Sprint 5b.2 — Insight Engine shell + landing. Top nav: Track Performance / Member portfolio / Coverage / Stage-skip)
+- `app/v2/insight-engine/{tracks,portfolio,coverage,stage-skip}/page.tsx` (Sprint 5b.2 Blocks B-E — four portfolio surfaces. All `force-dynamic` to reflect live DB on each visit)
+- `lib/stage-guidance.ts` (Sprint 5a.3 added `coachBullets()`, `MEMBER_TYPE_COACH`, `CoachBullet` type — coach surface authored as per-Member-Type × per-objective bullets with optional CTAs and bold-fragment figures. `objectiveGuidance()` retained for backward compat)
+- `app/v2/members/[id]/objective-popup.tsx` (Sprint 5a.2 Block D, refactored Sprint 5b.1 — popup-as-workflow surface. Top zone shows CTAs from `deriveNextActions` (empty array → not rendered). Bottom zone shows captured evidence + Insights. Goal/Blocker/Indecision/Trigger rows have lightbulb (canonical Patterns popover) + `+ Insight` (contextual authoring) affordances. Footer: Implications: bulleted from matched Patterns; `+ deepen` when CTAs empty + evidence present)
+- `app/v2/members/[id]/specialist-handoff-dialog.tsx` (Sprint 5b.1 Block G — Layer 3 handoff modal. Department dropdown + 200-char preference notes; submit creates SpecialistHandoff record)
+- `app/v2/members/[id]/capture-forms/insight-form.tsx` (Sprint 5b.1 Block E — Insight authoring form for both pre-fill paths)
+- `app/v2/members/[id]/workstation-shell.tsx` (Sprint 5a.2 — client coordination layer. Hoists popup / dialpad / Track-selection state above the four sibling client components that need to share it. sessionStorage-persists Track selection per member_id. Sprint 5a.3 unified the CTA callback to `onCtaClick` for "+ next" / popup CTA / coach bullet CTA invocations)
+- `lib/synthetic-data/{types,prng,branches-bankers,generator,filters}.ts` (Sprint 7a — synthetic dataset generator: 14 bankers, 28 branches, 216 synthetic Members, 100 closed deals, 90-day daily activity, aggregate metrics. Sprint 7a-patch §H added FIXTURE_OVERLAY constant to land hero metrics at 220 Members / ~55 insights/week.)
+- `app/v2/insight-engine/page.tsx` (Sprint 7a — Insight Engine dashboard landing. Hero metrics strip + filter tag row + drill-down canvas + featured deal tile. URL state encodes filters; share-by-link.)
+- `app/v2/insight-engine/dashboard/{components,views,hooks}/*.tsx` (Sprint 7a + 7a-patch — dashboard composition. HeroMetricsStrip, FilterTagRow, FeaturedDealTile, DashboardClient + four drill-down views: PhaseFunnelView · LendingProductMixView · GeographicMapView · BankerActivityHeatmapView. Per-Track 10-color treemap palette per Sprint 7a-patch follow-up.)
+- `app/v2/insight-engine/dashboard/components/MemberLink.tsx` (Sprint 7a-patch §G — synthetic-Member → fixture routing helper. Member-Type-to-fixture-slug map; URL includes `representative_of` + `example_for` query params.)
+- `app/_components/representative-example-banner.tsx` (Sprint 7a-patch §G — notation banner surfaced on fixture pages when the query params are present. Dismissible via sessionStorage.)
+- `lib/db-path.ts` (Sprint 6 §D — SQLite path resolver. Local dev: pass through `DATABASE_URL`. Vercel: copy bundled `prisma/seed.db` to `/tmp/blaze.db` on cold start so reads + writes both succeed for the Lambda instance lifetime. Module-level cache short-circuits subsequent calls.)
+- `prisma/seed.db` (Sprint 6 §C — committed SQLite snapshot. 999 KB. Ships with the Vercel deployment via `next.config.ts → outputFileTracingIncludes`. Refresh via `pnpm db:snapshot` before deploy.)
+- `prisma/seed-artifact-templates.ts` (Sprint 5d Block B + Sprint 8 Block B/G — 10 ArtifactTemplate records seeded: TEMPLATE-001..008 (existing) + TEMPLATE-009 LOC smoothing (TRACK-001) + TEMPLATE-010 Vehicle financing (TRACK-002). Sprint 8's `seedFixtureMultiTrack` populates fixture multi-Track distribution: Cygnus → TRACK-008+003, Northland → TRACK-002+007, Jenny → TRACK-001+010, Riverside → TRACK-001. Backfilled `source_factor_id` on existing 7 templates per Block C.)
+- Sprint 8 schema additions: `Member.active_track_ids Json?` (multi-Track fixtures; first entry is primary), `FactorCapture.capture_mode String @default("member_confirmed")` (member_confirmed | banker_estimate dichotomy). `ArtifactTemplate.parameter_schema` carries a `source_factor_id` JSON convention per parameter — the renderer overlays FactorCapture values for source-linked params; missing source-linked params surface as CTA cards (`app/v2/members/[id]/artifact-template-render.tsx`).
+- `app/v2/members/[id]/artifact-visualizations/*.tsx` (Sprint 9 — 8 per-Track business-impact visualizations: LeaseVsOwnChart (TRACK-003), GrowthTrajectoryChart (TRACK-004), CashflowEquityDualChart (TRACK-006), CostOfDoingNothingChart (TRACK-007), Sba504StructureComparison (TRACK-008, paired with existing roadmap), PaceMonthlySavingsChart (TRACK-009), CashbackOpportunityChart (TRACK-010), UnsecuredOpportunityChart (TRACK-011). Each demonstrates before/after business effect rather than transaction summary. Shared palette + helpers in `shared.ts`. Dispatch via `StructuralContent.type` in `lib/artifact-template.ts`.)
+- `vercel.json` (Sprint 6 §C — pins Next.js framework preset + install/build commands. Sister to `package.json` scripts.)
 - `FIXTURE.md` (documents the Jenny's Catering seed data)
 
 If a file appears in this repo that is not on this list, raise it. Document sprawl is a real failure mode and we are guarding against it.

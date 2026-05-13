@@ -44,6 +44,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { getDbPath } from "@/lib/db-path";
 // Note: summarizeMember and MemberSummaryInput are no longer imported here
 // because the Active state band that consumed them was deleted per
 // Sprint 1 §C.1. The snapshot generation in prisma/seed.ts still uses
@@ -55,6 +56,7 @@ import {
 } from "@/lib/suggested-next-step";
 import { formatRecommendationSize } from "@/lib/format-size";
 import { Breadcrumb } from "@/app/_components/breadcrumb";
+import { V2OptInLink } from "@/app/_components/v2-opt-in-link";
 import {
   ArtifactPreviewDialog,
   type ArtifactPreviewData,
@@ -72,8 +74,9 @@ import { Fragment, type ReactNode } from "react";
 // ============================================================
 
 function getPrisma() {
-  const dbPath = (process.env.DATABASE_URL ?? "file:./dev.db").replace(/^file:/, "");
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbPath }) });
+  return new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: getDbPath() }),
+  });
 }
 
 const NOW = new Date("2026-04-25T12:00:00Z");
@@ -647,10 +650,23 @@ export default async function MemberProfilePage({
             <span className="text-blaze-orange-deep">Member</span>{" "}
             <span className="text-blaze-charcoal">Signals</span>
           </Link>
-          <div className="text-sm text-blaze-charcoal">
-            Logged in as{" "}
-            <span className="font-medium">{member.primary_banker.display_name}</span>
-            <span className="ml-2 text-xs text-blaze-grey-body">Primary banker</span>
+          <div className="flex items-center gap-4 text-sm text-blaze-charcoal">
+            {/* Sprint 4.7 Q-X1 — opt-in cross-link to v2 workstation.
+                Renders only when ?v2=true query param sets the
+                sessionStorage flag. v1 stays default during build per
+                Q-X1; Sprint 6 may flip default for EVP demo deployment. */}
+            <V2OptInLink href={`/v2/members/${slug}`} />
+            <Link
+              href="/v2/insight-engine"
+              className="text-xs font-medium text-blaze-orange-deep underline-offset-2 hover:underline"
+            >
+              Dashboards ↗
+            </Link>
+            <div>
+              Logged in as{" "}
+              <span className="font-medium">{member.primary_banker.display_name}</span>
+              <span className="ml-2 text-xs text-blaze-grey-body">Primary banker</span>
+            </div>
           </div>
         </div>
       </header>
@@ -937,7 +953,13 @@ export default async function MemberProfilePage({
                       <CapturedChip capturedBy={`response · ${captureRef}`}>
                         {r.response.replace(/_/g, " ")}
                       </CapturedChip>
-                      {r.primary_concern && r.primary_concern !== "none" && (
+                      {/* Sprint 4.6 Block A — `none` enum value retired
+                          in favor of nullable `primary_concern`. The
+                          legacy guard against the literal "none" is
+                          replaced with a simple null check; the field
+                          is suppressed when the Member has no captured
+                          concern. */}
+                      {r.primary_concern && (
                         <>
                           {" "}· primary concern:{" "}
                           <CapturedChip capturedBy={`primary_concern · ${captureRef}`}>
@@ -1341,7 +1363,7 @@ export default async function MemberProfilePage({
                             future production analytics. */}
                         <ArtifactPreviewDialog artifact={dialogData} />
                         {" · "}
-                        <LabeledValue label="Shown">
+                        <LabeledValue label="Shared with member">
                           <InlineWithProvenance
                             capturedBy={`Show step · ${fmtDate(row.conversation_date_iso)}`}
                           >

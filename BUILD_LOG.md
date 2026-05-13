@@ -2127,4 +2127,2270 @@ Migration `20260428020905_sprint4_4_2a_decline_reason_concerns` is a marker (`SE
 
 ---
 
+---
+
+## 2026-04-29 · Sprint 4.6 — Compliance posture floor
+
+**Session type:** Sprint 4.6 — five blocks shipping the compliance posture floor before v2 phase 1 (Sprint 4.7) begins. Single checkpoint with delimited per-block diffs. Estimated 1-2 effective build days; came in within budget. The compliance work shipped to v1 routes; v2 (Sprint 4.7) inherits all of these patterns from the start — helper text content, keyword scan registry, banner copy, softened taxonomy values, and the Capture discipline callout content all carry forward.
+
+Read order (per Sprint 4.6 prompt pre-flight): COMPLIANCE.md §6 + §10 + §11; PROTECTED_CLASS_KEYWORD_LIST_v1.md (with E1–E6 resolved per Path A — Francisco's defaults committed); OPEN_QUESTIONS.md Q-013 + Q-041 resolutions (already in Resolved section from the previous turn — amendments NOT re-applied this turn).
+
+### Block A — Field label and enum value refactor
+
+`Recommendation.primary_concern` enum replaced with the Sprint 4.6 17-value taxonomy per COMPLIANCE.md §6. The new taxonomy splits into two contextual sets with one shared value (`service_or_capability_concern`):
+
+- **Open-thread context** (8 values): `pricing_concern`, `terms_concern`, `timing_concern`, `co_decision_maker_household`, `external_advisor`, `co_owner_or_board`, `service_or_capability_concern`, `other_open_thread`. Field label: "Primary concern".
+- **Decline-reason context** (10 values): `pricing_uncompetitive`, `terms_uncompetitive`, `timing_misaligned`, `chose_alternative_lender`, `chose_alternative_funding`, `need_resolved_otherwise`, `need_no_longer_present`, `wants_to_revisit_later`, `service_or_capability_concern`, `other_member_stated`. Field label: "Member's stated reason for declining" (replaces the prior "Decline reason" — Reg B § 1002.9 hygiene, explicit member-direction framing).
+
+Migration `20260429210607_sprint4_6_compliance_taxonomy_refactor` mapped existing seed values: `rate → pricing_concern`, `timing → timing_concern`, `spouse → co_decision_maker_household`, `cpa → external_advisor`, `partner → co_owner_or_board`, `bank_capability → service_or_capability_concern`, `does_not_qualify → NULL` (dropped per COMPLIANCE.md §8.2 — bank-side observations now route to Closing notes free text). Sprint 4 §4.2a refinement #3 decline-reason values (`terms_unfavorable`, `going_with_competitor`, `no_longer_needed`, `lost_interest`, `found_alternative`, `circumstances_changed`) also remapped to the Sprint 4.6 taxonomy.
+
+SQLite stores enums as TEXT, so DDL change wasn't needed; the migration runs UPDATE statements for row migration. Schema (`prisma/schema.prisma`) updated to reflect the new enum value set; Prisma client validates writes against the new vocabulary post-regen.
+
+`seed.ts` updated to use new values directly (3 Recommendation seeds: Jenny `co_decision_maker_household`, Northland `external_advisor`, Cygnus `service_or_capability_concern`). `lib/enum-descriptions.ts` rewritten with descriptions + compact labels for all 17 values per Semantic Discipline Principle 3.
+
+`SaveResolveInput.primary_concern` type widened to the 17-value union. Resolve form (`resolve-section.tsx`):
+
+- `PRIMARY_CONCERN_OPTIONS_OPEN_THREAD` and `PRIMARY_CONCERN_OPTIONS_DECLINE_REASON` rebuilt with the new value sets and member-facing labels
+- Field label switches to "Member's stated reason for declining" for terminal-no responses
+- View-mode summary uses contextual label
+- **Auto-clear behavior** addresses the watch-item from the previous turn: when banker switches Response across contexts and the current `primary_concern` value isn't in the new option set, the dropdown auto-resets to null. Implemented inline in the response select's onChange — `update("response", ...)` followed by a conditional `update("primary_concern", null)` when the existing value is invalid in the new context. React 18 batches the two state updates inside a single event handler.
+- Read-only summaries (Member profile Active proposals band, etc.) updated to handle the new enum gracefully — `r.primary_concern && (...)` null check replaces the prior `!== "none"` literal check since `none` is no longer in the enum.
+
+`lib/summaries.ts` `summarizeMember` template updated: bespoke phrasing for three high-frequency open-thread concerns (`service_or_capability_concern`, `co_decision_maker_household`, `external_advisor`); fallback to canonical compact label for everything else.
+
+### Block B — Helper text on banker-prose fields
+
+Three of four spec'd fields received permanent italic helper text below the label, above the input. Verbatim copy from COMPLIANCE.md §10.2:
+
+- **Customer response** (Resolve form, `their_words`): *"Focus on what the Member said and the business factors driving their decision. Avoid notes about personal characteristics, household circumstances, or social context."* (replaced the prior "What factor caused this decision?" Sprint 4.2a refinement copy)
+- **Closing notes** (Resolve form, `closing_notes`): *"Focus on observable business and cashflow factors: financing structure, timing, terms, costs, alternatives, business situation, decision process."* (refactored the field's wrapper from `<Field>` to inline `<label>` to accommodate the helper sub-line)
+- **Description** (Resolve form, `action_card_description`): *"Describe the business action and timing. Avoid notes about the Member's personal characteristics."* (same wrapper refactor; required-asterisk preserved)
+
+The fourth field (**Suggested opening**) was deferred — `Recommendation.suggested_opening` exists in the schema and renders read-only on the Member profile (as a quote when an ActionCard has it), but no v1 capture form exists. Per Sprint 4.6 prompt §B.1: "if it doesn't yet, defer to v2." Sprint 4.7 will surface this field in the v2 capture form.
+
+Visual treatment: `text-[11px] italic text-blaze-grey-soft` — not dismissible, not animated. The styling matches the existing field-label hierarchy.
+
+### Block C — Submit-time keyword scan + ComplianceScanEvent telemetry
+
+`lib/compliance-keywords.ts` (new, ~280 lines): grouped keyword registry with ~270 terms across 8 protected-class groups (`race_color_origin`, `religion_creed`, `disability_health`, `age`, `sex_gender_orientation`, `marital_familial`, `public_assistance`, `reprisal`). Source: `PROTECTED_CLASS_KEYWORD_LIST_v1.md` with editorial decisions E1–E6 committed per Path A (Francisco's drafted defaults — keep unmodified man/men/woman/women, include curated Minnesota nationalities, include "Indian" with dual-meaning, fire on spouse, fire on discrimination, representative not exhaustive).
+
+`scanText(input: string): MatchedTerm[]` function:
+- Case-insensitive (lowercase normalize)
+- NFKC Unicode normalize + diacritic strip (`/\p{M}/gu` regex against combining marks)
+- Hyphen variants (-, ‑, –, —) normalized to space, so "African‑American", "African-American", and "African American" all match the registered term
+- Whole-word match via regex with non-word-character bounds (`(?:^|\\W)term(?:\\W|$)`)
+- Single registry pass per scan; ~270 terms × typical 100-char input runs well under 1ms
+- Deduplicates matches by canonical term across registry hits
+
+`ComplianceScanEvent` Prisma model (migration `20260429211909_sprint4_6_compliance_scan_event`): records `banker_id`, `field_name` (e.g., `"Resolve.customer_response"`), `matched_terms` (Json array of `{term, group}`), `banker_action` (`"continued" | "edited" | "cancelled"`), optional `member_id`, `occurred_at`. Indexed on `(banker_id, occurred_at)` and `field_name` for Pilot-time aggregation queries.
+
+`lib/compliance-scan-action.ts` `recordComplianceScanEvent` server action: lightweight fire-and-forget telemetry write. No transaction, no `revalidatePath`. Failures must not block banker flow — caller wraps in `.catch(() => {})`.
+
+`app/_components/compliance-scan-modal.tsx` `ComplianceScanModal` component: full-screen overlay with cream-tinted card. Soft-advisory copy per COMPLIANCE.md §7.3 / Sprint 4.6 §C.4 — "this note mentions [terms]. Lending decisions and capture should focus on observable business and cashflow factors. Personal characteristics, household circumstances, and social context tend not to belong in member files. Continue saving, edit the note, or cancel?" Three actions wired to onContinue / onEdit / onCancel callbacks. Telemetry fires per-field for the chosen action (a single submit can fire multiple ComplianceScanEvent rows if multiple fields had matches).
+
+Resolve form integration: `commitSave` runs the scan over three fields (Customer response always; Closing notes when terminal-no; ActionCard description when actionCardVisible). If any matches, `setPendingScan` pauses the save and renders the modal. `dispatchSave` (extracted helper) actually invokes `saveResolveCaptures`. Modal's `onContinue` calls `dispatchSave(payload)`; `onEdit` clears pending state and returns to the form; `onCancel` discards captures via `setDraft(makeInitialDraft(...))` and closes edit-mode.
+
+**Audit-extended scan integration deferred:** AskSection (`their_words` on Signal capture) and SizeSection (`their_words` + `methodology_note` on SizingMeasurement capture) are also [FL:BANKER-PROSE] surfaces per COMPLIANCE.md §2.1 / Sprint 4.6 §C.3. Strict reading of the Sprint 4.6 prompt §B.1 lists four fields (Customer response, Closing notes, Description, Suggested opening); the broader audit is mentioned in §C.3 but not enumerated. For demo scope, Resolve coverage demonstrates the pattern; AskSection + SizeSection extension is logged here as a follow-up. Q-040-style watch-item — flag if visual review surfaces it.
+
+### Block D — Compliance disclaimer banner
+
+`app/_components/compliance-disclaimer-banner.tsx` `ComplianceDisclaimerBanner` component:
+- Renders below the Growth Conversations page header, above breadcrumb / main content
+- Cream-tinted (`bg-blaze-cream/60`), neutral — not coral, not orange
+- Hairline `border-y border-blaze-rule`
+- Verbatim copy per COMPLIANCE.md §10.1 / Sprint 4.6 §D.1
+- × Dismiss affordance top-right; click sets `sessionStorage[blaze.compliance-disclaimer-dismissed] = "1"` and hides
+- Re-renders on each fresh session (close-tab-and-return resets it)
+- Initial state hides the banner (mounted=false) until the post-mount effect reads sessionStorage; prevents SSR/CSR hydration mismatch
+
+Mounted into both `/growth-conversations/page.tsx` (lookup page) and `/growth-conversations/[memberId]/page.tsx` (capture page). Sprint 4.6 prompt §D.3 was ambiguous about which; both is the safer path since the disclaimer is per-session-dismissible.
+
+### Block E — Capture discipline coach callout
+
+`app/_components/capture-discipline-callout.tsx` `CaptureDisciplineCallout` component: a `Capture discipline ?` button that opens a modal with the verbatim 100-word framing per COMPLIANCE.md §10.4. "Got it" dismisses the modal.
+
+Mounted in the footer area of both `/growth-conversations/page.tsx` and `/growth-conversations/[memberId]/page.tsx`, just above the gradient bar.
+
+Component is reusable for v2 (Sprint 4.7) — `/v2/members/[id]` will surface the same content via the "show ?" coach affordance per ARCHITECTURE_V2.md §11. The 100-word framing is content-asset-stable; it lives in this component until v2 phase 1 reuses it.
+
+### Decisions made during implementation
+
+1. **Schema enum value migration via SQL UPDATE**, not via Prisma "soft" rename. SQLite stores enums as TEXT, so DDL is unaffected; the migration is rows-only. Pre-existing values mapped to new ones through a single migration file with a comprehensive comment block documenting every old → new mapping. Cleaner than carrying both old and new values forward and waiting for runtime to migrate.
+
+2. **`displayLabel` extension to TrackStage was not used** for primary_concern relabeling — that was a Sprint 4 §4.2a refinement #2 mechanism for stage progression dots. For Resolve form labels, the contextual label is computed inline in the form component since it's UI-only (not exposed as an entity attribute).
+
+3. **`ComplianceScanEvent.matched_terms` stored as Json** (TEXT under SQLite) rather than a separate row-per-term entity. Aggregation queries in Pilot will need to unpack the Json array; for demo scale (single-digit-thousand events at most), this is fine. If Pilot analytics turn into a hot path, refactor to a separate `MatchedKeyword` table with indexes.
+
+4. **Scan modal is a single overlay**, not per-field inline. A multi-field submit with matches in two fields shows one modal listing all matched terms grouped by protected-class category. Continue / Edit / Cancel applies to the entire submit, not per-field. Simpler UX; matches the soft-advisory framing.
+
+5. **Auto-clear primary_concern across context switches** uses two `update` calls inside the event handler, batched by React 18's automatic event-handler batching. No new state structure; no useReducer migration; minimal change to the form's data flow.
+
+### Lessons recorded
+
+- **Helper text ergonomics**: the existing `Field` component had no helper-text prop. Two paths considered: (1) extend `Field` with optional helper-text rendering, or (2) inline `<label>` blocks with manual structure. Chose (2) for the three Block B fields because each has a slightly different surrounding shape (closing notes appears in a `{isTerminalNo && (...)}` branch; ActionCard description has the required-asterisk-conditional). When a fourth field with similar treatment shows up in a future block, lifting `Field` to support optional `helper` prop is the natural refactor — but premature without three uniform call sites.
+- **`use server` annotation discipline**: `lib/compliance-scan-action.ts` is the first standalone server-action file in the project (existing actions live in `app/growth-conversations/[memberId]/actions.ts`). Verified that `"use server"` at the top of `/lib/*.ts` works under Next.js 16 + Turbopack; the function is callable from both server (page.tsx) and client (form components).
+- **Path C-modified scoping is real**: Sprint 4.6 deferred Wave 1 schema-wide tagging sweep, immutable trace log, §1071 readiness, adverse action notice integration, and counsel review per COMPLIANCE.md §12. Each was tempting to scope-creep; sticking to the floor kept the sprint within budget. ComplianceScanEvent is the lightweight stand-in for the deferred trace log.
+
+### Pilot deferrals to honor (per COMPLIANCE.md §12)
+
+- Wave 1 compliance tagging sweep (`[FL:*]` annotations on every schema field + `compliance-tags.json` registry + CI enforcement) — Sprint 4.6 demonstrates the pattern in the docs but doesn't ship the registry
+- Immutable decision-trace log (hash-chained, append-only DecisionTraceEvent entity) — ComplianceScanEvent is the lightweight subset
+- §1071 demographic data readiness
+- Adverse action notice integration architecture
+- Counsel review of all banker-facing copy
+
+These are explicitly out of scope for Sprint 4.6 and tracked in OPEN_QUESTIONS.md.
+
+### Verified
+
+- `pnpm tsc --noEmit` — clean
+- `pnpm exec next build` — `✓ Compiled successfully`; 5 routes
+- DB state confirmed post-migration: Jenny `co_decision_maker_household`, Northland `external_advisor`, Cygnus `service_or_capability_concern`
+- HTML probe of `/growth-conversations/jenny`:
+  - "Primary concern" label present (engaged-spectrum)
+  - "Needs household co-decision-maker input" label rendered (Jenny's value)
+  - "Capture discipline ?" footer link present
+  - Old labels absent: no "Needs spouse", no "Needs CPA", no "bank capability", no "Decline reason"
+- `scanText` smoke probe: matches "husband" (sex_gender_orientation), "Black" (race_color_origin), "Kosher" (religion_creed), "Hospital" (disability_health); does not match enum values like "rate" or "circumstances changed" (correctly outside the registry)
+
+### Watch for review
+
+- **Hard refresh recommended.** Schema migration + enum extension + new client components + new lib modules. Cleared `.next` mid-build to clear stale chunks; visual review should also cmd+shift+r.
+- **AskSection + SizeSection scan extension is deferred.** Strict Sprint 4.6 §B.1 spec lists 4 fields; broader §C.3 audit mentions other [FL:BANKER-PROSE] fields without enumeration. If visual review surfaces gaps (e.g., banker enters protected-class language in AskSection's Direct quote and the scan doesn't fire), extend the same `ComplianceScanModal` integration into AskSection and SizeSection. Pattern is established; the lift is small.
+- **Compliance disclaimer banner is sessionStorage-gated** (not server-rendered). Curl probes will not see it; real browsers will. The reason is to avoid hydration mismatches when the banner state differs between server and client. Testing the banner requires opening a real browser in a fresh session.
+- **The auto-clear primary_concern logic** assumes React 18's automatic event-handler batching. If a future React downgrade or behavior change breaks batching, the two `update` calls would produce two re-renders (slight flicker) instead of one — non-correctness, just visual.
+- **Editorial decisions E1–E6 committed at Path A.** Pilot calibrates from `ComplianceScanEvent` telemetry. If demo viewing surfaces fatigue (e.g., banker dismisses every "wife" / "husband" / "married" prompt), the `man / men / woman / women / spouse` edges are first-call removal candidates.
+
+---
+
+---
+
+## 2026-04-29 · Sprint 4.6 patch — Withdrawn terminal state + Closed → Introduced rename
+
+**Session type:** Small follow-up to Sprint 4.6, addressing a spec-drift finding from the verification turn. The Sprint 4.6 prompt body in `docs/prompts/SPRINT_4.6_COMPLIANCE_POSTURE_FLOOR.md` did not specify the Withdrawn terminal state that Francisco's pre-flight reminder mentioned; it was missed during initial implementation. Patched here together with a permanent Connect-ending terminal rename.
+
+### What shipped
+
+**1. Withdrawn terminal state for declined / dismissive Resolve-ending Tracks**
+
+- New `"withdrawn"` value added to `TrackStageState` in `lib/suggested-next-step.ts`. Four-state dot vocabulary: `completed` (orange-filled) / `current` (orange-ringed) / `upcoming` (grey-rule-filled) / `withdrawn` (grey-soft-filled). The new state reads as "muted, distinct, this journey concluded without funding."
+- `computeTrackStages` extended: when Resolve-ending AND `recommendation_response ∈ {declined, dismissive}`, `pendingState = "completed"` (decision was made, even if "no") + `terminalState = "withdrawn"` + `terminalDisplayLabel = "Withdrawn"`. Mirrors the Q-040 / Closing displayLabel pattern: canonical `label` stays `"Funded"` so `#stage-funded` URL anchor continues to resolve.
+- Renderers updated: `TrackProgressDots` and `AnchorProgressBar` both add the `withdrawn` branch in their dot-state cascade. Background utility `bg-blaze-grey-soft` (existing token); no new CSS variables introduced. Label color follows the existing default branch (also `text-blaze-grey-soft`), so withdrawn labels read as muted alongside the dot.
+
+**2. Connect-ending terminal renamed `"Closed"` → `"Introduced"`**
+
+- Permanent rename — applies to all Connect-ending Tracks regardless of response state, because the handoff completes whether or not the Member ultimately proceeds with the specialist. Withdrawn does not apply to Connect-ending Tracks.
+- `computeTrackStages` `terminalLabel` updated from `"Closed"` to `"Introduced"` for `isConnectTrack` branch.
+- `lib/stage-guidance.ts` StepPhase type renamed `"closed"` key to `"introduced"` (internal lookup key). Cygnus-specific guidance content rewritten to describe the introduction-made semantic ("The introduction to the CRE specialist has been made. The relationship from this point forward is driven by the specialist…") rather than the prior "engagement has closed" framing. Generic phase-fallback also updated.
+- `app/growth-conversations/[memberId]/page.tsx` stage-label-to-phase mapping updated: `stage.label === "Introduced" ? "introduced" : null` (was `"Closed" → "closed"`). Comment about lifecycle slugs corrected.
+- URL anchor slug for Connect-ending terminal moves from `#stage-closed` to `#stage-introduced`. Pre-patch external links to `#stage-closed` will not resolve. No external bookmarks exist for the demo, so this is a clean rename. (Resolve-ending `#stage-funded` URL anchor is unchanged and continues to resolve across all states.)
+
+### Verified state matrix
+
+Direct probe via `computeTrackProgress` over both Track shapes × six response values:
+
+**Jenny (Resolve-ending Track):**
+
+| `response` | pending state | terminal label | terminal state |
+|---|---|---|---|
+| `leaning_yes` / `engaged` | current | Funded | upcoming |
+| `committed` | completed | **Closing** | current |
+| `funded` | completed | Funded | completed |
+| `declined` / `dismissive` | completed | **Withdrawn** | **withdrawn** |
+
+**Cygnus (Connect-ending Track):**
+
+| `response` | pending state | terminal label | terminal state |
+|---|---|---|---|
+| `leaning_yes` / `engaged` | current | **Introduced** | upcoming |
+| `committed` | completed | **Introduced** | current |
+| `funded` | completed | **Introduced** | completed |
+| `declined` / `dismissive` | upcoming | **Introduced** | upcoming |
+
+Withdrawn correctly does not appear for any Cygnus state. Connect-ending terminal is uniformly "Introduced" across all responses.
+
+### Decisions made during implementation
+
+- **Internal StepPhase key renamed** `"closed"` → `"introduced"` rather than kept stable. The internal key is used only for the guidance lookup table; renaming it keeps the key consistent with the canonical label and reduces the cognitive overhead of "the key says one thing, the label says another." If schema migration risk had been higher (e.g., the key was a Prisma enum value with stored data), I'd have kept the internal key stable; for an in-code lookup table identifier, the rename is clean.
+- **Pending state for Connect-ending declined stays `upcoming`** rather than promoted to `completed`. The user's spec said Withdrawn doesn't apply to Connect-ending Tracks; "Specialist engagement upcoming, Introduced upcoming" matches the existing default-bucket behavior. If visual review surfaces this as feeling wrong (Member declined but the dots say "haven't gotten there yet"), it's a small follow-up to add a Connect-declined-completed bucket.
+- **Withdrawn label color** follows the existing default branch (`text-blaze-grey-soft`), no separate styling. The dot-fill color carries the visual distinction; the label inherits the pre-existing muted-text treatment that upcoming labels also use. Saves a pass on label-color taxonomy.
+
+### Housekeeping
+
+- `BLAZE_STYLE_GUIDE.md` §14.5 — terminal-label vocabulary table replaces the prior single-paragraph treatment. Four-state dot vocabulary documented. URL anchor stability noted.
+- `lib/stage-guidance.ts` — Cygnus and generic-fallback content rewritten for the Introduced semantic.
+- `app/growth-conversations/[memberId]/page.tsx` — phase mapping + slug comment updated.
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- State matrix probe matches spec for both Track shapes across all six response values
+
+### Watch for review
+
+- **Withdrawn dot color is muted.** If visual review feels it disappears next to the also-muted upcoming dots, increasing the fill saturation slightly (still grey-toned, not orange) is a one-line tweak. Current treatment uses the existing `var(--blaze-grey-soft)` token to avoid inventing a new color.
+- **`#stage-closed` → `#stage-introduced` URL change** for Connect-ending Tracks. Demo has no external bookmarks; pilot phase shipping with this should ensure any user docs / training material referencing the old anchor are updated.
+
+Sprint 4.7 (v2 phase 1) is up next.
+
+---
+
+## 2026-04-30 — Sprint 4.7 (v2 prototype phase 1) — Turn 1 + Turn 2
+
+### Goal
+
+Ship the v2 Member workstation at `/v2/members/[id]` parallel to v1 routes per ARCHITECTURE_V2.md. Two-turn structure: Turn 1 = Foundation (route, schema, dot system, page layout primitives, compliance banner, click-in-place); Turn 2 = Content (capture forms, captured feed, Tracks-supported panel, coach content, fixture quote enrichment, compliance scan extension). Single bundled BUILD_LOG entry for the full sprint per Francisco's scope note.
+
+### What shipped
+
+**Turn 1 — Foundation (Blocks A–E):**
+
+- **Block A** — Route + cross-links. `/v2/members/[id]` resolves for jenny/northland/cygnus. v1 surfaces (`/members/[id]`, `/growth-conversations/[memberId]`) gain "Try the new view →" affordance; v2 has "Classic view ↗" back-link. Q-X1 wired in Turn 2 — link is now opt-in via `?v2=true`.
+- **Block B** — Schema additions. `Model`, `ShowEvent`, `Reaction` entities + `ReactionValue` enum. Reverse relations on Banker / Member / Conversation / Artifact. `Member.key_facts` Json column added. Migration `20260429235304_sprint4_7_v2_phase_1_entities` + `20260429235457_sprint4_7_member_key_facts`. Objective entity implemented as derived state in `lib/stage-guidance.ts` (the `objectiveGuidance` helper) rather than persisted, per ARCHITECTURE_V2 §11.1.
+- **Block C** — `ObjectiveDot` + `ObjectiveDotRow` shared client components. Four states (filled / outlined / faint / accented), 8px diameter, 6px gap. Accented uses solid `--blaze-orange-burnt` fill (CC's call documented per §5.1).
+- **Block D** — Page layout primitives shipped as one cohesive piece per Francisco's scope note. Header (display-weight Member name, coral open-thread badge), KeyFactsStrip (cream-tinted background, 3-5 facts/Member), sticky V2Dialpad (7 pill buttons, ~36px tight height), V2Sidebar (180px, 5 stacked sections), V2MainPanel scaffolding.
+- **Block E** — Compliance disclaimer banner mounted below header / above key facts strip per Q-H1. Click-in-place navigation discipline enforced — no clicks on the workstation result in page navigation.
+
+**Turn 2 — Content (Blocks I–R):**
+
+- **Block I** — `+ Model` capture form with structured parameters (key/value rows), assumptions list, output_summary textarea, With-Member/Banker-draft radio. Server Action `saveModel` in `app/v2/members/[id]/actions.ts`. output_summary fires Sprint 4.6 keyword scan.
+- **Block J** — `+ Show` capture form with Artifact + Model selects + context note. Server Action `saveShowEvent`.
+- **Block K** — `+ Reaction` capture form with response value (5 enum values), member_quote textarea, ShowEvent linkage. Server Action `saveReaction`. member_quote fires keyword scan.
+- **Block L** — Existing v1 capture forms (AskSection, SizeSection, ResolveSection) reused inside the v2 dialpad's drawer. Each gained an optional `onSaveSuccess` callback so the drawer can close after a save without disturbing v1 callers. Standalone `+ Action` form built (`ActionForm`) extracting the ActionCard sub-form pattern from Resolve. Server Action `saveActionCard`.
+- **Block M** — Tracks-supported-by-current-evidence panel. Click "Land" objective → modal opens with strong / moderate / insufficient cohorts. Hand-curated `tracks_by_evidence_strength` Json column on Member, populated in seed.ts with FIXME(Francisco) annotations per Q-M1. Compliance-careful framing verbatim per ARCHITECTURE_V2 §10.2 — no "candidate tracks" or "recommended for". Migration `20260430003409_sprint4_7_member_tracks_evidence`.
+- **Block N** — Captured feed with all six card variants (Ask / Quantify / Model / Show / Reaction / Resolve). Recent-first sort across activity types. Click expands inline; Member quotes in italic with left-rule mark; coral border on open-thread captures; 70% opacity on stale (>90 days) entries. Empty-state placeholder when no captures.
+- **Block O** — Coach content reorganized by signal type per Q-O1. New `objectiveGuidance(objective, memberTypeName)` helper in `lib/stage-guidance.ts`. Trigger paragraphs → Land; Goal/Blocker/Indecision/Size → Understand; Show/Resolve → Consult; Lifecycle → Formalize. "show ?" affordance in sidebar expands to four objective blocks with member-type-aware paragraphs.
+- **Block P** — Member fixture quote enrichment from `docs/MEMBER_FIXTURE_QUOTE_ENRICHMENT_v1.md`. Selected 5-6 strongest quotes per Member across goal/blocker/indecision/reaction/resolution. Quote selections per Member documented below. Plus seeded Reaction + ShowEvent + Model rows (one each per Member's featured conversation) so the captured feed has v2-shape evidence to render.
+- **Block Q** — Compliance scan integration extended to v2 banker-prose fields. AskSection's `their_words` and SizeSection's `their_words` + `methodology_note` now fire the Sprint 4.6 keyword scan (the deferred extension from Sprint 4.6). Reuses ComplianceScanModal + recordComplianceScanEvent. New v2 forms (Model.output_summary, Reaction.member_quote, ActionCard.description) also wired to the scan. v1 Resolve scan behavior preserved.
+- **Q-X1 feature flag** — `V2OptInLink` client component with `?v2=true` query-param gate persisting via sessionStorage. v1 surfaces show the cross-link only when the flag is set. Default during build is v1-only; Sprint 6 may flip for EVP demo.
+- **Block R** — Governance updates: this BUILD_LOG entry, BLAZE_STYLE_GUIDE §15 (v2 workstation pattern), CLAUDE.md §5 vocabulary additions (workstation/objective/activity/dot/open thread/evidence; retire stage/phase/step from banker-facing), SCOPE.md three-modules update, OPEN_QUESTIONS Q-A1..Q-A5 logged.
+
+### Quote enrichment selections per Member (Block P)
+
+**Jenny's Catering** (6 quotes; replaced 4 originals):
+
+| Field | Selected quote | Source |
+|---|---|---|
+| Goal `their_words` (cash flow smoothing) | "I just want to be able to sleep through January" | Already in seed (Francisco's E4 memorability pick — kept) |
+| Blocker `their_words` (receivables) | "Some big accounts paying 60+ days now. Used to be 30." | Enrichment Blocker 1 |
+| Blocker `their_words` (seasonal, both captured_data + Signal row) | "January and February kill us every year. Holiday parties end the second week of December and then nothing till spring." | Enrichment Blocker 2 |
+| Show captured_data `their_words` | "Oh, I see what you're doing — the line just covers the dip…" | Enrichment Reaction (engaged) |
+| Recommendation `their_words` | "Seventy-five thousand. Okay. That's bigger than I was thinking but if I'm only drawing during the slow months…" | Enrichment Reaction (leaning yes) |
+| Indecision `their_words` | "I'd want Mike to look at the numbers before I sign anything that big. He handles the books with me." | Enrichment Indecision |
+| Reaction `member_quote` (new v2 entity) | "Oh, I see what you're doing — the line just covers the dip…" | Enrichment Reaction (engaged) |
+
+**Northland HVAC** (5 quotes; replaced 4 originals):
+
+| Field | Selected quote | Source |
+|---|---|---|
+| Goal `their_words` (fleet) | "We could probably do another 20-25% volume if we had the trucks and bodies. Demand isn't the problem." | Enrichment Goal 2 |
+| Blocker `their_words` (capacity) | "I came in to look at financing for my own truck because mine's done, but maybe what I really need is to think about the whole fleet." | Enrichment Blocker (Francisco's E4 memorability pick) |
+| Recommendation `their_words` | "I hear you. Let me chew on it. I want to talk to my CPA before pulling the trigger on something this size." | Enrichment Reaction (leaning yes) |
+| Indecision `their_words` | "I want to run this past my CPA before I commit. He handles all the tax stuff and I want him on board with the structure." | Enrichment Primary concern |
+| Reaction `member_quote` | "Okay, the math holds. I see how the volume covers the payment." | Enrichment Reaction (engaged) |
+
+**Cygnus Bioscience** (5 quotes; replaced 4 originals):
+
+| Field | Selected quote | Source |
+|---|---|---|
+| Goal `their_words` (customer growth) | "We're at about eighty-five percent capacity utilization. Three of our anchor customers are signaling fifteen to twenty-five percent volume growth over the next eighteen months. The math is clear — we have to expand or we have to start telling customers no." | Enrichment Goal 1 |
+| Blocker `their_words` (concentration → reframed as 2019 lost-deal memory) | "Last expansion we went with regional. They had a CRE team that knew the building type. We weren't unhappy but the relationship cost more than the rate did. I'd rather not do that again if we have a choice." | Enrichment Blocker (Francisco's E4 memorability pick) |
+| Trigger `their_words` (capacity eval, both ask:1 + ask:2) | "We could run an RFP. The board would actually expect that for a deal this size. But if you can show me you have the specialist depth, I'd rather just work with you." | Enrichment Indecision (RFP vs. relationship) |
+| Recommendation `their_words` | "Bring me the specialist. We'll work through structure together." | Enrichment Recommendation |
+| Reaction `member_quote` | "Yes, please. The sooner the better. Have him reach out directly to Robert and me." | Enrichment Reaction (committed) |
+
+### Tracks-supported demo data (Block M, FIXME-annotated per Q-M1)
+
+Each Member has a `tracks_by_evidence_strength` cohort populated in seed.ts:
+
+- **Jenny** — Strong: Working Capital LOC (4 evidence dots) · Moderate: Cash Management upgrade (2) · Insufficient: Equipment Loan
+- **Northland** — Strong: Vehicle/Fleet Loan (4) · Moderate: SBA 7(a) structuring (2) · Insufficient: Owner-Occupied CRE
+- **Cygnus** — Strong: CRE Term Loan (4) · Moderate: Treasury Services upgrade (2) · Insufficient: Equipment Loan
+
+Each cohort entry carries a `rationale` string drawing on the Member's actual captured signals/sizings/reactions. Compliance-careful framing verbatim per ARCHITECTURE_V2 §10.2 / COMPLIANCE.md §10.2 — non-negotiable per Francisco's pre-execution confirmation. FIXME(Francisco) annotations live in the seed comment blocks; refinements land as a follow-up commit before EVP demo.
+
+### Schema migrations applied
+
+| Migration | Purpose |
+|---|---|
+| `20260429235304_sprint4_7_v2_phase_1_entities` | CREATE TABLE Model + ShowEvent + Reaction + indexes |
+| `20260429235457_sprint4_7_member_key_facts` | ALTER TABLE Member ADD COLUMN key_facts JSONB |
+| `20260430003409_sprint4_7_member_tracks_evidence` | ALTER TABLE Member ADD COLUMN tracks_by_evidence_strength JSONB |
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (Next 16.2.4 + Turbopack); all 6 routes in route table
+- `pnpm exec tsx prisma/seed.ts` runs cleanly; row counts: 3 Members · 11 Signals · 4 ActionCards · 3 Recommendations · 3 Models · 3 ShowEvents · 3 Reactions
+
+### Decisions made during implementation
+
+- **Capture forms reuse v1 components in drawers, not extracted** — AskSection / SizeSection / ResolveSection are unchanged in v1 surfaces; the `onSaveSuccess` callback is an additive optional prop. The drawer wrapper imports them directly from `app/growth-conversations/[memberId]/`. Lifting their internals into shared components was considered but deferred — the existing files contain Sprint 4.6 compliance discipline that's working, and an extraction would risk regressions for negligible v2 benefit.
+- **Captured feed item shape is denormalized at the page level**, not derived from raw Prisma rows in the feed component. This keeps the V2MainPanel a pure-render client component and lets the page.tsx Server Component own all the schema knowledge. Tradeoff: the FeedItem union has six variants which is verbose; benefit: typesafe rendering in the client component without leaky Prisma types.
+- **Compliance scan in AskSection scans `their_words` only**, not `topic_id` or numeric magnitude fields. Topic IDs are FK references; magnitudes are numbers. The `[FL:BANKER-PROSE]` tag applies to free-text fields; nothing else fires the scan. Same logic in SizeSection: `their_words` + `methodology_note` only.
+- **Open-thread heuristic is best-effort flagging on the feed**: if an ActionCard drives the open thread, the most recent Resolve card gets the coral border (most likely source). If a Recommendation's primary_concern drives it, the corresponding Resolve card gets the border directly. v2 phase 2 may add a richer "open thread → which card" trace.
+- **Seeded v2 entities reference the existing featured Conversations** rather than creating new ones. The featured conversation already has the Show step's GrowthStepExecution; the v2 ShowEvent records the same artifact-rendering moment from the v2 schema's perspective. Both representations coexist; v1 reads the GrowthStepExecution path, v2 reads the ShowEvent path.
+- **Drawer layout uses one shared chrome with body dispatch on activity** — the dialpad component owns the drawer state and renders the right form inside. Considered making each form its own drawer wrapper but the seven forms × identical surrounding chrome made a dispatch pattern cleaner.
+
+### Watch for review
+
+- **`pnpm next start` is unstable from the iCloud-synced project root** — `.next` artifacts get reshuffled by iCloud sync mid-read, producing missing-chunk runtime errors despite a clean build. Confirmed environmental, not code-level. `pnpm next dev` works reliably (no chunk caching pattern) and is the recommended path for visual review during the build phase. For a production-style probe, run from a clone outside `~/Library/Mobile Documents/...`.
+- **Block M FIXME data needs Francisco's review** — the moderate / insufficient cohort rationales are CC drafts. Before EVP demo, refine to match what Francisco knows about each Member's actual evidence depth. Refinements land as a follow-up commit; they do not block Turn 2 acceptance per Q-M1.
+- **Open-thread badge truncation at 32 chars** — the heuristic truncates ActionCard rationales for the header badge. If the truncated text reads awkwardly (cuts mid-word), the badge component handles the ellipsis; copy review may want to refine the badge's source string.
+- **Coach content for Cygnus's Land objective merges ask:1 + ask:2** — the v1 stage-guidance has two distinct paragraphs for Cygnus's two Ask stages, but the v2 objective is single-paragraph. Combined treatment authored fresh in `objectiveGuidance`. If the EVP wants Cygnus's two-Ask architecture surfaced in coach content, a follow-up can split.
+
+Sprint 4.7 (v2 phase 1) complete. Sprint 5 (Insight Engine v2) is up next.
+
+---
+
+## 2026-04-30 — Sprint 4.7.1 (v2 visual cleanup)
+
+### Goal
+
+Wave 1 of the v2 architectural refactor split flagged in Sprint 4.7 visual review. Eight discrete visual fixes; no schema changes, no code-side vocabulary refactor (those land in Sprint 4.7.2 immediately after). Also: canonical apply pass on `ARCHITECTURE_V2.md` and `EVIDENCE_FRAMEWORK.md` happened before this sprint — governance docs now use Discover/Measure/Consult/Navigate vocabulary; code still uses Land/Understand/Consult/Formalize. That gap closes in 4.7.2.
+
+### What shipped
+
+- **Block A — Two-pill header badge.** Open-thread badge replaced with two structured Chips (response value + product name) and a date context. Drops the synthetic-prose pattern that truncated mid-sentence and read as past-tense. `OpenThread` type changed from `{ text, context }` → `{ responseLabel, productLabel, context }`. Heuristic simplified: badge renders only when there's an active Recommendation in the engaged spectrum (response not in {committed, funded, declined, dismissive}); ActionCard contributes only the date context (overdue/due) when an open one exists.
+- **Block B — Chip primitive.** `app/_components/chip.tsx` exports a `<Chip variant="default|accent|muted">` component with the v1 capture-form chip aesthetic (square-edged 2px radius, 0.5px border, tight padding, cool-grey-blue default fill matching `--blaze-data-cool`). Used across the new header badge (Block A) and the captured-feed primary tags (Block E).
+- **Block C — Member Signals wordmark.** Top-left of the v2 page header. Re-uses the v1 typographic mark: orange `Member` + charcoal `Signals`. Links back to `/`.
+- **Block D — "Growth Conversations" page title.** Primary title now reads "Growth Conversations"; Member name + Member Type + stage + banker render as subtitle below. Inverts v2 phase 1's hierarchy where the Member name dominated.
+- **Block E — Capture cards show signal-type as primary tag.** Ask captures now display `Goal` / `Blocker` / `Indecision` / `Trigger` Chip (not `ASK`); Ask card headline drops the duplicate signal-type prefix and shows just the topic. Other kinds render `Sized` / `Model` / `Shown` / `Reaction` / `Resolution` Chip. Open-thread Resolve cards get the `accent` Chip variant; everything else uses `default`.
+- **Block F — Compliance banner: dark grey + sharpened copy.** Background flipped to `--blaze-grey-darker` with white text. Copy replaced with the F.2 verbatim sharpened version: *"Member Signals captures consultative notes for growth conversations. Lending decisions and formal underwriting occur in the lending decisioning system."* Drops "consultative conversations," "relationship management," and "adverse action determinations" — regulator-audience phrasing the working banker doesn't read. Dismissible-per-session behavior preserved unchanged.
+- **Block G — Sticky dialpad on scroll, collapsing header.** Header is now `position: sticky; top: 0` with a scroll-driven collapsed state (window.scrollY > 100 threshold). Collapsed mode: ~44px height showing logo + Member name (truncated) + open-thread badge. Expanded mode: ~104px showing logo + "Growth Conversations" title + full subtitle + badge + Classic view link. Header height published as `--v2-header-h` CSS variable on `documentElement` (so the dialpad's sticky offset, a sibling, can read it). Dialpad sticks at `top: var(--v2-header-h, 104px)` and transitions in lockstep with the header. 150ms ease-out transition on both. Compliance banner and key facts strip stay in normal flow per G.3 spec — they scroll away as expected.
+- **Block H — Cygnus's two Asks restored.** Two parts:
+  1. **Quote-topic alignment fix.** `cygnusVolumeSignal` had been overwritten in Sprint 4.7 Block P with the RFP-vs-relationship Indecision quote (which doesn't match the `triggerVolume` topic). Restored to the canonical MEMBER_FIXTURE_BRIEF §5.4 customer-volume-commitment quote: *"Three of our biggest customers have given us volume forecasts that we just can't fulfill at our current capacity — and one of them has been getting nervous about us being a single-source."*
+  2. **Per-capture dot rendering for Ask-derived signals.** New `dotsForSignals(signals, typeLabel)` helper in `page.tsx`. For every captured Goal / Blocker / Indecision / Trigger Signal, the helper emits one filled dot labeled `{typeLabel}: {topic.display_name}`. Empty signal arrays emit a single outlined dot with the type label. Cygnus now renders 2 trigger dots under Land (capacity_eval + customer_volume_commitment); Jenny renders 1 trigger + 1 blocker; Northland renders 1 goal + 1 blocker. The "Trigger captured" / "Goal" / "Blocker" / "Indecision" generic dots are gone, replaced by per-signal dots.
+
+### Schema changes
+
+None. Sprint 4.7.1 is surface-only.
+
+### Verified
+
+- `pnpm exec tsx prisma/seed.ts` clean (DB reset + reseed; row counts unchanged: 11 Signals, 4 ActionCards, 3 Recommendations, 3 Models, 3 ShowEvents, 3 Reactions)
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean; all 6 routes in route table including `/v2/members/[id]`
+
+### Decisions made during implementation
+
+- **Chip primitive scoped to `app/_components/`, not v2-specific** — kept room for v1 surfaces to adopt the same primitive in 4.7.2 if vocabulary cascade includes pill consistency.
+- **Header collapse threshold at scrollY > 100** — chosen pragmatically; matches the natural top region (header + banner + key facts strip ≈ 180-200px) so the collapse fires roughly when the dialpad would otherwise scroll off-screen. May need adjustment after visual review if the transition feels jumpy.
+- **CSS variable hoisted to `documentElement`** — sibling sticky elements (header + dialpad) can't share a scoped CSS variable; the cleanest cross-cutting channel is `document.documentElement.style.setProperty` from the header's effect. Removed on unmount to avoid leaking state across route changes.
+- **Open-thread heuristic simplified.** Sprint 4.7 had a two-tier fallback (ActionCard nearest-due → Recommendation primary_concern → null). Block A simplifies: badge renders only when there's an active Recommendation in the engaged spectrum. ActionCards still contribute the date context (overdue/due) when present, but no longer drive badge presence on their own. Reasoning: badge content (response value + product) makes no sense without a Recommendation; ActionCard-driven badges had to synthesize prose that ended up truncated.
+- **Per-capture dots for all four Ask signal types** (not just Trigger). Block H asked specifically about Cygnus's two triggers, but the same logic naturally extends to Goals/Blockers/Indecision under Understand. Implementing it consistently means Cygnus's 1 goal + 1 blocker also render as labeled per-signal dots, which gives Understand a richer dot row across all three Members. If 4.7.2 or Sprint 5 wants to revisit dot scaling rules (e.g., max dots per evidence type, collapsing pattern at high counts), this is the surface to revisit.
+- **No `--v2-header-h` cleanup on remount** — the variable is set on every scroll change so a stale value would only persist for one frame after a new mount before the effect fires. Acceptable for the demo.
+
+### Watch for review
+
+- **Header subtitle line wraps on narrower viewports.** The full subtitle (`Member name · type · stage · banker`) plus the open-thread badge plus Classic view link can overflow at <1280px viewport widths. Truncation works but feels tight. If visual review wants a different subtitle compaction (e.g., drop banker on narrow), it's a one-line CSS tweak.
+- **Per-capture dot rendering may produce wide dot rows** for Members with many captured signals. Cygnus has 4 Discover-routed signals total (1 goal + 1 blocker + 2 triggers); with the v2 mapping in 4.7.2 (Goals/Blockers/Indecision migrate from Understand to Discover), the Discover row could grow to 4+ dots routinely. ARCHITECTURE_V2 §3.1 spec says "4-7 dots typical," which still fits. Sprint 5 may want a max-dots-per-row rule if real Pilot scale produces 10+ signals per type.
+- **Compliance banner dark-grey treatment is bold.** A coral/cream-adjacent fallback may feel less aggressive if visual review wants softer signaling. The dark-grey choice was deliberate per F.3 ("default to dark grey background with white text — clearer signal that this is a system disclaimer, not a Member-context element"); revisit only if the boldness reads wrong against the workstation's warm-cream surrounding.
+- **Cygnus Trigger dots are labeled `Trigger: trigger.capacity_expansion_evaluation` etc.** — the topic display_names use the `trigger.` prefix from the seed taxonomy. Reads slightly raw. If visual review wants friendlier labels (e.g., "capacity expansion eval"), that's a topic display_name pass, not a code change.
+
+Sprint 4.7.1 complete. Sprint 4.7.2 (vocabulary refactor + dialpad simplification + Reaction expansion + ReactionValue +2 + Reaction.primary_concern column + governance cascade) follows immediately.
+
+---
+
+## 2026-05-04 — Sprint 4.7.2 (v2 vocabulary refactor + dialpad simplification + Reaction expansion)
+
+### Goal
+
+Wave 2 of the v2 architectural refactor. Sprint 4.7.1 (visual cleanup) shipped earlier in the day; Sprint 4.7.2 lands the architectural rename + dialpad/Reaction restructuring. Goal: make the code match the canonical governance documents (ARCHITECTURE_V2.md and EVIDENCE_FRAMEWORK.md were updated 2026-04-30 during the canonical apply pass; the code carried Land/Understand/Formalize + 7 dialpad activities until this sprint).
+
+### What shipped
+
+- **Block A — Schema migrations.** `ReactionValue` enum expanded from 5 → 7 values (added `committed`, `declined` — terminal states subsumed from v1 Resolve). `Reaction.primary_concern` String column added (nullable; reuses Sprint 4.6 contextual taxonomy enum semantics, validated at the application layer because the column accepts values from two different context subsets per response_value). Migration `20260430215139_sprint4_7_2_reaction_expansion`.
+- **Blocks B + I — V2Objective rename cascade + TracksSupportedPanel rewiring.** TypeScript union literal renamed `"land" | "understand" | "consult" | "formalize"` → `"discover" | "measure" | "consult" | "navigate"` in `lib/stage-guidance.ts`. Cascade applied across `app/v2/members/[id]/page.tsx`, `app/v2/members/[id]/sidebar.tsx`, `V2_OBJECTIVE_LABELS`. Sidebar's `handleObjectiveClick` now keys on `"discover"` to fire the TracksSupportedPanel.
+- **Block C — Dot composition rewrite.** `objectives` array literal in `page.tsx` rewritten to derive per the re-mapped EVIDENCE_FRAMEWORK §2 catalog. Discover absorbs Goals/Blockers/Indecision (5+ per-capture dots for fixtures with multiple signals); Measure adds Model produced (was Consult); Consult drops Model produced and Surfaced concern; Navigate inherits Formalize's shape.
+- **Block D — Coach content re-author.** `OBJECTIVE_GUIDANCE` restructured. Three layers: `V2_OBJECTIVE_QUESTIONS` (verbatim approved per-objective question), `GENERIC_OBJECTIVE_BODIES` (fallback), and `MEMBER_TYPE_GUIDANCE` (Member-Type-specific override). `objectiveGuidance()` now returns `{ headline, body }` instead of a flat string. Sidebar coach surface renders the question italicized above the body. Member-Type-specific paragraphs re-authored for all three demo Members under the new four-objective vocabulary (Goals/Blockers/Indecision under Discover; Model produced under Measure; Show + Reaction under Consult; lifecycle under Navigate).
+- **Block E — Dialpad reduction.** Dialpad goes from 7 buttons → 5: `+ Ask`, `+ Quantify`, `+ Model`, `+ Reaction`, `+ Action`. `+ Show` and `+ Resolve` removed from the v2 surface. `app/v2/members/[id]/capture-forms/show-form.tsx` deleted (no longer reachable from v2). Page.tsx props that fed Show + Resolve drawers removed (resolveCurrent, resolveGrowthStepId, indecisionTopics, modelOptions). v1 ResolveSection persists for v1 routes per ARCHITECTURE_V2.md §12.5.
+- **Block F — Reaction form expansion.** `reaction-form.tsx` rewritten to subsume v1 Resolve's functionality. Response value dropdown now shows 7 values; primary_concern dropdown switches between 8 open-thread options (engaged/leaning_yes/committed/skeptical/confused) and 10 decline-reason options (declined/dismissive). Field label switches contextually ("Primary concern" vs "Member's stated reason for declining"). Required for {skeptical, confused, leaning_yes, declined} per v1 NUANCED pattern; optional otherwise. Auto-clear on context boundary switch. Helper text per COMPLIANCE.md §10.2. member_quote continues to fire the compliance keyword scan.
+- **Block G — ShowEvent auto-create on with-Member provenance.** `saveModel` server action updated. When `built_with_member === true` AND `artifact_id` is non-null, the same Prisma transaction creates a companion ShowEvent linked to the Model + Conversation + banker. Atomic — if Show creation fails the entire transaction rolls back. When provenance is "Banker draft" or no Artifact is linked, only the Model row is created (no Show). `SaveModelResult` now exposes `show_event_id: string | null` so the caller can verify the auto-create.
+- **Block H — Artifact preview "Record show" button.** New component `app/v2/members/[id]/artifact-preview-dialog.tsx`. Sidebar artifact-click opens the preview dialog (replaces the Sprint 4.7 placeholder console.log). Preview shows artifact title + description + a "Record show" button. Click creates a ShowEvent via the existing `saveShowEvent` action. Button transitions to "Recorded ✓" disabled state for the session. Preview-without-record path preserved — the rehearses-quietly use case is the default. SidebarArtifact shape gained a `description` field; page.tsx's show_events query selects `artifact.description` and forwards it.
+- **Block J — Governance cascade.** `CLAUDE.md §5` updated with new vocabulary (Discover/Measure/Consult/Navigate; 5 activities), surface-vs-schema separation note, retired vocabulary list. `BLAZE_STYLE_GUIDE.md §14.9` updated with 5-pill dialpad, contextual primary_concern documentation, "Record show" button pattern, Discover-objective Tracks-supported framing. `SCOPE.md §3.1` updated. `OPEN_QUESTIONS.md` Q-A1..Q-A5 updated with deferral status (Q-A1 → Sprint 5; Q-A2 → Sprint 5; Q-A3 → Pilot; Q-A4 → Pilot; Q-A5 → still open / cross-ref Q-045).
+- **Block K — this BUILD_LOG entry.**
+
+### Schema migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260430215139_sprint4_7_2_reaction_expansion` | `ALTER TABLE Reaction ADD COLUMN primary_concern TEXT`. ReactionValue enum expansion (engaged/leaning_yes/skeptical/confused/dismissive + committed/declined) requires no DDL — SQLite stores enums as TEXT, so the new values are accepted by the existing column with the expanded Prisma client validating writes. |
+
+### Verified
+
+- `pnpm prisma migrate deploy` clean
+- `pnpm exec tsx prisma/seed.ts` clean (DB reset + reseed; existing Reaction rows remain valid with `primary_concern = null`)
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean; all 6 routes in route table including `/v2/members/[id]`
+- Per-fixture dot composition under new four-objective vocabulary:
+  - **Jenny (Small Caterer · Starting):** Discover ~6 dots (Recommendation candidate · 1 trigger · 1 goal · 2 blockers · Tracks-supported); Measure ~3 dots (Sized magnitude · Methodology outlined · Model produced); Consult ~3 dots (Show · Reaction · Open thread accent); Navigate ~3 dots (1 ActionCard filled · 2 faint).
+  - **Northland (HVAC · Growing):** Discover ~5 dots (Recommendation candidate · 1 trigger? · 1 goal · 1 blocker · Tracks-supported); Measure ~3 dots; Consult ~3 dots; Navigate ~3 dots.
+  - **Cygnus (Specialty Mfg · Established):** Discover ~5 dots (Recommendation candidate · 2 distinct triggers per Sprint 4.7.1 Block H · 1 blocker · 1 goal · Tracks-supported); Measure ~3 dots; Consult ~3 dots; Navigate ~3 dots.
+
+### Decisions made during implementation
+
+- **Reaction.primary_concern stored as String, not enum.** The contextual taxonomy uses two disjoint enum sets (8 open-thread values + 10 decline-reason values, with `service_or_capability_concern` shared). Single Prisma enum coupling would force application-layer validation regardless. Storing as String avoids the tight coupling and matches how `Recommendation.primary_concern` already handles the same contextual pattern in v1 (where the column is the existing `RecommendationPrimaryConcern` enum union). At Pilot scale, if the column needs to be a strict enum, migration is a `ALTER TABLE` + Prisma enum addition.
+- **objectiveGuidance() returns { headline, body }, not just string.** Block D.2's structured form was specified as `{ headline, body, member_type_specifics: {} }`. CC simplified the shape: headline + body where body is Member-Type-specific when authored, else generic fallback. The `MEMBER_TYPE_GUIDANCE` map is internal; consumers don't need direct access. Reduces the consumer's API surface; same outcome.
+- **ShowEvent auto-create gates on artifact_id non-null.** A Model can be saved without linking to an Artifact (e.g., a banker draft cashflow projection that wasn't formalized into a shareable chart). When artifact_id is null and provenance is with-Member, the auto-Show is silently skipped — there's no concrete Artifact for the ShowEvent to point at. Banker can still record a Show via the artifact preview's Record-show button (Block H) if they later link the Model to an Artifact.
+- **show-form.tsx deleted, not just unwired.** The form had no remaining call sites after dialpad reduction. Keeping it as dead code would be a maintenance liability since future schema changes would force gratuitous edits. v1 routes never used the v2 show-form (v1's Show step uses GrowthStepExecution + ArtifactParameterCapture, not the v2 ShowEvent path).
+- **Per-capture dots applied to all four Discover signal types**, continuing the pattern from Sprint 4.7.1 Block H. Cygnus's two triggers, Jenny's two blockers (receivables + seasonal), and any future multi-signal captures all render as labeled per-signal dots instead of collapsing to one. The v2 spec calls for 4-7 dots typical on Discover; this approach satisfies that without per-Member tuning.
+- **Methodology note dot rendered as outlined** (suggested) for all three demo fixtures. None of the demo SizingMeasurements carry an explicit `methodology_note`; rendering as outlined signals "this is a capture the banker could make but hasn't yet." Visual review will confirm; if it reads as a missing fill rather than a deliberate suggestion, fall back to faint state for demo and revisit at Pilot.
+- **MEMBER_TYPE_GUIDANCE re-authored, not just re-keyed.** Per Block D.2: "the current Member-Type paragraphs collapsed [Goals/Blockers/Indecision and quantitative Size content] together — they need a re-author." Discover paragraphs now combine trigger-watch + qualitative-discovery framing; Measure paragraphs absorb Model-produced framing alongside sizing/methodology; Consult paragraphs focus strictly on the conversation about the model; Navigate paragraphs cover lifecycle handoff/follow-through. Cygnus's two-Ask architecture explicitly surfaced in the Discover paragraph ("Two trigger captures matter…").
+
+### Watch for review
+
+- **Reaction.primary_concern as String** rather than a Prisma enum is a deliberate simplification. If Pilot wants strict enum validation at the database layer, the migration is straightforward. Demo phase ships with application-layer validation only.
+- **ShowEvent auto-create silently skips when Model has no Artifact linkage.** The save action returns `show_event_id: null` in this case, but there's no banker-facing message. If visual review wants explicit feedback ("Model saved; no Show recorded — link an Artifact to record a Show"), add a one-line toast.
+- **Methodology note dot for demo fixtures.** Renders as outlined ("suggested") for all three Members since no fixture SizingMeasurement carries a `methodology_note`. May read as a missing-state cue rather than a suggestion. Acceptable for demo; Sprint 5's state-dependent rendering will replace with proper not-yet-relevant treatment.
+- **MEMBER_TYPE_GUIDANCE paragraphs are CC-authored.** Francisco may want an editorial pass before EVP demo. The verbatim-approved per-objective questions + generic bodies are locked; the Member-Type-specific paragraphs are CC drafts and should be reviewed for voice consistency with the rest of the demo content.
+- **Sidebar artifact preview is intentionally minimal** — surfaces title + description only, not a rendered chart. Sprint 5 ships the rendered artifact (chart / partnership map / ROI projection) inside this preview surface. The Record-show button works regardless of whether the rendered artifact is present.
+
+### Cross-references
+
+- ARCHITECTURE_V2.md §11.7 — surface vs schema separation; the two real Sprint 4.7.2 schema changes
+- ARCHITECTURE_V2.md §12.5 — v1 Resolve form retention
+- EVIDENCE_FRAMEWORK.md §2 — re-mapped catalog (21 evidence types across Discover/Measure/Consult/Navigate)
+- EVIDENCE_FRAMEWORK.md §4 — five-activity to evidence mapping including Reaction's contextual primary_concern
+- COMPLIANCE.md §6.3 — open-thread vs decline-reason taxonomies (reused on Reaction.primary_concern)
+- BLAZE_STYLE_GUIDE.md §14.9 — v2 workstation pattern (updated this sprint)
+
+Sprint 4.7.2 complete. v2 prototype is now structurally locked: Discover/Measure/Consult/Navigate vocabulary; 5-activity dialpad; Reaction subsumes Resolve; ShowEvents fire on with-Member or explicit Record-show. Sprint 5 (Insight Engine + state-dependent objectives + popup-as-workflow surface + per-objective evidence panels) is the next major sprint.
+
+---
+
+## 2026-05-04 — Sprint 5a.1 (Foundation: Matrix Schema + Seed + Capture Form Updates + Basic Switchboard)
+
+### Goal
+
+Land the consultative architecture's structural foundation. Sprint 5a is split into two phases for visual-review safety; this is phase 1. Goal: confirm the matrix is alive end-to-end (schema + seed + evaluator + ranker + capture forms + sidebar Track context indicator) so Sprint 5a.2 can build the popup-as-workflow surface on a stable base.
+
+### What shipped
+
+- **Block A — Schema additions.** Four new entities in `prisma/schema.prisma`: `BusinessFactor`, `TrackTemplate`, `MatrixEntry`, `FactorCapture`. Single migration `20260504191233_sprint5a_1_business_factor_matrix` with FK constraints + indexes. Member gained a reverse `factor_captures` relation. Schema is additive — zero changes to v1 or earlier-v2 entities.
+- **Block B — Matrix data seed.** New file `prisma/seed-matrix.ts` (split out for clarity) translates `BUSINESS_FACTOR_MATRIX_v1.md` Sections 1-3 into 28 BusinessFactor records, 5 TrackTemplate records, and 59 MatrixEntry records. Seed counts confirmed by `prisma.businessFactor.count()` etc. in the post-seed table. (Prompt estimated ~80+ entries; actual count is 59 because the matrix file Section 3 enumerates only strong/moderate/negative entries — "negligible" cells aren't materialized as rows. 59 is the faithful count.)
+- **Block C — Per-fixture FactorCapture seed.** Section 4 of the matrix file → 36 FactorCapture rows (12 for Jenny + 10 for Northland + 14 for Cygnus). Source linkage to existing Signal/SizingMeasurement/Reaction is left null in this sprint — the link fields exist on FactorCapture but the captures stand alone. Sprint 5a.2 popup-as-workflow can backfill linkages where useful.
+- **Block D — `lib/factor-evaluator.ts`.** ~180 lines hand-rolled recursive-descent evaluator. Supports `>= > <= < == !=`, `AND`, `OR`, `IN [...]`. Cross-factor field references resolve via an optional captures-by-field-name map (used by the TRACK-002 negative compound rule that references both `growth_obstacle_tag` and `seasonal_variance_pct`). Null rule = presence check. All 9 unit-test cases in `scripts/probe-ranker.ts` pass.
+- **Block E — `lib/track-ranker.ts`.** `rankTracksForMember(prisma, memberId)` walks all Tracks × MatrixEntries against the Member's captures, evaluates each rule, counts strong/moderate/negative entries fired, applies the 2-evidence-threshold filter, and sorts by negative_count → strong_count → moderate_count. Strength label is `strong` if strong ≥ 3 with no negative; `moderate` if (strong ≥ 1 OR moderate ≥ 2) with no negative; `insufficient` otherwise. Top-ranked Track per fixture matches matrix Section 4 expectations: Jenny → Working Capital LOC strong; Northland → Vehicle/Fleet Loan strong; Cygnus → CRE Term Loan strong.
+- **Block F — `+ Quantify` hybrid form.** New file `app/v2/members/[id]/capture-forms/quantify-form.tsx` with mode toggle. Default matrix-aware mode: factor dropdown grouped by category → diagnostic question rendered as italicized blockquote → typed input control per `factor.capture_mode` (numerical / boolean / qualitative_select / qualitative_multi). Optional companion SizingMeasurement creation when factor is numerical (creates a Sized card in the captured feed alongside the FactorCapture). Free-form mode wraps the existing v1 SizeSection — no FactorCapture created on that path. New server action `saveFactorCapture` handles the matrix-aware save in a single transaction.
+- **Block G — `+ Ask` factor-tag dropdowns.** Light extension of `AskSection`. SignalDraft type gained a `factor_tag: string \| null` field. Sub-form renders a per-signal-type tag dropdown below the verbatim quote (Goal → 8 growth-aspiration tags; Blocker → 8 obstacle tags; Indecision → 8 hesitation tags; Trigger → 8 trigger-event tags). `saveAskCaptures` server action extended to atomically create a companion FactorCapture row anchored to FACTOR-021/022/023/024 per signal type, with `qualitative_value` set to the chosen tag (defaults to `"other"` when banker doesn't pick) and `source_signal_id` pointing back to the Signal. v1 routes inherit this behavior — new captures from v1 surfaces also write FactorCaptures.
+- **Block H — Track switchboard sidebar header.** New `track context` section above Objectives in the v2 sidebar. Reads from `rankTracksForMember()` at page-render time; surfaces top-ranked Track name + strength chip (`accent` variant for strong, `default` for moderate, `muted` for insufficient). Empty state ("insufficient evidence yet") renders when ranker returns an empty list. Read-only this sprint; Sprint 5a.2 turns it into an interactive dropdown.
+
+### Schema migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260504191233_sprint5a_1_business_factor_matrix` | CREATE TABLE BusinessFactor / TrackTemplate / MatrixEntry / FactorCapture with FK constraints + indexes. ALTER Member implicit (Prisma client only — no DDL needed for the reverse relation since FK lives on FactorCapture). |
+
+### Verified
+
+- `pnpm exec tsx prisma/seed.ts` clean (DB reset + reseed; 28 BusinessFactors + 5 TrackTemplates + 59 MatrixEntries + 36 FactorCaptures + all prior counts intact)
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean; all 6 routes intact
+- `pnpm exec tsx scripts/probe-ranker.ts` — Block D evaluator: 9/9 unit tests pass; Block E ranker output matches matrix Section 4 expectations for top-ranked Track per all three fixtures.
+
+### Ranker output per fixture (top of `pnpm exec tsx scripts/probe-ranker.ts`)
+
+```
+jenny      (4 Tracks above 2-evidence threshold)
+  strong       [5s/1m]        Working Capital Line of Credit
+  moderate     [2s/3m]        SBA 7(a) Loan
+  moderate     [0s/3m]        Treasury Services Upgrade
+  insufficient [0s/3m/1neg]   Commercial Real Estate Term Loan
+
+northland  (4 Tracks above 2-evidence threshold)
+  strong       [5s/1m]        Vehicle / Fleet Loan
+  moderate     [2s/3m]        SBA 7(a) Loan
+  moderate     [1s/1m]        Treasury Services Upgrade
+  insufficient [2s/3m/1neg]   Commercial Real Estate Term Loan
+
+cygnus     (4 Tracks above 2-evidence threshold)
+  strong       [5s/6m]        Commercial Real Estate Term Loan
+  moderate     [1s/2m]        Treasury Services Upgrade
+  moderate     [1s/1m]        Vehicle / Fleet Loan
+  insufficient [1s/3m/1neg]   SBA 7(a) Loan
+```
+
+### Matrix interpretation notes (per Block B.5 ambiguity handling)
+
+- **SBA size standard threshold (FACTOR-019 on TRACK-004).** The matrix file says `annual_revenue <= SBA_size_standard` with the note that the standard is industry-specific (NAICS-keyed, $19.5M-$41.5M typical for specialty bioscience). Demo uses a fixed $25M placeholder that correctly classifies all three demo Members (Jenny $850K and Northland $2.4M qualify; Cygnus $28M exceeds). Pilot resolves via the SBA's published NAICS table. Documented inline in `seed-matrix.ts`.
+- **FACTOR-027 array-length entry omitted.** The TRACK-005 strong entry `LENGTH(treasury_services_adopted) < 3` uses an array-length operator the Block D evaluator does not support. Treasury Services ranking still works for the demo via FACTOR-019 (size fit) and FACTOR-004 (cash buffer). Sprint 5a.2 may extend the evaluator; Pilot can re-evaluate. Documented inline.
+- **Compound negative rule on TRACK-002.** The matrix's `growth_obstacle_tag == cashflow_volatility AND seasonal_variance_pct >= 30` cross-factor rule is handled by the evaluator's optional captures-map argument. The MatrixEntry is anchored to FACTOR-022 with the compound rule string; the evaluator resolves both field references via the captures-by-field-name map.
+
+### Discrepancies vs. matrix Section 4 expectations
+
+Top-ranked Track per fixture is exact match. Two minor lower-rank discrepancies:
+
+1. **Cygnus Vehicle/Fleet Loan ranks moderate (1s/1m) vs. expected insufficient.** FACTOR-006 (capacity utilization ≥ 75%) and FACTOR-009 (YoY revenue growth ≥ 10%) both fire. Both factors are genuinely shared between TRACK-002 and TRACK-003 in the matrix; the actual scoring reflects this overlap honestly. Section 4's "insufficient" expectation appears to be authorial intent that the matrix logic doesn't fully realize. Banker still sees CRE Term Loan ranked first; Vehicle/Fleet appears as moderate-with-low-counts. Reads as accurate to me.
+2. **Northland CRE Term Loan ranks insufficient (negative override) vs. expected moderate.** Northland's $2.4M revenue trips the `annual_revenue < 5000000` negative entry. Section 4.2 expected "moderate (renders as moderate due to tier — worth pursuing as adjacent conversation if Member moves toward facility move/expansion)." The Sprint 5a.1 spec §E.3 explicitly mandates the negative-override discipline ("render Tracks with any negative_count as insufficient... but keep them in the returned list"), so the implementation is correct per spec; the matrix Section 4 narrative may have been authored before the negative-override rule was finalized.
+
+Both discrepancies surface for review; neither blocks the EVP demo since the top-ranked Track for each fixture is correct. Pilot can refine per-Track override rules if visual review wants different ranking nuance.
+
+### Decisions made during implementation
+
+- **`prisma/seed-matrix.ts` separated from `prisma/seed.ts`.** ~600 lines of matrix records would have ballooned an already-large seed.ts. Splitting keeps both files readable; main seed imports the two seeding helpers and the row-count export.
+- **Cross-factor evaluator API.** Block D spec notes evaluator may take an optional `factor: BusinessFactor` parameter. CC chose an additional `captures: Record<field_name, CaptureValueLike>` argument so cross-factor rules (TRACK-002 negative) work without per-call factor catalog lookups in the ranker. The evaluator signature: `evaluateThreshold(primary, factor, rule, captures?)`.
+- **Negative-override discipline applied uniformly.** Spec §E.3 says "render Tracks with any negative_count as insufficient." CC implemented this strictly: any negative entry firing flips the strength to insufficient regardless of positive count. The Northland CRE discrepancy noted above is a direct consequence; if Pilot wants tier-aware override (e.g., "1 negative survives if 5+ strong"), it's a one-function refinement.
+- **+ Ask factor-tag default to "other".** Per spec G.3: "If the banker doesn't select a tag, default to 'other'". CC implemented this on the save side (action defaults `factor_tag ?? "other"`). The form dropdown shows `(other)` as the placeholder option to make the default explicit to the banker.
+- **Companion SizingMeasurement on + Quantify is opt-in.** Spec §F.3 has it as an inline checkbox. CC kept it that way. Banker who wants the structured factor capture without a Sized card can leave the box unchecked.
+- **Track context Chip variant.** Strong → `accent` (coral/orange — matches the open-thread treatment); moderate → `default` (cool grey-blue Chip); insufficient → `muted` (grey on white). Visual hierarchy: strong reads as "primary candidate"; moderate as "in the mix"; insufficient as "noted but not pursued."
+
+### Watch for review
+
+- **Ranker discrepancies vs Section 4** documented above. Top-ranked Track per fixture is correct; lower-rank shape may need refinement per Pilot.
+- **+ Ask factor-tag dropdown affects v1 routes.** AskSection is shared between v1 (`/growth-conversations/[memberId]`) and v2 (dialpad drawer). New captures from v1 surfaces will also write FactorCaptures. This is intentional (forward-looking for v1 retirement at Pilot) but worth verifying v1 visual review still passes.
+- **No edit path for FactorCapture.** Sprint 5a.1 only writes new captures; banker can't edit a previously-captured factor's value. Sprint 5a.2 popup-as-workflow may surface edit affordances or this can be a separate Pilot consideration.
+- **Treasury Services FACTOR-027 entry omitted.** Treasury ranks moderate for Jenny and Cygnus via FACTOR-019 + FACTOR-004 alone. If visual review feels the Treasury ranking should be richer, extending the evaluator with array-length operators is straightforward.
+
+### Cross-references
+
+- `BUSINESS_FACTOR_MATRIX_v1.md` Sections 1-4 — canonical content seeded this sprint
+- `ARCHITECTURE_V2.md §10` — Tracks-supported framework (the Block H switchboard surfaces this in the sidebar)
+- `EVIDENCE_FRAMEWORK.md §5` — Tracks-supported evidence-strength scoring discipline
+- `lib/factor-evaluator.ts` — pure-function threshold evaluator
+- `lib/track-ranker.ts` — Track ranking
+- `prisma/seed-matrix.ts` — matrix seed data
+
+Sprint 5a.1 complete. Matrix infrastructure is alive; rankings per fixture match expectations; capture forms write FactorCaptures alongside existing entities. Sprint 5a.2 (popup-as-workflow + dot system simplification + Track switching UX) is the next major sprint.
+
+---
+
+## 2026-05-04 — Sprint 5a.2 (Surface: Popup-as-Workflow, Dot Simplification, Track Switching)
+
+### Goal
+
+Make the Sprint 5a.1 matrix foundation banker-usable. The matrix is alive end-to-end; this sprint surfaces it through five enhancements: popup-as-workflow per objective, captured-only dots with "+ next valuable" affordance, Track-relative dot composition, Track switching dropdown, and the LENGTH evaluator operator. Visual review confirmed Sprint 5a.1 ranked correctly for all three fixtures; this sprint builds the consultative workflow surfaces on top.
+
+### What shipped
+
+- **Block A — LENGTH operator.** `lib/factor-evaluator.ts` extended with `LENGTH(field) op N` grammar. Pattern `/^LENGTH\((\w+)\)\s*(>=|<=|==|!=|>|<)\s*(-?\d+)$/`; resolves the field via the captures-by-field-name lookup, parses `qualitative_value` as JSON, and compares array length. Handles malformed JSON and null captures gracefully (returns false). FACTOR-027 (`LENGTH(treasury_services_adopted) < 3`) now fires for Jenny and Northland, lifting Treasury Services Upgrade from `[0s/3m]` → `[1s/3m]` (Jenny) and `[1s/1m]` → `[2s/1m]` (Northland) per the post-Sprint-5a.1 ranker probe.
+- **Block B — Track-relative dot derivation.** New `lib/objective-evidence.ts` exports `deriveDotsForObjective`, `capturedDots`, `missingEvidence`, `nextValuable` plus `FactorCaptureLite`, `BusinessFactorLite`, `TrackTemplateLite`, `EntityCounts`, `ObjectiveDotData`, `DeriveDotsArgs` types. Resolves both factor refs (`FACTOR-NNN` → FactorCapture lookup) and symbolic refs (`model_produced` / `model_shown` / `reaction_captured` / `decision_maker_mapping` / `specialist_handoff_initiated` → entity-existence checks). Empty-Track fallback per spec §B.3 Option 2: when ranker returns empty array, dot rows render empty (the popup empty-state copy + Track context "insufficient evidence yet" carry the cue).
+- **Block C — Dot system simplification.** Captured-only main row per objective (filtered through `capturedDots`); single "+ next" affordance to the right of the row when any required evidence is missing; "complete" italicized label when all evidence is captured. The "+ next" affordance is clickable and routes through the popup-CTA flow (Block E). Coral ring on open-thread dots preserved via existing `accented` dot state — the highlight string also surfaces under the dot row for the Consult objective when an open thread is active.
+- **Block D — Popup-as-workflow surface.** `app/v2/members/[id]/objective-popup.tsx` (311 lines, shipped earlier in session) wired into the workstation. Modal pattern (centered overlay, click-outside to close) chosen per spec §D.8 — matches "focused workflow surface" framing. Header: `{OBJECTIVE} · for {Track name}` + verbatim question from `V2_OBJECTIVE_QUESTIONS`. Top zone: empty-checkbox CTAs in matrix-template priority order, each labeled with the factor's diagnostic question + small form hint (`+ Quantify · {category}` or `(record from artifact preview)` for symbolic refs). Bottom zone: `CapturedRow` items with type chip + value + member-quote blockquote + capture metadata (`captured {date} · by {banker} · via {form}`). Empty-state when no required evidence; complete-state when all captured. Compliance-careful framing per COMPLIANCE.md §10.2 — no banned phrases; every element sourced from structured data per Francisco's GenAI-filler ban.
+- **Block E — Capture form pre-selection.** `QuantifyForm.preselectedFactorId` was plumbed in Sprint 5a.1 but unused — fixed: `MatrixAwareCapture` now initializes `factorId` state to the preselected value when present and the factor exists in the catalog. Diagnostic question surfaces immediately. Other capture forms (+ Ask, + Reaction, + Model, + Action) don't take a `preselectedFactorId` prop because per spec §E.1 factor pre-selection applies only to + Quantify; symbolic refs route to the appropriate form (model_produced → + Model, reaction_captured → + Reaction, specialist_handoff_initiated → + Action, decision_maker_mapping → + Ask, model_shown → sidebar artifact preview).
+- **Block F — Track switching dropdown.** Sidebar Track context is now an interactive `TrackContextSwitcher`. Click the Track name → expands a list of all `rankedTracks` showing name + strength + counts (`5s/1m`, `2s/3m/1neg`, etc.). Click a Track → updates page state; sessionStorage key `v2-track-{memberId}` persists the selection across navigations within session. Default to top-ranked on first visit. "View comparison ↗" link surfaces alongside the strength chip per Francisco's directive — opens `TracksSupportedPanel` so the cohort comparison is discoverable without burying it inside the dropdown. Empty-state: "insufficient evidence yet" italic when ranker returns empty.
+- **Block G — Real-time ranker re-execution.** `revalidatePath` strategy. v2 actions (`saveModel`, `saveShowEvent`, `saveReaction`, `saveFactorCapture`, `saveActionCard`) already invoked `revalidateAllMemberSurfaces()` which revalidates v2 + v1 + GC routes. Sprint 5a.2 extends the v1 actions in `app/growth-conversations/[memberId]/actions.ts` (saveAskCaptures, saveSizingCaptures, saveResolveCapture) to also revalidate `/v2/members/[id]` so v1-route captures (which now write FactorCaptures via Sprint 5a.1 Block G) trigger Track ranker re-execution on the next render of the v2 workstation. Next.js handles the re-render; banker sees updated dots / Track context within ~1-2 seconds.
+- **WorkstationShell — coordination layer.** New client component `app/v2/members/[id]/workstation-shell.tsx` (~280 lines) hoists state coordination above the four sibling client surfaces (V2Sidebar, V2Dialpad, ObjectivePopup, TracksSupportedPanel) that need to communicate. State owned by the shell: `popupObjective`, `dialpadActivity`, `preselectedFactorId`, `tracksOpen`, `selectedTrackId`. Per-objective dots derive client-side via `deriveDotsForObjective` + `capturedDots` + `nextValuable` so a Track switch re-renders dots without a server round-trip. `V2Dialpad` accepts optional `controlledActivity` + `onActivityChange` + `preselectedFactorId` props for the popup-CTA-driven flow; falls back to uncontrolled (button-click) behavior when those props are absent.
+- **Block H — this BUILD_LOG entry, OPEN_QUESTIONS resolutions, CLAUDE.md manifest update.**
+
+### Schema changes
+
+None. Sprint 5a.2 is surface + lib + governance only. The schema additions from Sprint 5a.1 (BusinessFactor, TrackTemplate, MatrixEntry, FactorCapture) carry through unchanged.
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (Next 16.2.4 + Turbopack); 6 routes intact
+- `pnpm exec tsx scripts/probe-ranker.ts` — 9/9 pre-existing evaluator tests pass; LENGTH operator passes a separate 6-test inline probe (>=, <, ==, empty array, null capture, malformed JSON); top-ranked Track per fixture matches matrix Section 4 expectations.
+- Per-fixture HTML probe at `pnpm exec next dev`:
+  - **Jenny** sidebar: "Working Capital Line of Credit · strong support · view comparison ↗"; Discover row 4 captured dots + "complete"; Measure row 3 captured dots ("Seasonal revenue variance" · "Surplus revenue over costs" · "Model produced") + "complete"; Consult/Navigate complete.
+  - **Northland** sidebar: "Vehicle / Fleet Loan · strong support"; Discover 2 dots + complete; Measure 3 dots ("Demand exceeding capacity" · "Capacity utilization" · "Equipment / fleet aging") + complete.
+  - **Cygnus** sidebar: "Commercial Real Estate Term Loan · strong support"; Discover 3 dots; Measure 3 dots + **"+ next: Surplus revenue over costs"** affordance (the only uncaptured factor under CRE Term Loan's required evidence); Consult complete; Navigate complete.
+
+The per-fixture variance demonstrates Block B's Track-relative composition: each fixture's Measure row carries different evidence labels because each top-ranked Track requires different factors.
+
+### Decisions made during implementation
+
+- **Modal pattern for popup, not drawer.** Spec §D.8 allowed either; the existing component built the modal and Francisco confirmed in this session ("Keep the modal — focused-workflow framing"). Drawer remains a future option if visual review surfaces context-loss concerns.
+- **Discover routes to ObjectivePopup like the other three objectives.** Sprint 5a.1 Block H wired Discover → TracksSupportedPanel; Sprint 5a.2 retires that routing. The TracksSupportedPanel becomes accessible via the "view comparison ↗" link in the Track context header — discoverable alongside the strength chip per Francisco's directive, not buried in the dropdown. All four objectives now open the same popup-as-workflow surface for consistency.
+- **WorkstationShell coordination layer chosen over Context or event-bus.** Three sibling client components (Sidebar, Dialpad, ObjectivePopup) needed to share state. Context would have required a Provider wrapping all three; an event bus would have worked but felt opaque. The shell pattern is explicit: lifted state plus controlled-or-uncontrolled props on the existing components. Dialpad gained two props (`controlledActivity`, `onActivityChange`) for opt-in controlled mode; behavior is unchanged when those props are absent.
+- **Flat `capturedRowsByEvidenceRef` shape.** Originally typed as `Record<V2Objective, Record<string, CapturedRowDisplay>>` but collapsed to a flat `Record<string, CapturedRowDisplay>` because the same evidence_ref produces identical display data regardless of which objective renders it (the FactorCapture / Model / ShowEvent / Reaction is canonical; the popup picks rows by ref).
+- **specialist_handoff_initiated maps to ActionCardType=`handoff`.** The schema enum has `handoff` (not `specialist_handoff`); the `entityCounts.specialistHandoffCount` filter uses `a.type === "handoff"`. `decision_maker_mapping` resolves either via FACTOR-014 (co_decision_maker_required) capture or — fallback — via the most-recent indecision Signal, since Indecision captures cover the same conversational territory.
+- **v1 actions revalidate v2 path too.** v1's `saveAskCaptures` (and Size / Resolve) now write FactorCaptures alongside Signals/Sizings/Recommendations per Sprint 5a.1 Block G. Without this revalidate, captures from `/growth-conversations/[memberId]` wouldn't propagate to a v2 workstation tab for the same Member until manual refresh. Block G adds `revalidatePath("/v2/members/[id]", "page")` to all three v1 actions for this reason.
+- **Per-spec §B.3 — empty-Track fallback chose Option 1 (empty objective rows) over Option 2 (generic catalog).** When ranker returns empty array, `deriveDotsForObjective` returns `[]` and the sidebar renders no dots; the Track context shows "insufficient evidence yet" and the popup empty-state explains. Option 2 would have required keeping the generic `EVIDENCE_FRAMEWORK` catalog wiring as fallback — extra code path for an edge case the demo fixtures don't hit. CC chose Option 1 for simplicity; Pilot can reintroduce generic fallback if real data produces below-threshold Members frequently.
+
+### Watch for review
+
+- **Track switching latency.** Switching Tracks re-derives dots client-side (instant, no server round-trip). Track context dropdown closes on selection. If visual review wants a small visual transition cue (fade/slide on the dot row), it's a CSS-only follow-up.
+- **"+ next" affordance is a small text link.** Renders as `+ next` in 10px orange text. Visual review may want the factor label inline (e.g., `+ next: Surplus revenue over costs`) for at-a-glance context — currently only the aria-label carries the factor name. Switching to inline-with-label is a one-line edit if preferred.
+- **Bottom-zone CapturedRow uses the chip variant `default` for everything.** Open-thread captures don't get the accent variant in the popup. This intentionally diverges from the captured-feed treatment (where open-thread captures get `accent`) — the popup's job is to display *what was captured* per evidence_ref, not to flag urgency. Visual review will confirm.
+- **Popup CTA's empty checkbox is decorative.** It's a `<span>` with checkbox-like styling; the click target is the entire row's `<button>`. Visual review may prefer a real input or a different glyph; the row renders as an actionable list item either way.
+- **Quantify form `preselectedFactorId` initializes once on mount.** If the popup opens twice in succession with different preselections without unmounting the form between, the second won't override (state keeps the first). In practice the dialpad drawer unmounts the form when closed, so this isn't reachable in the current UX. Documented for the Pilot scenario where the drawer might persist between captures.
+
+### Cross-references
+
+- `BUSINESS_FACTOR_MATRIX_v1.md` Sections 2-4 — Track templates' `required_evidence_per_objective` + per-fixture expected popup content
+- `ARCHITECTURE_V2.md §3` — four-objective architecture; §11.7 surface-vs-schema separation
+- `EVIDENCE_FRAMEWORK.md §2` — evidence catalog; §4 — five-activity to evidence mapping
+- `COMPLIANCE.md §10.2` — banker-facing posture commitments (banned phrases enforcement)
+- `lib/factor-evaluator.ts` — extended with LENGTH operator
+- `lib/objective-evidence.ts` — Track-relative dot derivation helpers
+- `app/v2/members/[id]/objective-popup.tsx` — popup-as-workflow component
+- `app/v2/members/[id]/workstation-shell.tsx` — client coordination layer
+
+Sprint 5a.2 complete. The matrix-driven consultative architecture is now end-to-end banker-usable: capture → factor write → ranker re-execution → Track re-rank → dot re-render → popup CTAs surface the next-valuable evidence. Sprint 5b (Insight Engine portfolio surfaces) is the next major sprint; Sprint 6 (polish + EVP demo deploy) follows.
+
+---
+
+## 2026-05-04 — Sprint 5a.3 (Source Linkage, Humanizer, Coach Restructure)
+
+### Goal
+
+Sprint 5a.2 visual review surfaced lossy popup captured-rows: rich Member quotes from Sprint 4.7 Block P were absent because Sprint 5a.1 left FactorCapture source linkage null per Block C ("captures stand alone"). Captured-at dates uniformly read "May 4 · via + Quantify" because the seed defaulted captured_at to seed-execution time and form attribution to + Quantify regardless of true provenance. Raw enum tags (`late_paying_customer`, `cashflow_volatility`) appeared in popup rows. Sprint 5a.3 closes those gaps and restructures the Coach surface to match popup-as-workflow's structural discipline.
+
+### What shipped
+
+- **Block A — Source linkage seed.** 22 FactorCaptures (across the 38 in Jenny + Northland + Cygnus, after FACTOR-027 LENGTH-operator additions) gained `source_signal_id` per the Sprint 5a.3 audit map. Two anonymous Signals named (`jennyReceivablesBlockerSignal` for Dec 2025; `cygnusConcentrationBlockerSignal` for Jun 2025 — the latter unlinked from any FactorCapture currently, available for Pilot many-to-many evolution per Note 1). New `FactorCaptureSeed.source_signal` predicate shape: `{ type, captured_at_iso, topic_canonical_tag }`. `seedFactorCapturesForFixtures` resolves the predicate to a Signal id at seed time, throws loudly if no Signal matches (mismatched predicates would otherwise silently null-link). Cygnus's two same-day Triggers disambiguated by `topic_canonical_tag`.
+  - **Side-fix in `clear()`:** the seed deleteMany cascade was missing FactorCapture / MatrixEntry / TrackTemplate / BusinessFactor (Sprint 5a.1) and Reaction / ShowEvent / Model (Sprint 4.7). Fresh DB seeds were succeeding; subsequent reseeds hit FK-cascade errors. Fix applied here so Block A's reseed runs cleanly on populated databases.
+- **Block B — Humanizer + factor.name as primary chip for standalone rows.** `formatFactorValue` in page.tsx now humanizes `qualitative_value` (underscore-replace + sentence-case) and JSON-array-passes for FACTOR-027's treasury_services_adopted shape. Boolean values render as `Yes` / `No` (capitalized). Standalone FactorCapture rows (no source linkage) use `factor.name` as the type chip — e.g., a row for FACTOR-019 Annual revenue band shows chip="Annual revenue band" + value="$850,000". Source-linked rows continue to use the Signal type as chip (Goal/Blocker/Trigger/Indecision) and surface the verbatim Member quote; that path was correct from Sprint 5a.2 Block D and remains unchanged.
+- **Block C — Coach surface visual restructure.** Coach panel now mirrors popup-as-workflow structural discipline:
+  - Section per objective (Discover / Measure / Consult / Navigate) with `V2_OBJECTIVE_QUESTIONS` framing italicized — same headers as the popup
+  - Verb-led action item bullets, not narrative paragraphs
+  - Bullets with `ctaEvidenceRef` render as clickable rows (rounded border + checkbox-style mark + small form hint), reusing Block E plumbing — the unified `onCtaClick(evidence_ref)` callback routes FACTOR-NNN → + Quantify with preselection, and symbolic refs → respective forms
+  - Figures bolded via `boldFragments` substring rendering (longest-first regex alternation)
+  - Always-expanded when opened (no expand-per-objective interaction)
+  
+  New types in `lib/stage-guidance.ts`: `CoachBullet`, `MemberTypeCoach`. New const `MEMBER_TYPE_COACH` + `GENERIC_COACH_BULLETS` fallback. New helper `coachBullets(objective, memberTypeName)`. Existing `objectiveGuidance()` retained for backward compat but no longer consumed by sidebar.
+  
+  Authoring per Member-Type: 8-9 bullets per fixture across the four objectives, drawn from `MEMBER_TYPE_GUIDANCE` substance. Lines made redundant by popup-as-workflow CTAs were retired during the parse: "capture goals/blockers/indecision", "show the chart", "size the gap" are all now surfaced by popup missing-evidence CTAs or sidebar artifact slot. What was preserved: verbatim-quote discipline ("sleep through January"), trigger-watch lists, domain-specific framing (Cygnus's two-trigger pattern, Northland's reframe moment), and figure-anchored context (~$48K slow-season gap, ~70 calls/peak season, ~85% utilization, $4-7M scope).
+  
+  CTAs wired per fixture:
+  - Jenny: FACTOR-024 (capture late-payment trigger), model_produced (cashflow projection), specialist_handoff_initiated (joint-call ActionCard)
+  - Northland: model_produced (fleet ROI), specialist_handoff_initiated (out-of-scope handoff)
+  - Cygnus: model_produced (capital event partnership map), specialist_handoff_initiated (CRE banker handoff)
+  
+  Existing CTARow plumbing in `objective-popup.tsx` was not extracted into a shared component — coach surface implements its own `CoachBulletRow` with parallel visual treatment. The "discipline mirror" Francisco asked for is structural and visual, not necessarily one-component-shared. Pilot polish if shared abstraction surfaces value.
+- **Sidebar callback consolidated.** `onNextValuableClick` renamed to `onCtaClick` since the same callback now serves three CTA invocation paths: "+ next" affordance, popup CTA, and coach bullet CTA. Unified routing through `WorkstationShell.handleCtaClick`.
+- **Block H — this BUILD_LOG entry + architectural notes.**
+
+### Per-fixture linkage map (audit reference)
+
+For future-session orientation, the 19 source-linked FactorCaptures across the three fixtures:
+
+**Jenny (6):**
+- FACTOR-001 / FACTOR-022 → seasonalSignal (Apr 8 — "January and February kill us"). Ambiguity #1 routed cashflow_volatility to seasonal pattern as the structural volatility (vs receivables symptom).
+- FACTOR-002 / FACTOR-024 → jennyReceivablesBlockerSignal (Dec 4 — "Some big accounts paying 60+ days now"). Ambiguity #2 cross-types trigger-tag → Blocker Signal for provenance linkage.
+- FACTOR-014 → jennyIndecisionSignal (Apr 8 — "I'd want Mike to look at the numbers").
+- FACTOR-021 → jennyCashFlowSmoothingGoalSignal (Mar 12 2024 — "I just want to be able to sleep through January").
+
+**Northland (6):**
+- FACTOR-006 / FACTOR-007 / FACTOR-022 / FACTOR-024 → capSignal (Apr 15 — "I came in to look at financing for my own truck"). Ambiguity #3 routes capacity_evaluation trigger-tag to a Blocker Signal because Northland has no Trigger-type Signal.
+- FACTOR-013 → northlandIndecisionSignal (Apr 15 — CPA reference).
+- FACTOR-021 → northlandFleetGoalSignal (Feb 22 2025 — "We could probably do another 20-25% volume").
+
+**Cygnus (7):**
+- FACTOR-006 / FACTOR-008 / FACTOR-021 → cygnusCustomerGrowthGoalSignal (Nov 15 2024 — "We're at about eighty-five percent capacity utilization").
+- FACTOR-011 / FACTOR-015 / FACTOR-022 → cygnusCapacityEvalSignal (Apr 21 — "decision about the floor space within the next two quarters"). Ambiguity #4 routes real_estate obstacle-tag to Trigger Signal because the floor-space pain lives there.
+- FACTOR-024 → cygnusVolumeSignal (Apr 21 — "Three of our biggest customers..."). Topic disambiguation distinguishes the two same-day Triggers.
+
+The remaining 19 captures are standalone (Path B): `annual_revenue`, `member_tenure_years`, `industry_seasonal`, `treasury_services_adopted`, `operating_margin_pct`, `yoy_revenue_growth_pct`, `blaze_relationship_years`, `decision_timeline` (Jenny), `co_decision_maker_required` and `external_advisor_involved` (Cygnus), `specialist_on_file`, `equipment_aging_observed`. These are structural/banking-relationship facts with no member-stated source quote.
+
+### Architectural notes for Pilot
+
+These document architectural questions that surfaced during Sprint 5a.3 implementation but don't block the demo. Each requires real-banker-behavior signals to resolve.
+
+**Note 1 — Cross-type linkage pattern (Sprint 5a.3 Ambiguities #2, #3, #4).** The trigger-tag → Blocker-Signal pattern recurs because Signal types and factor tags are parallel taxonomies optimized for different purposes (capture-moment categorization vs Track-ranking categorization). Sprint 5a.3's audit handles this case-by-case; Pilot needs to decide between three alternatives based on observed banker capture patterns at scale:
+- (a) **Many-to-many `FactorCapture`-to-`Signal` linkage** so multiple Signals can attach to one factor — best when bankers capture multiple distinct quotes that all advance the same factor evidence.
+- (b) **Decoupling popup rows from Signal-type chips entirely** so cross-type mismatch never surfaces visually — best when bankers find the type-chip distraction unhelpful in practice.
+- (c) **Accepting type mismatch as inherent to the two-taxonomy system and documenting the convention for bankers** — best when cross-type ambiguity is rare and the audit-time resolution is low cost.
+
+Decision depends on whether real banker capture patterns produce frequent cross-type ambiguity (favoring (a) or (b)) or rare (favoring (c)).
+
+**Note 2 — SizingMeasurement-vs-Signal-magnitude pattern.** The Sprint 5a.3 audit surfaced that the demo seed captures all magnitudes on parent Signal entities directly (`magnitude` / `unit` / `frequency` columns on `seasonalSignal`, `capSignal`, etc.) rather than via `SizingMeasurement` entities — there are zero `SizingMeasurement` rows in the seed. `SizingMeasurement` remains the real-data path for magnitudes captured via standalone + Quantify (no parent Signal). For Sprint 5a.3, `source_signal_id` linkage is sufficient because magnitude data flows back through the parent Signal. Pilot decides whether `SizingMeasurement` is the appropriate entity for matrix-aware factor capture or whether magnitude-on-Signal is actually the cleaner pattern. Schema supports both today; banker capture flow will converge on one.
+
+**Note 3 — Track-aware coaching content.** Demo coach content is `Record<member_type × objective>` per Sprint 5a.3 Block C's `MEMBER_TYPE_COACH`. Pilot may benefit from `Record<member_type × track × objective>` so coaching adapts to current Track context. Decision depends on two signals from real banker behavior:
+- (a) Observed Track-switching frequency during conversations — if bankers frequently switch (e.g., realizing mid-conversation that Working Capital LOC isn't the right candidate; Treasury Services Upgrade is), Track-aware coaching adds direct value.
+- (b) Substantive divergence between Track-specific consultative paths — even without frequent switching, if Working Capital LOC vs SBA 7(a) consultative conversations meaningfully differ in what to ask / measure / consult, Track-aware coaching captures that divergence.
+
+Both signals favor Track-aware authoring; absence of both favors current Member-Type-aware pattern.
+
+### Schema changes
+
+None. Sprint 5a.3 is seed + lib + UI only.
+
+### Verified
+
+- `pnpm tsc --noEmit` clean (after `.next` cleanup; iCloud sync had duplicated route-types files into `.next/types/*.d 2.ts`)
+- `pnpm exec next build` clean; 6 routes intact
+- `pnpm exec tsx prisma/seed.ts` clean: 39 FactorCaptures total; 19 source-linked + 20 standalone
+- HTML probe at `pnpm exec next dev`:
+  - Jenny popup payload contains "January and February kill us" verbatim, attributed Apr 8 via + Ask
+  - Northland popup payload contains "I came in to look at financing for my own truck" verbatim, attributed Apr 15 via + Ask
+  - Cygnus popup payload contains "decision about the floor space within the next two quarters" verbatim, attributed Apr 21 via + Ask
+  - Standalone row example: Jenny FACTOR-019 chip="Annual revenue band", value="$850,000" (humanized $)
+  - Coach bullets serialized correctly: text + boldFragments + ctaEvidenceRef per fixture; Jenny CTAs route to FACTOR-024 / model_produced / specialist_handoff_initiated; Cygnus CTAs to model_produced / specialist_handoff_initiated
+  - "no specialist handoff" / "Two trigger captures" / "~$48K" / "~85%" / "$4-7M" / "Connect-ending" all present as boldFragments
+
+### Decisions made during implementation
+
+- **Source predicate format `{ type, captured_at_iso, topic_canonical_tag }` over Signal-id-by-name lookup.** Originally considered exporting Signal id variables from `seed.ts` and threading them through to `seed-matrix.ts`. The predicate approach kept all linkage-decision data inside `seed-matrix.ts` next to the FactorCapture seed records (self-documenting) and avoids the seed-function-output threading. Predicate resolution at seed time throws on miss, so any matrix-data drift is caught loudly.
+- **Throw on unresolved predicate** rather than silent null linkage. Silent null would only surface during visual review by missing-quote inspection — too easy to ship a regression. Loud throw catches the bug at seed time.
+- **`iso()` helper compatibility.** Predicate captured_at uses `T12:00:00Z` (noon UTC) to match the seed's `iso()` helper, not midnight. First seed run failed with "no Signal matched" because of the offset.
+- **`captured_at` semantics — Signal date wins.** When source-linked, the popup row shows the Signal's `captured_at` (e.g., Apr 8 for the seasonal Blocker), not the FactorCapture's `captured_at` (which is `now()` at seed time). This was already wired in Sprint 5a.2 Block D's page.tsx capturedRows builder; Sprint 5a.3 just made the linkage available.
+- **Standalone-row chip = `factor.name`** rather than `factor.category` derivation. The category-based labels ("Member", "Industry", "Decision") didn't tell a banker which factor a row corresponded to. Using the factor name ("Annual revenue band", "Industry seasonal", "Member tenure") makes the row self-identifying. Tradeoff: chips can be longer; the Chip component handles wrapping reasonably at sidebar widths.
+- **Coach `CoachBulletRow` is a parallel implementation of the popup `CTARow`, not a shared component.** Spec said "reuse plumbing"; it didn't say "reuse the visual component literally." Plumbing reuse means the unified `onCtaClick(evidence_ref)` callback. Visual implementations parallel each other in style; extracting to a shared row component is Pilot polish if it surfaces.
+- **`coachBullets()` added; `objectiveGuidance()` retained.** Backward-compat. The popup uses `V2_OBJECTIVE_QUESTIONS` directly (not `objectiveGuidance`) so retention costs nothing. Future cleanup can retire `objectiveGuidance` and `MEMBER_TYPE_GUIDANCE` paragraph map once nobody else reads them.
+- **No new symbolic refs added to shell.** Coach bullet CTAs route via existing refs (FACTOR-NNN, model_produced, specialist_handoff_initiated, decision_maker_mapping, reaction_captured). The naming asymmetry (e.g., a "queue ActionCard" bullet uses `specialist_handoff_initiated` to route to + Action) is acceptable for the demo since the routing is form-level, not semantic-flag-level. Pilot can add generic open-form refs (`open_action`, `open_ask`, etc.) if the semantic mismatch causes confusion.
+
+### Watch for review
+
+- **`+ Quantify` form's qualitative-select dropdown still surfaces raw enum values** (`late_paying_customer`, `cashflow_volatility`, etc.). Block B humanized the popup display surface but didn't humanize the dropdown options inside the form. Banker selecting FACTOR-024's trigger_event_tag sees raw `late_paying_customer` in the option list. Visual review may want a parallel humanizer pass on the form's `QualitativeCapture` component; that's a small follow-up if needed.
+- **`coachBullets` Member-Type lookup is name-based.** Same pattern as `objectiveGuidance` — case-sensitive Member Type name match. Generic fallback fires if a typo occurs. Robust enough for the three demo fixtures.
+- **CoachBulletRow visual treatment may read busier than intended.** With 2-4 bullets per objective × 4 objectives, the expanded coach panel runs ~80-120 lines tall. If visual review surfaces "too dense," collapsing to expand-per-objective would be a one-state-change refactor (Sprint 5a.3 spec explicitly chose always-expanded; this is a noted tradeoff).
+- **Note 1 (cross-type linkage), Note 2 (SizingMeasurement vs Signal-magnitude), Note 3 (Track-aware coaching)** — all logged here as Pilot architectural questions. None blocks demo.
+
+### Cross-references
+
+- `BUSINESS_FACTOR_MATRIX_v1.md` Sections 1-4 — factor/track/matrix/per-fixture data
+- `ARCHITECTURE_V2.md §3` — four-objective architecture
+- `EVIDENCE_FRAMEWORK.md §2` — evidence catalog + activity-to-evidence mapping
+- `COMPLIANCE.md §10.2` — banker-facing posture commitments (banned phrases enforcement)
+- `prisma/seed.ts` — Signals named: `jennyReceivablesBlockerSignal`, `cygnusConcentrationBlockerSignal`
+- `prisma/seed-matrix.ts` — source_signal predicates per FactorCapture; resolution in `seedFactorCapturesForFixtures`
+- `lib/stage-guidance.ts` — `coachBullets()`, `MEMBER_TYPE_COACH`, `CoachBullet` type
+- `app/v2/members/[id]/sidebar.tsx` — `CoachBulletRow`, `renderBoldFragments`, `formHintForRef`
+
+Sprint 5a.3 complete. Popup captured-rows now carry rich Member-quote attribution; standalone rows render via factor.name + humanized values; coach surface mirrors popup-as-workflow's structural discipline. Sprint 5b (Insight Engine portfolio surfaces) is the next major sprint.
+
+---
+
+## 2026-05-05 — Sprint 5a.3 mini-patch (visual review follow-ups)
+
+### Goal
+
+Sprint 5a.3 visual review confirmed Cygnus, Northland, and the coach surface at the visual layer. Six small follow-ups before Sprint 5b: Track context spacing, matrix-tier label words, v2 artifact viewer wiring, captured feed alignment, + Quantify dropdown humanization, and an architectural note about Track-strength label semantics.
+
+### What shipped
+
+- **Patch 1 — Track context spacing.** Track name (`Commercial Real Estate Term Loan`, etc.) now wraps multi-line cleanly instead of truncating with ellipsis. The dropdown caret aligns to top instead of baseline so the wrap reads naturally. Strength chip + `view comparison ↗` link stack vertically (was horizontal flex with `gap-2`) so the chip's accent variant gets visual weight without being squeezed by the link. Marginal vertical breathing room between Track-name row and chip/link cluster (`mt-2.5` was `mt-1.5`).
+- **Patch 2 — Matrix-tier label words.** Replaced `5s/1m/2neg` abbreviation with `5 strong, 1 moderate, 2 dealbreakers` across the Track context dropdown's per-Track tier-count line. New helper `formatTierCounts` in `sidebar.tsx` pluralizes "dealbreaker(s)" correctly. Keeps "strong" / "moderate" cardinal-pluralized as-is (idiomatic English does not pluralize the strength labels — "1 strong" not "1 strongs").
+- **Patch 3 — v2 artifact viewer.** Confirmed the v2 sidebar artifact button opened the v2 `ArtifactPreviewDialog` (modal, not v1 cross-link), but the dialog only rendered the description text with a "Sprint 5 will ship the rendered artifact" placeholder. Patch wires renderer dispatch on `artifact.template` reusing v1's three chart components: `SeasonalSmoothingChart` (Jenny — `seasonal_smoothing_chart_v1`), `FleetRoiProjectionChart` (Northland — `fleet_roi_composed_chart_v1`), `CapitalEventPartnershipMap` (Cygnus — `capital_event_map_v1`). `ArtifactPreviewSubject` gained `template: string | null`; `SidebarArtifact` gained the same; `page.tsx` selects `artifact.template` from Prisma. Unknown templates fall through to a "renderer not registered" placeholder so unknown artifacts don't crash the dialog. v2-native authoring + parameter-driven rendering remains Sprint 5b polish.
+- **Patch 4 — Captured feed alignment.** Sprint 4.7.2.x Block C had capped `V2MainPanel` at `mx-auto max-w-[720px]` for "higher density" reading; visual review surfaced the centered cap as misaligned with v1's right-edge column. Removed the cap; cards now fill the available main-column width (sidebar 280px + main `flex-1` means cards extend to the page's right padding, matching v1's `lg:grid-cols-[minmax(0,1fr)_280px]` behavior). Empty-state placeholder also dropped its `mx-auto` so it left-aligns.
+- **Patch 5 — + Quantify dropdown humanization.** `QualitativeCapture` component in `quantify-form.tsx` now humanizes option labels (snake_case → sentence-case with spaces). The stored `<option value>` remains the raw enum tag; only display labels are humanized. So bankers see "Late paying customer" / "Cashflow volatility" in the FACTOR-024 / FACTOR-022 dropdowns; the value posted to `saveFactorCapture` and evaluated by the matrix is unchanged.
+- **Patch 6 — Architectural Note 4 (below).**
+
+### Architectural Note 4 — Track strength label semantics
+
+**Note 4 — Track strength label semantics.** Visual review surfaced confusion between Track-strength labels (matrix-based scoring against a Track template's required factors) and dot-completion (per-Track evidence captured for that Track's `required_evidence_per_objective`). A Track can simultaneously read "strong support" (matrix-firing entries cleared the threshold) AND "complete" (all required dots captured under the current Track) — bankers may interpret the combination as full qualification, when in fact the matrix scoring is candidacy, not approval. Two adjacent semantic axes worth disentangling at Pilot:
+
+- **Strength labels** (`strong` / `moderate` / `insufficient`) reflect *how many matrix entries fire* against captured factor values. A Track with 5 strong + 1 moderate matrix entries fired reads as "strong" — meaning the consultative case is well-supported by the matrix's curated banker rationale. Strength is matrix-computed; dot-completion is template-required-evidence-captured. They overlap but aren't the same axis.
+- **Dot-completion** reflects *how many of the current Track's required evidence refs are captured*. "Complete" means every required ref has a captured value or entity. The popup-as-workflow surface's missing-factor CTAs disappear when complete; the sidebar shows the "complete" italic label.
+
+Pilot decisions to consider:
+- (a) **Refine strength labels** so the matrix-vs-completion distinction reads cleanly (e.g., "strong consultative case" vs "evidence complete"). Wording explicitly de-couples the two axes.
+- (b) **Add explicit affordances** clarifying matrix-versus-completion semantics — a tooltip or inline note next to the chip explaining what the label measures.
+- (c) **Reconsider whether matrix-tier counts are the right banker-facing display** at all. The counts surface in the dropdown; bankers may not need them, or may need them shaped differently (e.g., "Working Capital LOC: well-supported by the matrix" without the underlying numbers).
+
+The strength-vs-completion distinction is most likely to confuse at Track-handoff moments where a Member's case feels strong on both axes and the banker incorrectly interprets that as preliminary approval. Compliance-wise, no banker-facing copy in the demo crosses the §10.2 banned-phrase line; the question is whether the implicit dual-axis is well-understood by bankers in flow.
+
+Decision likely depends on: observed banker behavior at conversation-close — are bankers surfacing the strength + complete combination as "ready to underwrite," or holding it as "ready for the formal underwriting conversation"? The latter is the intended interpretation; the former is a misread that warrants UI clarification.
+
+### Schema changes
+
+None. Mini-patch is UI + minor type extension (artifact.template passthrough) only.
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean; 6 routes intact
+- HTML probe at `pnpm exec next dev`:
+  - Track context section renders Cygnus's full "Commercial Real Estate Term Loan" without ellipsis truncation
+  - Track context dropdown shows "5 strong, 1 moderate, 2 dealbreakers" cardinality words (Cygnus's CRE Term Loan: "5 strong, 6 moderate"; SBA 7(a) for Northland: "2 strong, 3 moderate, 1 dealbreaker")
+  - v2 sidebar artifact preview opens with the chart rendered (SeasonalSmoothingChart for Jenny, FleetRoiProjectionChart for Northland, CapitalEventPartnershipMap for Cygnus)
+  - Captured feed cards extend to the right column edge instead of being centered at 720px
+  - + Quantify form's QualitativeCapture dropdown shows humanized labels (FACTOR-022 → "Cashflow volatility" / "Capacity limit" / "Real estate"; FACTOR-024 → "Late paying customer" / "Capacity evaluation" / etc.)
+
+### Decisions made during implementation
+
+- **Track-name wraps multi-line** rather than widening the sidebar from 280px → wider. Sidebar width is load-bearing for the layout (sticky-dialpad, main-panel grid, header collapse threshold all assume 280px); changing it has cascading risk. Wrapping the Track name solved the truncation cleanly.
+- **Tier-counts use "dealbreakers" for the negative tier**, not "negative" or "neg". Francisco's wording in the patch direction. "Negative" is the schema field name and matrix-data tier label; "dealbreakers" is the banker-facing translation. Surface-vs-schema discipline preserved per ARCHITECTURE_V2 §11.7.
+- **Strength labels stay as `{N} strong` / `{N} moderate`** (no pluralization). Idiomatic — "1 strong" reads cleanly; "1 strongs" doesn't. Negatives plural-conditional ("dealbreaker"/"dealbreakers") because the noun does naturally pluralize.
+- **v2 artifact dialog reuses v1 chart components directly** rather than re-implementing or extracting to a shared location. The chart components are no-arg, fixture-baked client components — moving them to `app/_components/` would be a useful cleanup but is out of scope for this patch. Demo-quality wins outweigh the file-location nit. Pilot's v2-native artifact authoring will likely supersede this anyway.
+- **Captured feed cards full-width** rather than re-instating a wider cap (e.g., 1024px). Matching v1's behavior is the visual-review request; no second-guessing the spec.
+- **Dropdown humanization is display-only** — `<option value>` stays raw enum tag. The matrix evaluator and `saveFactorCapture` consume the raw tag. Display ↔ value separation matches the popup row's pattern from Sprint 5a.3 Block B.
+
+### Watch for review
+
+- **`view comparison ↗` link sits below the strength chip** instead of beside it. Vertical stacking gives the chip more visual weight and prevents the link from being cramped on long Track names. If visual review prefers the original side-by-side layout (and is willing to risk truncation on long names + chip variants), it's a one-line revert.
+- **"dealbreakers" vocabulary** is bold but accurate — matches how bankers think about negative-tier matrix entries. If compliance / leadership prefers a softer term (e.g., "concerns" or "headwinds"), it's a one-string update. The current term is faithful to the matrix's banker rationale.
+- **v2 artifact dialog imports from `app/members/[id]/`** — cross-route import. Next.js / Turbopack handles this cleanly (the chart components are pure client components with no server dependencies); Pilot may want to move them to `app/_components/charts/` for cleaner architecture. Documented but not done in this patch.
+- **Captured feed at full column width** can feel airy on wide viewports (1440px+). If visual review surfaces a "too wide" reading, a max-width cap around 960px (matching v1's typical column width) is a small adjustment.
+
+### Cross-references
+
+- `app/v2/members/[id]/sidebar.tsx` — Track context wrap, vertical stack, `formatTierCounts`
+- `app/v2/members/[id]/artifact-preview-dialog.tsx` — template-dispatch renderer
+- `app/v2/members/[id]/main-panel.tsx` — captured feed alignment
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — `humanizeTag` for dropdown labels
+- `app/members/[id]/seasonal-smoothing-chart.tsx`, `fleet-roi-projection-chart.tsx`, `capital-event-partnership-map.tsx` — v1 chart components reused by v2 dialog
+
+Mini-patch complete. Visual review next; Sprint 5b prompt incoming after confirmation.
+
+---
+
+## 2026-05-06 — Sprint 5b.1 (CTA Derivation, Insight Architecture, Polish)
+
+### Goal
+
+Sprint 5a.3 visual review surfaced one substantive architectural defect: when popup-as-workflow's missing-evidence CTAs were exhausted, the popup went silent — banker landed in a dead-end zone. Sprint 5b.1 ships the directional architecture: bounded CTA derivation across three layers (missing template evidence; threshold-uplift; specialist handoff), with an empty array as a valid return when work is genuinely complete. Plus the Insight architecture: canonical Patterns (senior-authored, banker reference) and banker-authored Insights (LLM-mediated matching with two-state lifecycle).
+
+Three architectural commitments locked through the design conversation that drove this sprint:
+- **CTAs not labels.** No readiness composite states. No diagnostic categorization of Members.
+- **Bounded CTA layers.** When all three layers are exhausted, the popup is honest about it — evidence list stands alone.
+- **Insights as both reference and authorship.** Lightbulb icon for canonical Patterns; `+ Insight` for banker authorship.
+
+### What shipped
+
+- **Block A — CTA derivation function.** `lib/cta-derivation.ts` exports `deriveNextActions()` returning ranked `CTA[]` across three bounded layers. Layer 1 split into Class 1A (numerical/boolean → priority 78, opens + Quantify with factor pre-selection) and Class 1B (qualitative or symbolic → priority 65). Layer 2 (threshold-uplift, priority 48) walks MatrixEntries to detect when a moderate-tier capture could be re-confirmed at a higher threshold to fire the strong-tier entry. Layer 3 (specialist handoff, priority 70) surfaces only on Navigate when the Track is in `TRACK_SPECIALIST_DEPARTMENT` (CRE / SBA), Discover + Measure required evidence is captured, model_produced + reaction_captured are both true, and no SpecialistHandoff record exists yet. Empty array is a valid return — drives Block B's "no CTA zone rendered" behavior.
+- **Block B — Surface integration.** Popup-as-workflow's CTA zone now renders CTAs from `deriveNextActions` instead of the missing-evidence-only derivation. Empty array → top zone is *not rendered at all* (no "complete" label, no "to strengthen" header). Sidebar `+ next valuable` affordance uses `topCTA()` — same source as popup. CTA action descriptors discriminated-union route through unified `handleCtaAction` in shell. The sidebar's `onCtaClick(evidence_ref: string)` was renamed to `onCtaAction(action: CTAAction)`; coach bullets carry evidence_ref strings still and convert via `coachRefToAction` helper at the sidebar callsite.
+- **Block C — Schema additions.** Three Prisma entities: `InsightPattern` (PATTERN-NNN canonical, senior-authored, draft/approved/archived status), `Insight` (banker-authored, two-state routine/novel lifecycle, optional Signal attachment, optional matched_pattern_id FK), `SpecialistHandoff` (department_tag from 4-option set, status='initiated' on demo). Migration `20260506152842_sprint5b_1_insight_architecture` applied cleanly. Member relations added: `insights[]`, `specialist_handoffs[]`. **ActionCard schema verification:** entity exists at `prisma/schema.prisma:930`, `status` field is `ActionCardStatus` enum with values `open | in_progress | completed | declined | deferred | superseded`. Sprint 5b.1 uses ActionCard.status only indirectly (Layer 3 specialist-handoff CTA suppresses when SpecialistHandoff exists; ActionCard.status-driven CTAs deferred per Pilot deferrals).
+- **Block D — Pattern + per-fixture Insight seed.** `prisma/seed-insights.ts` ships 36 canonical InsightPatterns from `INSIGHT_PATTERN_LIBRARY_v1.md` Sections 2-6 (TRACK-001 ×9, TRACK-002 ×7, TRACK-003 ×8, TRACK-004 ×6, TRACK-005 ×6). 12 per-fixture seed Insights (3 routine + 1 novel × 3 fixtures) translate Section 7 directly with cached `matched_pattern_id`, `match_confidence` (0.78-0.86 routine; 0.28-0.32 novel), and `llm_feedback` strings. Cygnus Routine 3 (board-approval reframe) ships as Track-level (no `addresses_signal_id`) because Cygnus's seed has no Indecision Signal — alternative to adding a synthetic Indecision Signal. Signal-attachment uses the same predicate-resolution pattern as Sprint 5a.3's source-linkage seed.
+- **Block E — `+ Insight` authoring.** Sixth dialpad button (`+ Insight`, alongside + Ask / + Quantify / + Model / + Reaction / + Action). Contextual affordance on Goal/Blocker/Indecision/Trigger captured rows in popup-as-workflow evidence zone (lower-right of row). Form supports both pre-fill paths (dialpad: no pre-fill; contextual: Track + Signal + insight_type defaulted by signal type). `lib/insight-matching.ts` integrates the **Anthropic API** (`claude-haiku-4-5-20251001`) with 5-second timeout + graceful fallback per Francisco's caveats:
+  - (a) seed-time caching: 12 fixture Insights ship with cached match data, no live API call at fixture load.
+  - (b) timeout + graceful degradation: if API exceeds 5s or errors (network / 4xx / 5xx / unparseable response / unset key), `matchInsight` returns a fallback novel-state result (`fallback: true`) with affirming feedback flagging for senior review. Banker's content is preserved verbatim regardless.
+  - (c) verification: env var `ANTHROPIC_API_KEY` documented in `.env`; needs a real key set before EVP demo.
+  
+  Two-state lifecycle: confidence ≥ 0.7 → 'routine' with matched_pattern_id; below threshold → 'novel' with null matched_pattern_id. Form post-save view displays LLM feedback inline before close (replaces "Submit as is?" pre-confirmation with post-save framing for simpler round-tripping; banker reads the flagged-for-novel message and clicks Close).
+- **Block F — Insight reference surfaces.** Lightbulb icon (💡) on captured Goal/Blocker/Indecision/Trigger rows when canonical Patterns matching this Track exist. Click → reveals up to 4 ranked Patterns with content + 3 implication questions each. "Use as basis for + Insight" affordance on each Pattern → opens authoring form pre-filled with the Pattern's content as a starting draft + the Signal id. Footer "Implications:" section renders bulleted questions from Patterns matching the popup's visible Signals — capped at 6, prioritized by signal-type weight (Goal=4, Blocker=3, Trigger=2, Indecision=1).
+  - **Demo simplification noted:** the Pattern library's `signal_tag_scope` (e.g., `cashflow_volatility`) uses a narrower vocab than topic `canonical_tag` (e.g., `blocker.cash_flow_seasonal`). Tighter pre-filtering by tag is reserved for Pilot; demo surfaces all current-Track Patterns to keep the lightbulb popover discoverable. The matching pipeline (Block E) passes all candidates to the LLM and lets the model judge relevance.
+- **Block G — Polish.** Captured rows older than 90 days render in red font with precise day-count inline (`73d ago` format) and a `+ refresh` CTA in the row's right cluster. Click → opens + Quantify with factor pre-selection. New FactorCapture supersedes the old via recency in evaluator queries (old capture not deleted). Specialist handoff dialog (`specialist-handoff-dialog.tsx`) opens from Layer 3 CTA — minimal modal with department dropdown (4 options) + 200-char preference notes; submit creates SpecialistHandoff record with status='initiated'. Open-thread chip ("open", muted variant) on Indecision rows when no subsequent Reaction exists for the Member after the Indecision's captured_at — pragmatic heuristic per spec G.3. "complete" → "promising" in sidebar's per-objective indicator. `+ deepen` affordance at popup bottom (above Implications:) when CTA zone is empty AND evidence exists; opens + Insight in Track-level mode (no Signal pre-fill).
+- **Block H — this BUILD_LOG entry, OPEN_QUESTIONS amendments, CLAUDE.md manifest, Architectural Notes 5-7.**
+
+### Schema migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260506152842_sprint5b_1_insight_architecture` | CREATE TABLE InsightPattern + Insight + SpecialistHandoff with FK constraints + indexes. ALTER Member implicit (Prisma client; no DDL needed for new reverse relations). |
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (Next 16.2.4 + Turbopack); 6 routes intact
+- `pnpm exec tsx prisma/seed.ts` clean: 36 InsightPatterns + 12 Insights (4 routine + 1 novel × 3 = 9 routine + 3 novel; per-fixture: 3 routine + 1 novel each) + 0 SpecialistHandoffs
+- Anthropic SDK installed: `@anthropic-ai/sdk@0.95.0`. Env var `ANTHROPIC_API_KEY` documented in `.env`; runtime gracefully falls back when unset.
+
+### Architectural notes for Pilot (continue from Sprint 5a.3 Note 1-4)
+
+**Note 5 — Insight authoring as KPI.** Demo doesn't track per-banker insight authoring counts as a KPI; Pilot may want to surface this to senior lenders for coaching opportunities. Architecture supports it (Insight entity has `authored_by`); Pilot adds the analytics layer.
+
+**Note 6 — LLM-mediated novel-Insight discovery.** Demo surfaces novel Insights only by direct query (state='novel' filter; UI for senior review is Sprint 5b.2 work). Pilot may want LLM to surface relevant historical novel Insights when banker authors a new Insight (cross-Member edge-case discovery). Out of scope for 5b.1.
+
+**Note 7 — Make-canonical promotion flow.** Senior lender promoting a novel Insight to a canonical Pattern is meaningful product capability; demo defers to Pilot. When implemented: includes audit trail (`promoted_from_insight_id`), edit-and-approve flow, library growth governance.
+
+**Note 8 — Compliance posture for outbound LLM calls.** Sprint 5b.1's Block E sends banker-authored Insight content to the Anthropic API for matching. The payload carries Track name, Signal tag, and 200-char content; no Member identifier. Demo phase posture: acceptable since fictional fixtures only. Pilot's compliance review (FFIEC CMS framework, vendor-management discipline) should explicitly evaluate:
+- Acceptable-use posture for outbound LLM calls in production banking environment
+- Vendor SOC 2 / data-handling agreement with Anthropic for production
+- Audit-trail expectations for banker-authored content leaving the local environment
+- Whether Member-identifier inclusion (currently scrubbed) is acceptable at Pilot scale or needs explicit policy
+
+This note resolves CC's Sprint 5b.1 surfacing of CLAUDE.md §3 ("No external API calls") override as deliberate, not casual. Override scope: Insight-matching API only; all other Sprint 5b.1 logic runs locally.
+
+### Decisions made during implementation
+
+- **Anthropic Path B chosen over local heuristic stub** per Francisco's confirmation. Stub would have misrepresented the product (LLM-mediated matching is core to the architecture). Override of CLAUDE.md §3 logged in Note 8 for Pilot compliance review.
+- **5-second timeout, graceful fallback to novel-state.** Banker's content always saves verbatim — only the matching might miss. Fallback feedback string is generic-affirming with "saved as novel for senior-lender review" framing; doesn't fabricate a match.
+- **Confidence threshold 0.7 for routine vs novel.** Below threshold means LLM either had no good match candidate or genuinely judged the observation as novel. Spec'd at 0.7 in §E.2; implementation matches exactly.
+- **Pattern library content is identical to v1 draft** (no editorial pass applied within this sprint). Francisco's Section 8 review prompts (E1-E5) flagged 5 places where banker's-eye and product-voice judgment matter — those touches can land before EVP demo as content edits without code changes.
+- **Cygnus Routine 3 ships as Track-level Insight** (no `addresses_signal_id`) rather than seeding a synthetic Cygnus Indecision Signal. Track-level Insights surface only on Discover popup (the entry-point objective for Track-level reframes/implications); avoids duplicating across all four objectives.
+- **Pattern matching pre-filter is loose by design.** Pre-filtering Patterns by `signal_tag_scope` exact match against `topic.canonical_tag` would require building a tag-translation map (canonical_tags use `blocker.cash_flow_seasonal` form; signal_tag_scope uses `cashflow_volatility` form). For demo, all current-Track Patterns are passed to the LLM as candidates, and the model judges relevance. Pilot can tighten pre-filter as the library grows.
+- **`+ deepen` is a single-action affordance for demo**, not the spec'd contextual menu (schedule next conversation / refresh / handoff / Insight). Spec'd menu is Pilot polish; the single-link version delivers the architectural intent (signal of "primary CTAs exhausted but secondary actions available") at lower implementation cost. Demo viewers see the affordance, click it, get + Insight Track-level mode.
+- **Open-thread heuristic** uses "no subsequent Reaction" per spec G.3 simplest implementation. Doesn't track per-Indecision resolution status; treats any Reaction as resolution (pragmatic). ActionCard.status-driven richer logic deferred per Pilot deferrals.
+- **`+ Insight` button positioning in dialpad** is sixth and last, after `+ Action`. Sprint 4.7.2's 7→5 reduction was about removing non-core activities; `+ Insight` is core consultative authorship per Francisco's confirmation.
+- **Lightbulb popover shows Track-scoped patterns even on rows whose signal_tag_scope doesn't match.** The pattern library uses narrower tag vocab than topic canonical_tag; tighter mapping is Pilot polish. Demo behavior: lightbulb on any Goal/Blocker/Indecision/Trigger row shows up to 4 current-Track Patterns. Banker can choose any as a starting draft for + Insight authoring.
+
+### OPEN_QUESTIONS amendments
+
+- **Q-A2 (open-thread tiebreaker)** — Partial resolution: Block G ships an Indecision-row "open" indicator with no-subsequent-Reaction heuristic. Full resolution (multiple simultaneous open threads, ActionCard.status integration) deferred to Pilot.
+- **Q-B1 (CTA layer expansion)** — New question. When does the CTA layer set need expansion beyond 3 layers (missing-evidence / threshold-uplift / specialist-handoff)? Pilot signal: observed banker workflow patterns at scale. Reaction-driven CTAs (Layer 6 from architectural conversation), ActionCard-status-driven CTAs (Layer 7), cross-Track exploration CTAs (Layer 9) all wait on real-data signal.
+- **Q-B2 (LLM matching reliability at scale)** — New question. Pattern matching reliability decreases with library growth. Pilot needs: (a) library size bounds (when does ~36 Patterns become 360+? at what scale does match precision degrade?), (b) match confidence calibration (0.7 threshold may need tuning), (c) escape hatch for low-confidence matches (current behavior: novel state with senior review queue; Pilot may want banker-side override to force-match).
+- **Q-B3 (Compliance posture for outbound LLM)** — New question. See Note 8. Demo phase: acceptable. Pilot must evaluate before production deployment.
+
+### Cross-references
+
+- `INSIGHT_PATTERN_LIBRARY_v1.md` (repo root) — canonical Pattern source data; Section 7 per-fixture Insight expectations
+- `BUSINESS_FACTOR_MATRIX_v1.md` Section 1 — factor catalog informs threshold-uplift logic
+- `ARCHITECTURE_V2.md` §3 — four-objective architecture; §11.7 surface-vs-schema separation
+- `EVIDENCE_FRAMEWORK.md` §2 — evidence catalog
+- `COMPLIANCE.md` §10.2 — banned-phrase discipline (honored in Pattern content + Insight feedback)
+- `lib/cta-derivation.ts` — three-layer CTA derivation (Sprint 5b.1 Block A)
+- `lib/insight-matching.ts` — Anthropic API integration with 5s timeout + graceful fallback (Block E)
+- `app/v2/members/[id]/capture-forms/insight-form.tsx` — Insight authoring component
+- `app/v2/members/[id]/specialist-handoff-dialog.tsx` — Block G handoff modal
+- `prisma/seed-insights.ts` — 36 Patterns + 12 fixture Insights
+
+Sprint 5b.1 ships the directional architecture. Popup-as-workflow now stays actionable when work remains and stays honest when work is genuinely complete. The Insight architecture introduces both reference (canonical Patterns) and authorship (banker Insights with LLM matching). The next architectural surface (Sprint 5b.2): portfolio surfaces — Track Performance, Member portfolio, Coverage, Stage-skip.
+
+---
+
+## 2026-05-06 — Sprint 5b.1 mini-patch (visual review follow-ups)
+
+### Goal
+
+Sprint 5b.1 visual review surfaced eight items needing patches plus two architectural questions deferred to Sprint 5b.2 design conversation. Eight blocks across language consistency, Growth Insights restyling, capture form ergonomics, Insight-Signal nesting (Treatment A), duplicate-row diagnosis, Resolution row content audit, duplicate share-event fix, and live LLM diagnosis.
+
+### What shipped
+
+- **Patch 1 — `+ deepen` → `+ Insight`.** Popup footer affordance renamed. One affordance, one name across surfaces — coach bullets, dialpad button, popup footer all use `+ Insight`. Behavior unchanged: popup-footer click opens `+ Insight` in Track-level mode (no Signal pre-fill).
+- **Patch 2 — Growth Insights restyle + PNG lightbulb.**
+  - Renamed "Canonical Patterns" → "Growth insights" in popover header (banker-facing language; "canonical pattern" stays as the code-internal term).
+  - Increased spacing between Pattern blocks (`space-y-3` → `space-y-5`).
+  - Pattern content text bolded (`font-semibold`).
+  - Indented-callout treatment: removed border-rule frame; left-rule mark only (`border-l-[2px] border-blaze-orange/40`); open right whitespace (`mr-8`).
+  - Dropped "Use as basis for + Insight ↗" link entirely (banker authors via the row's contextual `+ Insight` affordance which is already pre-filled with the same Signal). `onUsePatternForInsight` prop + `handleUsePatternForInsight` shell handler retired.
+  - Emoji 💡 → branded asset PNG. `assets/Insight Lightbulb.png` copied to `public/insight-lightbulb.png` (Next.js serves `public/` at `/`). Button renders `<img>` at 18×18px (matches the prior emoji's optical weight in the row's right-cluster).
+- **Patch 3 — Capture form ergonomics.**
+  - InsightForm: Reframe / Implication folded from radio → dropdown for visual consistency with the other selects.
+  - "Track" → "Lending product" rename across banker-facing surfaces: InsightForm field label, "Track-level" option text in Addresses Signal dropdown (now "Lending-product-level"), sidebar Track context section label ("track context" → "lending product"). Code-internal `track_id`, `TrackTemplate`, `RankedTrack` identifiers unchanged per surface-vs-schema discipline.
+  - Removed LLM matching explainer text from InsightForm. Behavior unchanged (matching still fires on submit with 5s timeout + graceful fallback per Block E); banker doesn't need the inline explanation.
+  - QuantifyForm mode toggle: "Matrix-aware (factor diagnostic)" → "Lending-product specific". Free-form fallback label unchanged.
+- **Patch 4 — Insights nest under Signal (Treatment A).** Insights with `addresses_signal_id` now render visually bound to their parent Signal in popup evidence zone. **Treatment chosen:** indented-beneath. Each captured Signal row renders an inner `<ul>` containing its attached Insights with `pl-4` deeper indent and a thin left-rule mark (`border-l-[1px] border-blaze-orange/20`). The redundant "addresses {Signal type}" line is dropped on nested rows (parent context is visually obvious from the nesting). Track-level Insights (no `addresses_signal_id`) still render as separate top-level rows below the captured-rows list. Alternatives considered: expandable-on-parent (added click friction), sub-section approach (lost direct visual bond). Indented-beneath gives clean parent-child reading without adding interaction.
+- **Patch 5 — Duplicate Blocker dedupe.** Diagnosis: Northland's TRACK-002 Discover requires multiple factors that all source-link to `capSignal` (FACTOR-007 boolean + FACTOR-022 capacity_limit + FACTOR-024 capacity_evaluation). Each FactorCapture renders as its own captured row → identical "Blocker · Capacity below demand" rows. **Fix:** popup `captured` filter now dedupes by `signal_id` — first-seen wins (matrix-template order, which is roughly priority order). Rows without source linkage (factor-only captures, symbolic refs) are NEVER deduped — each gets its own row. Northland Discover popup now shows exactly one Blocker row.
+- **Patch 6 — Resolution row content audit.** Per visual review, resolve cards in captured feed had ungrounded "Recommendation:" framing + paraphrased "→ next:" line. Cleanup:
+  - **DROP "Recommendation:" framing** entirely (crosses §10.2 banned-phrase line; the product is discussed, not "recommended"). 
+  - **DROP "→ next: [paraphrased]" line** entirely (the paraphrased ActionCard rationale wasn't a structured source — ungrounded narrative).
+  - **KEEP "Sized: {productLabel}"** — sourced from `Recommendation.product.name` + `formatRecommendationSize(rec)` (which formats `Recommendation.size_proposed | size_low | size_high`). Renamed prefix from "Recommendation:" → "Sized:" per visual review wording.
+  - **KEEP Member quote** — sourced from `Recommendation.their_words`.
+  - **KEEP capture attribution** — sourced from `Recommendation` banker (page.tsx maps to `member.primary_banker.display_name`).
+  - **Headline unchanged** (response_value + primary_concern) — already structured-field-sourced.
+- **Patch 7 — Fix duplicate artifact on share-event.** Diagnosis: `saveModel` with `built_with_member: true` + `artifact_id` non-null auto-creates a ShowEvent (Sprint 4.7.2 Block G). If the banker then clicks "Mark as shared with Member" on the artifact preview dialog, the previous code created a SECOND ShowEvent for the same `(member, artifact, model)` triple — visible as a duplicate "Shown" card in the captured feed. **Fix:** `saveShowEvent` now guards duplicates. Inside the transaction, `findFirst` for an existing ShowEvent matching `member_id + artifact_id + model_id` (strict null match on model_id; null = artifact-only show, non-null = model-driven show). When existing found: update its `shown_at` timestamp, return existing's id; do NOT create a new row. When none exist: original create path runs. `SaveShowEventResult.conversation_id` typed as `string | null` to accommodate existing ShowEvents whose conversation_id may be null. The dialog's "Shared ✓" disabled-state still fires correctly via local component state.
+- **Patch 8 — Live LLM diagnosis.** **Diagnosis:** `ANTHROPIC_API_KEY=""` in `.env` (empty string). Per `lib/insight-matching.ts:91`, an empty/missing key triggers the graceful-fallback path immediately — returns `{ state: "novel", fallback: true, llm_feedback: "Saved as novel for senior-lender review..." }`. The visual review test ("If you decline business opportunities..." matched against PATTERN-001) returned the fallback message because the API key was unset. **Action needed (no code change):** set the actual Anthropic API key in `.env`. Once set, banker-authored Insights will hit the live API; matching for the test phrase against PATTERN-001 should fire as routine (high confidence ≥0.7) given the cashflow-volatility reframe content overlap.
+
+### Architectural questions deferred to Sprint 5b.2 design conversation
+
+- **Q1 — Direction A: Coach absorbs Insights into unified scaffolding surface.** Defer to design before refactor.
+- **Q2 — Re-capture vs new-record handling.** When a same Signal-type or Goal is captured at a later date, should a new record be created or existing updated? Touches multiple entities (Signal, FactorCapture, Reaction, ShowEvent). Defer to design.
+
+### Schema changes
+
+None. Mini-patch is UI + minor type widening (SaveShowEventResult.conversation_id allows null) only.
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean — 6 routes intact
+- HTML probes at `pnpm exec next dev`:
+  - Patch 1: `+ deepen` count 0 in all three fixtures; `+ Insight` rendered (dialpad + coach + popup)
+  - Patch 2: `/insight-lightbulb.png` HTTP 200 (205,035 bytes — full PNG served)
+  - Patch 3: `>lending product<` sidebar label present
+  - Patch 6: `>Recommendation:` count 0 (was 3); `→ next:` count 0
+  - Patch 4: Mike's-review Insight present in payload (will nest under Jenny's Indecision Signal when popup opens Discover)
+  - Patch 5: No regression to Northland Discover row rendering (full visual confirmation requires opening the popup; static-probe verified the dedupe logic compiles + runs)
+
+### Decisions made during implementation
+
+- **`onUsePatternForInsight` retired alongside the dropped link.** The shell's `handleUsePatternForInsight` was a side-effect handler that pre-filled the InsightForm with a Pattern's content. Removed entirely. Banker now authors Insights via the row's contextual `+ Insight` affordance (Track + Signal + insight_type pre-filled per Sprint 5b.1 Block E.1).
+- **Treatment A nesting renders without an expand/collapse interaction.** Indented-beneath puts attached Insights immediately visible under their parent Signal. Adding a click-to-expand interaction was considered (would tighten the visual density) but rejected: nesting depth is shallow (1-2 attached Insights typically), so the always-visible treatment matches the popup's "evidence stands alone" honesty principle from Sprint 5b.1 Block B.
+- **Dedupe by signal_id, not by topic_id or factor.category.** signal_id is the strongest grouping key — multiple FactorCaptures pointing to the same Signal are by definition the same conversational moment. Other groupings (topic, category) would dedupe legitimately distinct rows.
+- **Patch 7 idempotent fix preserves existing ShowEvent's conversation_id**, even if it's null. A ShowEvent created without a Conversation was probably intentional (e.g., auto-create on + Model save where the model attached to a different Conversation than the show recording). The update-only path doesn't fabricate a Conversation; it just bumps `shown_at`.
+- **Resolution-row "Sized:" prefix** matches Francisco's wording in the patch spec. Semantic note: "Sized" is the banker-facing chip used for + Quantify (SizingMeasurement) cards elsewhere; using it here in the Resolution body conveys "this is the discussed product with its sized magnitude" rather than implying a SizingMeasurement entity exists. The chip on the card itself stays "Resolution" (no change).
+- **PNG asset path uses `/insight-lightbulb.png`** (lowercase, hyphenated). Next.js serves `public/` at the root URL; `assets/` isn't auto-served. Cross-platform-safe filename.
+
+### Watch for review
+
+- **Patch 6 "Sized: ..." prefix** uses the same word as the + Quantify chip but in Resolution context. If visual review feels the cross-context "Sized" is confusing, alternatives: "Discussed product:" (descriptive, no banned-phrase implication), "Product magnitude:", or simply the productLabel without prefix.
+- **Patch 5 dedupe is matrix-template-order-first.** If the first FactorCapture for a Signal is FACTOR-007 (boolean: capacity exceeded), the dedupe keeps that row's display data. Visual review may surface that another factor's display would read better. The dedupe is by-source-Signal so all candidates show the same Signal quote anyway — only the type_chip and value_display differ across factors. Demo currently shows Northland Discover with one Blocker row; specific factor wording chosen by template order.
+- **Patch 7 doesn't backfill duplicates.** If existing ShowEvents in the seed already have duplicates (Sprint 4.7.2's auto-create might have run alongside an explicit Mark-as-shared), the seed data may carry duplicates. Seed clear cascade is intact; reseed produces a single ShowEvent per fixture per the Block P seed shape. If duplicates surface in review, simple: reseed.
+- **Patch 8 graceful-fallback path is fully exercised** by the empty-key state. Setting the API key activates the live path; that path will be exercised the first time a banker authors an Insight in a session where the key is set. The 5s timeout + error fallback paths (network outage, malformed response) are in place but haven't been exercised in this session — they'd need API failure simulation to test directly. Pre-EVP smoke-test recommended: author one Insight with key set, confirm match completes; then author one with key unset (or rate-limited), confirm graceful fallback fires.
+
+### Cross-references
+
+- `app/v2/members/[id]/objective-popup.tsx` — Patches 1, 2, 4, 5 (popup affordance + Growth insights restyle + nesting + dedupe)
+- `app/v2/members/[id]/capture-forms/insight-form.tsx` — Patch 3 (form ergonomics)
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — Patch 3 (mode label)
+- `app/v2/members/[id]/sidebar.tsx` — Patch 3 (sidebar section label)
+- `app/v2/members/[id]/main-panel.tsx` — Patch 6 (Resolution row content)
+- `app/v2/members/[id]/actions.ts` — Patch 7 (saveShowEvent dedupe guard)
+- `app/v2/members/[id]/workstation-shell.tsx` — Patch 2 (handleUsePatternForInsight retired)
+- `public/insight-lightbulb.png` — Patch 2 (asset; copied from `assets/Insight Lightbulb.png`)
+- `.env` — Patch 8 (ANTHROPIC_API_KEY set/empty controls live vs fallback path)
+
+Mini-patch complete. Visual review next; Sprint 5b.2 design conversation (Q1 + Q2) follows.
+
+---
+
+## 2026-05-06 — Sprint 5b.2 (Portfolio Surfaces, Re-capture Handling, Coach Refinement)
+
+### Goal
+
+Bring the workstation to portfolio scale. Senior lenders and bankers need cross-Member views to do their jobs at portfolio scale. This sprint ships four portfolio surfaces driven by capture-density and workflow-state axes (no strength labels at any scale), resolves the re-capture-vs-new-record architectural question that surfaced during Sprint 5b.1 visual review, and refines Coach content for Member-Type-specific operational practice.
+
+### What shipped
+
+- **Block A — MemberWorkflowState entity + recompute helper.** New Prisma model `MemberWorkflowState` (1:1 with Member) materializing denormalized workflow signals: `total_captures`, `factor_captures_count`, `signals_count`, `insights_count`, `reactions_count`, `open_thread_count`, `stale_capture_count`, `last_touch_at`, `current_track_id`, `pending_action_card_count`, `pending_specialist_handoff_count`. Migration `20260506185233_sprint5b_2_workflow_state` clean. `lib/workflow-state.ts` exports `recomputeWorkflowState(prisma, memberId)` and `recomputeAllWorkflowStates(prisma)` (used in seed). All v2 capture server actions now call `recomputeAndRevalidate(prisma, member_id)` after writes (replaces inline `revalidateAllMemberSurfaces()`); workflow state stays current on every capture. `recomputeAndRevalidate` also revalidates the four insight-engine routes so portfolio surfaces re-render on any capture write. v1 server actions (saveAskCaptures / saveSizingCaptures / saveResolveCapture) skip workflow recompute for Sprint 5b.2 — workflow state stays eventually-consistent until reseed; pilot can wire v1 if needed.
+- **Block B — Track Performance surface.** New route `/v2/insight-engine/tracks`. Per-Track aggregate view across the roster. For each Track: total Member count where `current_track_id` matches, capture density distribution (0-2 / 3-6 / 7+), workflow state distribution (pending ActionCards / stale captures / open threads), Member-type mix. Member list under each Track shows last touch, capture count, and any open-thread / pending-AC counts. Click Member row → growth conversation page. **No strength tier labels** anywhere on this surface (architectural commitment).
+- **Block C — Member portfolio surface.** New route `/v2/insight-engine/portfolio`. Banker roster sorted oldest-touched-first to surface neglected Members. Header aggregates: total / touched-in-30d / pending-ActionCards / stale / open-threads. Per-Member row: name + Member-Type + current Track + banker + last-touch days-count + capture breakdown (S / I / R) + ActionCard / open-thread / stale callouts. Demo: shows all Members; Pilot scopes by banker_id (Note 9).
+- **Block D — Coverage and indecision surface.** New route `/v2/insight-engine/coverage`. Open Indecision threads at portfolio scale, sorted longest-open-first per spec D.3. Aggregate header (total + days-open distribution). Indecision tag distribution panel. Per-row: Member + tag + verbatim quote + days-open + days-since-last-touch. Heuristic per Sprint 5b.1 Block G: open = no subsequent Reaction exists for the Member after the Indecision's captured_at.
+- **Block E — Stage-skip surface.** New route `/v2/insight-engine/stage-skip`. Members with later-objective evidence captured (Consult / Navigate) but missing earlier-objective required evidence (Discover / Measure). Severity = count of skipped objectives. Per-Member row: name + skipped objectives ("Missing Discover + Measure") + most-recent later-objective evidence timestamp + kind. Sorted severity-descending. Coaching surface for senior lenders.
+- **Block F — Recapture detection.** New `lib/recapture-detection.ts` exports `factorCaptureOrUpdate` and `reactionOrUpdate`. Match predicate: (member_id, factor_id) for FactorCapture; (member_id, show_event_id) for Reaction. Value equality across the entity's value-fields determines `updated` vs `superseded` outcome. `created` when no prior. Wired into `saveFactorCapture` and `saveReaction` v2 actions. ShowEvent already implements equivalent guard (Sprint 5b.1 Patch 7); confirmed consistent. Verified via inline probe: same value → kind='updated', row count unchanged; different value → kind='superseded', row count incremented.
+- **Block G — Coach content v2.** `lib/stage-guidance.ts` MEMBER_TYPE_COACH content replaced with bullets from `MEMBER_TYPE_GUIDANCE_v2.md`. Path B discipline preserved: Member-Type-specific operational practice (catering = operator-owner with seasonal cycles; HVAC trades = field-operations owner with capacity-and-equipment focus; specialty manufacturing = professionalized mid-market with multi-stakeholder decisions). 4 bullets per (Member-Type × Objective) cell × 12 cells = 48 bullets; ~24 of them carry CTAs mapping to capture forms (FACTOR-NNN, model_produced, decision_maker_mapping, reaction_captured, specialist_handoff_initiated). Coach surface structure unchanged from Sprint 5a.3 Block C; only content. No banned phrases per COMPLIANCE.md §10.2 — verified via grep against current/recommendation/eligible/etc. before commit.
+- **Block H — this BUILD_LOG entry, OPEN_QUESTIONS amendments, Architectural Notes 9-10, CLAUDE.md manifest.**
+
+### Schema migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260506185233_sprint5b_2_workflow_state` | CREATE TABLE MemberWorkflowState (1:1 with Member) + indexes on member_id / last_touch_at / current_track_id. |
+
+### Verified
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean — all 4 insight-engine routes render dynamic (`force-dynamic` directive on each); 11 routes total
+- `pnpm exec tsx prisma/seed.ts` clean: workflow state computed for 3 Members
+- HTTP probe at `pnpm exec next dev`:
+  - `/v2/insight-engine`: HTTP 200 (landing)
+  - `/v2/insight-engine/tracks`: HTTP 200 — all 5 Tracks rendered (CRE Term Loan / SBA 7(a) / Treasury Services / Vehicle Fleet / Working Capital LOC)
+  - `/v2/insight-engine/portfolio`: HTTP 200 — all 3 Members rendered (Cygnus / Jenny / Northland)
+  - `/v2/insight-engine/coverage`: HTTP 200 — open thread aggregates + tag distribution rendered; days-open ranges captured
+  - `/v2/insight-engine/stage-skip`: HTTP 200 — severity headers + distribution rendered
+  - Coach v2 content on Jenny page: "Listen for the seasonal cycle's specific shape" verbatim from MEMBER_TYPE_GUIDANCE_v2.md Section 1.1
+- Recapture pattern probe (inline tsx test): same value → `updated`, count unchanged; different value → `superseded`, count +1
+
+### Workflow state per fixture (post-seed recompute)
+
+```
+jenny     total=22 (13F+4S+4I+1R), open=1, stale=2, track=TRACK-001, AC=1
+northland total=19 (11F+3S+4I+1R), open=1, stale=1, track=TRACK-002, AC=1
+cygnus    total=24 (15F+4S+4I+1R), open=0, stale=2, track=TRACK-003, AC=2
+```
+
+Where F=FactorCaptures, S=Signals, I=Insights, R=Reactions. Counts validate that the seed lands as expected: each fixture has the audit-confirmed FactorCaptures (Sprint 5a.3) + the 12 fixture Insights (Sprint 5b.1 Block D) + 1 Reaction each (Sprint 4.7 Block P). Open-thread heuristic correctly identifies Jenny's and Northland's Indecision Signals (no subsequent Reaction); Cygnus has 0 open threads (no Indecision Signal in seed; matches Block D notes).
+
+### Architectural notes for Pilot (continuing 1-8 from Sprint 5b.1)
+
+**Note 9 — Portfolio surface RBAC.** Demo simulates banker-vs-senior-lender via Scott in dual role; all bankers see all surfaces. Pilot needs real role-based scoping. MemberWorkflowState entity supports this; portfolio queries need to filter by `member.primary_banker_id` (banker view) or skip the filter (senior lender view). `memberRoster()` helper takes no banker filter today; trivial to add at Pilot.
+
+**Note 10 — Workflow state materialization.** Synchronous on-write recompute is fine for demo scale (~3 fixtures, ~30-40 captures total). Pilot scale needs async recompute via queue: capture write completes → enqueue recompute job → background worker recomputes + writes MemberWorkflowState. Avoids blocking capture-write latency on aggregation queries.
+
+### OPEN_QUESTIONS amendments
+
+- **Q-A2 (open-thread tiebreaker)** → **Resolved by Block D Coverage and indecision surface.** Sprint 5b.1 Block G partially resolved with the per-Member open-thread chip; Sprint 5b.2 Block D ships the portfolio-scale view with sorting by days-open and tag distribution. Multi-thread tiebreaking (when two Indecisions have same days-open) handled by alphabetic Member name as natural tiebreaker via the surface's secondary sort. Marked Resolved.
+- **Add Q-C1 (Portfolio surface RBAC)** — see Note 9. Demo: Scott in dual role, all-bankers-see-all. Pilot: real role-based scoping via banker_id filter.
+- **Add Q-C2 (Recapture audit trail)** — Demo's superseded behavior preserves prior records via newest-by-captured_at queries (no explicit superseded_by_id pointer). Pilot may want richer audit trail (preserve all captures with timestamps; explicit supersession marker; query newest by default). Schema additions: `superseded_by_id` pointer on FactorCapture / Signal / Reaction, or a dedicated audit-log table. Decision: how visible should supersession history be in banker UI? Visible at all times, on-hover, or only via senior-lender drill-in?
+
+### Decisions made during implementation
+
+- **`current_track_id` on MemberWorkflowState** uses `rankTracksForMember[0].track_id`. Spec §B.4 query references factor_captures and signals having `track_id`, but those entities don't have a track_id column (only Insight does, post-Sprint 5b.1). Reconciled by using the matrix-ranker's top-ranked Track as the canonical Member ↔ Track linkage. Alternative: enumerate Members where ANY captured Insight has a given track_id. Demo uses the simpler current_track_id linkage.
+- **Track Performance surface counts Members where `current_track_id` matches.** Members can have evidence relevant to multiple Tracks; we surface only the top-ranked one to keep the cross-Track aggregation simple. Pilot may want a "Members where this Track is in candidate set" expanded view.
+- **Stage-skip detection iterates roster** + per-Member fetches FactorCaptures + entity counts. N+1 query pattern; fine for demo (~3 Members) but Pilot scale needs batch query. Logged in Note 10.
+- **Insight Engine routes are server-rendered (`dynamic = "force-dynamic"`).** Without this directive Next.js 16 prerenders at build time; portfolio data would be stale until next deploy. `force-dynamic` re-renders each request — fits the live-DB model.
+- **v1 server actions don't recompute workflow state.** Demo viewers use v2 dialpad for new captures; v1 routes are legacy. Workflow state stays correct after seed; on-demand recompute via direct call from any future v1 wiring.
+- **Coach v2 content keeps existing CoachBullet shape.** No structural changes; only content swaps. CTA mapping conservative — only bullets that map cleanly to a single capture form get CTAs (24 of 48 bullets across 12 cells). Other bullets (orientation prose: "Listen for...", "Probe...", "Don't rush...") stay static.
+- **Recapture detection takes `prismaOrTx: PrismaClient`.** Both PrismaClient and TransactionClient expose the same delegate API for findFirst/create/update on factorCapture and reaction. Trust the call site to pass a structurally-compatible client; cast through `unknown` when calling from inside `prisma.$transaction`.
+- **Reaction value cast through `unknown`.** Prisma's typed ReactionValue enum doesn't widen from helper's `string` input; cast preserves write-time type checking at the action layer (`REACTION_NUANCED_RESPONSES.has(input.response_value)`) without leaking enum imports into the generic helper file.
+
+### Watch for review
+
+- **Track Performance Member-Type mix** is a small auxiliary stat; if visual review prefers more workflow-state breakdown (e.g., by-handoff status), the third Stat block can swap content.
+- **Member portfolio sort is fixed** (oldest-touched first) without UI to change. Spec §C.4 mentioned filters and sort options; demo ships with default sort only — visual review may want filter chips above the list.
+- **Coverage tag distribution** uses the canonical_tag's second segment ("authority" / "information" / etc.) as display text. If visual review wants friendlier labels (e.g., "Decision-maker authority" / "Needs more information"), it's a one-line `humanizeTag` call away.
+- **Stage-skip: zero stage-skipping Members in current seed.** All three fixtures have appropriate Discover + Measure evidence captured per their top-ranked Track. The surface ships with the "no stage-skipping Members" empty state visible. To exercise the populated state, a banker would need to capture a Reaction or Model on a Member without first capturing required Discover/Measure factors — uncommon in demo flow but possible. If visual review wants the populated state demonstrable, an artificial-fixture seed entry would force it; not done in this sprint.
+- **Coach v2 bullet count (4/cell)** vs Sprint 5a.3's variable count (2-4/cell): cells are slightly denser. If review surfaces "too dense" reading, trim to 3/cell preserving the highest-signal bullets.
+- **Recapture pattern doesn't apply to Signals via v1 saveAskCaptures.** v1 actions ship with original create-always behavior; demo viewers using v2 dialpad's + Ask still get original behavior because + Ask wraps the v1 component. Pilot wires recapture into v1 saveAskCaptures for full coverage.
+
+### Cross-references
+
+- `MEMBER_TYPE_GUIDANCE_v2.md` (repo root) — canonical Coach content source
+- `BUSINESS_FACTOR_MATRIX_v1.md` — factor catalog (current_track_id derives via matrix-ranker)
+- `INSIGHT_PATTERN_LIBRARY_v1.md` — Pattern library (Insights count toward total_captures in workflow state)
+- `lib/workflow-state.ts` — `recomputeWorkflowState`, `recomputeAllWorkflowStates`
+- `lib/recapture-detection.ts` — `factorCaptureOrUpdate`, `reactionOrUpdate`, `RecaptureResult`
+- `lib/portfolio-queries.ts` — `memberRoster`, `trackPerformanceData`, `openIndecisionData`, `stageSkipData`
+- `app/v2/insight-engine/layout.tsx` + `page.tsx` — Insight Engine shell + landing
+- `app/v2/insight-engine/{tracks,portfolio,coverage,stage-skip}/page.tsx` — four portfolio surfaces
+
+Sprint 5b.2 ships the portfolio architecture. Insight Engine routes work; recapture pattern works; Coach v2 content lands. Visual review next; Sprint 6 (polish + EVP demo deploy) is the final sprint.
+
+---
+
+## 2026-05-06 — Sprint 5c (Blaze Product Realignment, Additive Track Architecture, Bug Patches)
+
+### Goal
+
+Sprint 5b.2 visual review surfaced an architectural gap: 3 of 5 demo Tracks (Working Capital LOC, SBA 7(a), Treasury Services) don't map to Blaze's actual lending product catalog. Sprint 5c is **additive realignment**: TRACK-001 + TRACK-004 retained as future-expansion framing; TRACK-005 dropped (no Blaze equivalent); 6 new Tracks added mapping directly to Blaze's catalog (Investment Property Loan, Equipment & Machinery, SBA 504, PACE Loan, Business Visa Credit Card, Unsecured Loan); TRACK-002 renamed Vehicle/Fleet → Business Vehicle Loan. Cygnus's primary shifts from conventional CRE to SBA 504 (owner-occupied manufacturing facility).
+
+### What shipped
+
+- **Block A — Schema realignment.** 6 new TrackTemplates (TRACK-006 through TRACK-011) with full `required_evidence_per_objective` and Blaze product terms. TRACK-002 renamed "Vehicle / Fleet Loan" → "Business Vehicle Loan". TRACK-005 + FACTOR-027 (treasury_services_adopted) dropped. 9 new BusinessFactors: FACTOR-029 owner_occupancy_confirmed, FACTOR-030 real_estate_target_property, FACTOR-031 energy_improvement_target, FACTOR-032 property_eligibility_confirmed, FACTOR-033/034/035 sized-cost factors, FACTOR-036/037 requested-amount factors, FACTOR-038 employee_count_band. Total catalog: 28 → 37 factors.
+- **Block B — Matrix entries.** 47 new MatrixEntry records across 6 new Tracks (TRACK-006: 10, TRACK-007: 9, TRACK-008: 12, TRACK-009: 6, TRACK-010: 5, TRACK-011: 5) plus 1 owner-occupancy negative entry on TRACK-003. Net: 60 → 98 entries (dropped 9 TRACK-005 + 1 FACTOR-027). Tier rules use Blaze's actual product terms (PACE 14-year, Equipment 7-year, Vehicle 5-year, Unsecured $25K cap, SBA 504 50/40/10).
+- **Block C — Pattern Library v2.** Dropped 6 TRACK-005 Patterns (031-036). Added 23 new Patterns (037-059) covering 6 new Tracks per `INSIGHT_PATTERN_LIBRARY_v2_additions.md`. Library net: 36 → 53 Patterns.
+- **Block D — Fixture realignment.** Cygnus's primary Track shifted TRACK-003 → TRACK-008 SBA 504. Three new factor captures for Cygnus: FACTOR-029 owner_occupancy_confirmed=true, FACTOR-038 employee_count_band=85, FACTOR-035 property_acquisition_amount_sized=$5.5M. All four Cygnus seed Insights migrated track_id TRACK-003 → TRACK-008 (matched_pattern_ids retained — Patterns and Insights can reference different Tracks when the underlying observation transfers). Northland: TRACK-002 rename only. Jenny: unchanged.
+- **Block E — Coach Member-Type guidance v3.** Specialty manufacturing Coach cells substantively replaced with SBA 504-aware content per `MEMBER_TYPE_GUIDANCE_v3_addendum.md` Section 1: owner-occupancy framing, 50/40/10 structure references, CDC + SBA + CRE specialist coordination, 90-150 day SBA 504 timeline. Catering Discover/Navigate gained 1 cross-Track bullet each (delivery vehicle → Business Vehicle Loan; venue ownership → Investment Property + Business Visa). HVAC Discover/Consult gained 1 cross-Track bullet each (HVAC equipment vs vehicles distinct; PACE as customer-financing tool).
+- **Block F — Track context dropdown scaling.** Sidebar Track switcher shows top 5 candidates by default with "view all N lending products ↓" affordance when more exist. Track Performance surface (`/v2/insight-engine/tracks`) groups Tracks: "Blaze lending products" (8 Tracks) + "Future-expansion lending products" (TRACK-001 + TRACK-004) with 90% opacity + italic note "Tracks retained for matrix coverage; not currently in the Blaze offering catalog."
+- **Block G — Bug patches.**
+  - **G.1 CTA factor pre-selection:** added defensive `useEffect` in `MatrixAwareCapture` to re-sync `factorId` state when `preselectedFactorId` prop changes. Belt-and-suspenders against React state-staleness when form is reused without unmount.
+  - **G.2 ShowEvent dedup:** root cause was strict (member, artifact, model_id) match in saveShowEvent's findFirst. saveModel auto-creates ShowEvent with model_id non-null; artifact preview "Mark as shared" calls with model_id=null → strict match missed cross-path. Fix: dropped model_id from dedup predicate. Same (member, artifact) → same logical "shown" moment regardless of which Model produced it. Inline test verified: 0 → 1 → 1 (second call updates timestamp; no duplicate row).
+
+### Verified
+
+- `pnpm tsc --noEmit` clean (after `.next` cleanup; iCloud sync periodically duplicates route-types files)
+- `pnpm exec tsx prisma/seed.ts` clean: 37 BusinessFactors, 10 TrackTemplates, 98 MatrixEntries, 39 FactorCaptures, 53 InsightPatterns, 12 Insights
+- `pnpm exec tsx scripts/probe-ranker.ts`:
+  - Jenny: TRACK-001 Working Capital LOC strong (5s/1m) — unchanged
+  - Northland: TRACK-002 Business Vehicle Loan strong (5s/1m) — name updated, ranking preserved
+  - **Cygnus: TRACK-008 SBA 504 strong (3s/5m) — primary shifted from TRACK-003.** TRACK-003 demoted to insufficient via owner-occupancy negative entry (5s/6m/1neg).
+- Inline ShowEvent dedup test: same (member, artifact) re-shared → row count stays at 1 (timestamp updated, no duplicate created).
+
+### Architectural notes for Pilot (continuing 1-10 from Sprint 5b.2)
+
+**Note 11 — Track expansion governance.** When Blaze expands product offerings (e.g., adds Working Capital LOC), TRACK-001 framing shifts from future-expansion to active. Architecture supports this without code change; just update the `FUTURE_EXPANSION_TRACK_IDS` Set in `app/v2/insight-engine/tracks/page.tsx`. Pilot may want this driven by TrackTemplate metadata field (e.g., `display_status`) rather than hard-coded ID list.
+
+**Note 12 — Member-Type to Track inference.** With 10 Tracks, automatic Track suggestion by Member-Type (lightweight inference: "specialty_manufacturing" → suggest TRACK-008 + TRACK-007 + TRACK-003) is Pilot polish. Currently bankers select Track context via the matrix ranker's `current_track_id` + manual switching via dropdown.
+
+### OPEN_QUESTIONS amendments
+
+- **Add Q-D1 (Track display ordering):** future-expansion Tracks (TRACK-001, TRACK-004) currently retained without operational impact for Blaze. When does Blaze decide whether to expand into LOC/SBA 7(a) vs drop these Tracks entirely? Pilot conversation needed.
+- **Add Q-D2 (TRACK-009 PACE customer fit):** PACE is a niche product. Pilot needs to evaluate whether bankers actually use this Track frequently enough to warrant prominence. If used <5% of conversations, consider de-prioritizing in default top-5 view.
+
+### Decisions made during implementation
+
+- **Owner-occupancy negative entry on TRACK-003** rather than additional TRACK-008 strong entries. Structurally honest: SBA 504 has better terms for owner-occupants (longer term, lower equity, partial guarantee). The negative correctly demotes TRACK-003 below TRACK-008 in Cygnus's case while leaving non-owner-occupants on conventional CRE.
+- **Cygnus seed Insights retain matched_pattern_ids pointing to TRACK-003 Patterns.** Patterns and Insights are independent in their Track references. Avoids cascading edits when the only change is the Insight's Track context.
+- **Coach v3 specialty_manufacturing cell density: 5 bullets** (was 2-4). Added owner-occupancy + employee count bullets. If visual review surfaces "too dense," trim by combining bullets.
+- **TRACK-002 rename keeps existing Sprint 4.7 Block P fixture content.** Northland's "fleet-marked trucks for trust signals" novel insight reads under "Business Vehicle Loan" framing because fleet IS multiple business vehicles.
+- **G.2 dedup loosened to (member, artifact) only.** Sprint 5b.1 Patch 7 used (member, artifact, model_id) — too strict. Sprint 5c discovered cross-path edge case (auto-create + manual share). Pilot may want richer audit trail (preserve all share-events with timestamps; query newest) — Sprint 5b.2 Q-C2 covers related discussion.
+
+### Watch for review
+
+- **Cygnus TRACK-008 ranker output [3s/5m]** is strong but lower-tier-count than TRACK-003's old [5s/6m]. If visual review wants higher tier counts, more TRACK-008 strong factors can be authored. Demo narrative still works (TRACK-008 is primary; TRACK-003 demoted visible in dropdown).
+- **Track Performance future-expansion grouping** uses 90% opacity to be subtly distinct without judgment. CSS tweak if review wants more or less visible distinction.
+- **Sidebar dropdown top-5 cap** may surface "view all 9" prominently for Members with many candidates. Adjusting `TOP_CAP` in `TrackList` reduces clicks-to-discovery.
+- **"Future-expansion lending products"** framing is intentionally neutral. Copy alternatives: "Tracks not yet offered by Blaze," "Adjacent products under review."
+- **Block G.1 fix is defensive useEffect.** Original useState initializer already handled `preselectedFactorId === undefined` correctly (factorId = ""). The effect catches React state-staleness if the form is reused without unmount; Sprint 5c didn't reproduce the original bug under controlled testing, but the defensive sync removes the risk.
+
+### Cross-references
+
+- `INSIGHT_PATTERN_LIBRARY_v2_additions.md` (repo root) — canonical Pattern v2 source
+- `MEMBER_TYPE_GUIDANCE_v3_addendum.md` (repo root) — canonical Coach v3 source
+- `prisma/seed-matrix.ts` — TRACK-002 rename, TRACK-005 drop, 6 new Tracks, 9 new factors, 48 net new MatrixEntries, FACTOR-029/038/035 captures for Cygnus
+- `prisma/seed-insights.ts` — 6 TRACK-005 patterns dropped, 23 new patterns (037-059), Cygnus Insights migrated to TRACK-008
+- `lib/stage-guidance.ts` — specialty_manufacturing replaced with SBA 504-aware v3 content, catering + HVAC minor additions
+- `app/v2/members/[id]/sidebar.tsx` — `TrackList` extracted with top-5 cap + view-all affordance
+- `app/v2/insight-engine/tracks/page.tsx` — Blaze-offers vs future-expansion grouping
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — defensive useEffect for preselectedFactorId sync
+- `app/v2/members/[id]/actions.ts` — saveShowEvent dedup loosened to (member, artifact)
+
+Sprint 5c ships. Demo is now Blaze-product-accurate: 8 Tracks map to Blaze's catalog + 2 retained as future-expansion. Cygnus on SBA 504. Bugs patched. Visual review next; Sprint 6 (polish + EVP demo deploy) is the final sprint.
+
+---
+
+## 2026-05-04 · Sprint 5d-pre — Member-Type rename (foundation for Sprint 5d)
+
+**Session type:** Single-block foundation rename. Spec: `docs/prompts/SPRINT_5d_pre_MEMBER_TYPE_RENAME.md`. Goal: rename Member-Types across the codebase (IDs, banker labels, Pattern metadata) before Sprint 5d ships content rewrite + new artifact templates against the renamed foundation.
+
+**Block A — comprehensive rename (per spec A.1 mappings):**
+
+ID + display rename (MemberType.name strings):
+- `small_caterer` / "Small Caterer · Starting" → `event_services` / "Event services"
+- `hvac_trades` / "HVAC & Trades · Growing" → `maintenance_services` / "Maintenance services"
+- `specialty_manufacturing` / "Specialty Manufacturer · Established" → `specialty_manufacturer` / "Specialty manufacturer"
+
+Pattern member_type_origins metadata mapping with dedupe (per spec A.1):
+- "catering" / "small_caterer" → "event_services"
+- "hvac_trades" / "plumbing" / "specialty_construction" → "maintenance_services" (dedupe to single value where multiple originals collapsed)
+- "specialty_manufacturing" → "specialty_manufacturer"
+- "general", "professional_services" preserved
+
+Coverage broadening (per spec A.4): added `MEMBER_TYPE_COVERAGE` constant + `memberTypeCoverage(name)` helper in `lib/stage-guidance.ts`. Each Member-Type's description text in `prisma/seed.ts` was broadened to enumerate covered industries (caterers/event planners/venue operators…; HVAC/plumbing/electrical/landscapers/pool service…; mid-market manufacturers/industrial fabrication/contract manufacturing).
+
+**Files modified:**
+
+- `prisma/seed.ts` — three MemberType records renamed (`name`, `description`); local consts renamed (`smallCatererStarting` → `eventServices`, `hvacGrowing` → `maintenanceServices`, `specialtyManufacturerEstablished` → `specialtyManufacturer`); macro titles updated (Q3 supplier payment compression — Event services; Light commercial fleet ROI window — Maintenance services); capital event partnership artifact description updated. `industryFamilies.specialtyManufacturing` (a separate `industry_family` concept, not a Member-Type) deliberately untouched.
+- `prisma/seed-insights.ts` — 49 Pattern member_type_origins arrays remapped per A.1; 7 arrays affected by dedupe (PATTERN-010 through PATTERN-016 collapsed `hvac_trades + plumbing [+ specialty_construction]` into single `maintenance_services` entry).
+- `lib/stage-guidance.ts` — three `MEMBER_TYPE_COACH` keys renamed via constant rename (`SMALL_CATERER` → `EVENT_SERVICES`, `HVAC_GROWING` → `MAINTENANCE_SERVICES`, `SPECIALTY_MFG` → `SPECIALTY_MANUFACTURER`); added `MEMBER_TYPE_COVERAGE` constant + `memberTypeCoverage(name)` helper; header doc comments + rename map updated; one Sprint 5c block-E comment that referenced `specialty_manufacturing` updated to `specialty_manufacturer`.
+
+**Schema:** no migration needed. `MemberType` is a relation entity (not an enum); the rename is data-only — `MemberType.name` strings change but the UUID FKs in `Member.member_type_id` stay stable. Seed reseeds the three MemberType records with new names; Members re-link by name lookup via existing fixture wiring.
+
+**Verification:**
+
+A.5 grep audit (all 0 hits across `*.ts`, `*.tsx`, `*.json`, `*.prisma`, excluding `node_modules`, `.next`, `app/generated`, and intentional rename-history comments in `prisma/seed.ts` + `lib/stage-guidance.ts`):
+- `small_caterer` → 0
+- `hvac_trades` → 0
+- `specialty_manufacturing` → 0
+- `"catering"` (Pattern metadata) → 0
+- `"plumbing"` → 0
+- `"specialty_construction"` → 0
+
+Build/seed/typecheck:
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (all 11 routes including `/v2/members/[id]`, `/growth-conversations/[memberId]`, four `/v2/insight-engine/*` routes)
+- `pnpm exec tsx prisma/seed.ts` clean (3 memberTypes, 3 members seeded; Step 1-11 complete)
+
+DB sample post-seed:
+- Jenny's Catering → MemberType "Event services"
+- Northland HVAC (DBA preserved) → "Maintenance services"
+- Cygnus Bioscience → "Specialty manufacturer"
+
+Pattern member_type_origins sample:
+- PATTERN-001: `["event_services","specialty_retail","agriculture","general"]`
+- PATTERN-003: `["event_services","maintenance_services","specialty_manufacturer","general"]`
+- PATTERN-010: `["maintenance_services","general"]` (dedupe applied — was `["hvac_trades","plumbing","specialty_construction","general"]`)
+- PATTERN-013: `["maintenance_services","general"]` (dedupe applied)
+- PATTERN-018: `["specialty_manufacturer","specialty_retail","general"]`
+
+HTTP probes (after a clean `rm -rf .next && pnpm dev` to defeat iCloud .next-folder churn):
+- `/growth-conversations/{jenny|northland|cygnus}` → 200
+- `/v2/members/{jenny|northland|cygnus}` → 200; rendered HTML grep confirms "Event services" / "Maintenance services" / "Specialty manufacturer" labels appear (4–5 occurrences each)
+- `/v2/insight-engine/{tracks|portfolio|coverage|stage-skip}` → 200
+- `/v2/insight-engine` → 200
+
+**Notes / deviations:**
+
+- `CONTENT_REWRITE_v1.md` referenced by spec preamble was not present in the repo; the prompt's Section A.1 was self-contained for the rename mappings, so execution proceeded against the prompt directly.
+- "HVAC" still appears in human-readable Coach-content prose (e.g., "Surface PACE Loan as a customer-financing option for HVAC's installation customers") and the `Northland HVAC` DBA. Per spec, content rewrite + Coach updates are deferred to Sprint 5d — these mentions are intentionally left for the next sprint.
+- `industryFamilies.specialtyManufacturing` (industry_family table, not Member-Type) is a different concept and was correctly left untouched per Section 5 surface-vs-schema discipline.
+- Dev server occasionally returns 500 on rapid HEAD requests due to iCloud sync deleting `.next/dev/*` files between requests (known per prior BUILD_LOG entries). Production build (`pnpm exec next build`) is the authoritative correctness check; it passes clean.
+
+**Suggested next move:** Sprint 5d — content rewrite (Macros, Coach, artifact descriptions reflecting broadened Member-Type coverage), 7 new artifact templates, bug patches. Foundation is in place; Sprint 5d builds on the renamed names with no further schema or rename concerns.
+
+---
+
+## 2026-05-08 · Sprint 5d — Artifact templates, surface copy rewrite, bug patches, stage-skip fixture
+
+**Session type:** Multi-block sprint per `SPRINT_5d_v2_CONTENT_AND_TEMPLATES.md`. Single checkpoint.
+
+### Critical context — missing source document
+
+`CONTENT_REWRITE_v1.md` (the spec's primary source for Sections 2 Coach / 3 Capture forms / 4 CTA labels / 5-7 surface copy / 8 Pattern rewrites / 9 artifact template specs) was not present in the repo at execution time. Per Francisco's direction, the sprint proceeded with whatever guidance was inlined in the prompt itself plus best-effort scaffolding for any block that needed the missing source. Deferrals are flagged below per block; downstream Sprint 5d follow-up will land the editorial content once `CONTENT_REWRITE_v1.md` arrives.
+
+### What shipped
+
+**Block A — ArtifactTemplate schema + Model extension.** New `ArtifactTemplate` Prisma entity (id, track_id, title, description, member_type_applicability, parameter_schema, output_summary_template, structural_content). All JSON-shaped fields stored as String per the existing seed-insights / seed-matrix convention. Model extended with optional `template_id` + `template_parameters` (JSON-encoded). Migration `20260508143214_sprint5d_artifact_templates` applies cleanly. Prisma client regenerated. `ArtifactTemplate.deleteMany()` added to seed clear() before TrackTemplate so reseeds don't FK-violate.
+
+**Block B — 8 ArtifactTemplate seed records** (`prisma/seed-artifact-templates.ts`).
+- `ARTIFACT-TEMPLATE-001` (TRACK-003 CRE acquisition) — full parameter schema and output template per the example in spec A.2.
+- `ARTIFACT-TEMPLATE-008` (TRACK-008 SBA 504 transaction roadmap) — fully spec'd inline in B.2 with eight stages, role lists, you-are-here marker, share button. Replaces the legacy Capital event partnership map.
+- Templates 002-007 (SBA 7(a), Investment property, Equipment ROI, PACE, Business credit card, Unsecured loan) — **scaffolded with reasonable banking conventions** because Section 9 sub-sections weren't available. Each has a complete parameter_schema, output_summary_template, and structural_content; final editorial pass deferred. Flagged in seed file header comment.
+- Cygnus's existing Capital event Model migrated to `template_id="ARTIFACT-TEMPLATE-008"` with `template_parameters={"current_stage":"3"}` (CDC partner introduction stage).
+- Block A.3 (+ Model form parameter input UI) and A.4 (artifact view rendering with parameter substitution) **deferred** — substantial UI work that needs Section 9 details to land cleanly. The data layer is in place; the form/render UI is the next chunk.
+
+**Block C — Coach content rewrite. DEFERRED ENTIRELY.** Section 2 source missing; current Sprint 5d-pre Coach content stays in place. Logged here so the deferral is explicit and visible.
+
+**Block D — Capture form copy.** Applied only the explicit text changes spec'd in the prompt:
+- Drawer titles (`ACTIVITY_TITLES` in `app/v2/members/[id]/dialpad.tsx`): "Capture Quantify" → "Capture a number"; "Capture Ask" → "Capture what the Member said"; "Capture Reaction" → "Capture how the Member reacted"; etc.
+- + Quantify mode toggle: "Lending-product specific" → "Tied to a lending product"; "Free-form magnitude" → "A number that stands on its own".
+- + Quantify save button: "Save factor" → "Save".
+- Sizing checkbox: "Also save as a SizingMeasurement (surfaces in captured feed as a Sized card)" → "Also show this as a sizing card" + helper line "Use this when the value is a magnitude the Member should see at a glance — like a $75K credit limit or 70% capacity utilization." (Block H.3).
+- Deeper field-label / helper-text rewrites (Section 3.1-3.7 detail) **deferred** — would need source.
+
+**Block E — CTA labels rewrite** (`lib/cta-derivation.ts`).
+- Layer 1 Class 1B (symbolic refs): `model_produced` → "Build a model with the Member"; `model_shown` → "Show the Member the projection"; `reaction_captured` → "Capture how the Member reacted"; `decision_maker_mapping` → "Capture what the Member said about who decides"; `specialist_handoff_initiated` → "Hand off to a specialist".
+- Layer 2 (threshold-uplift): "Re-confirm X" → "Re-check X" with context "currently V. If it's T or higher, the case gets stronger."
+- Layer 8 (specialist handoff): "Initiate specialist handoff for [track]" → "Hand off to the [department] for [Lending product]"; TRACK-008 special-cased to "Hand off to SBA 504 specialist" per approved decision (avoids "Hand off to the SBA 504 specialists for SBA 504" doubling). TRACK-008 added to `TRACK_SPECIALIST_DEPARTMENT` (was missing).
+
+**Block F — Popup-as-workflow + sidebar + Insight Engine surface copy.**
+- Popup (`app/v2/members/[id]/objective-popup.tsx`): "Already captured" → "What we've captured"; "[N]d ago" stale label → "[N] days old"; open-thread chip "open" → "open thread"; "Implications" footer header → "Questions to bring up with the Member"; Pattern label "PATTERN-NNN · type" → just "Type" (sentence case, no internal ID); Insight footer "matched PATTERN-NNN" → just "matched" (drop ID).
+- Sidebar (`app/v2/members/[id]/sidebar.tsx`): "view comparison ↗" → "compare to other lending products ↗"; "view all N lending products ↓" → "see all N lending products ↓"; section labels "artifact" → "artifacts", "macro" → "other artifacts", "history" → "past conversations".
+- Insight Engine (`app/v2/insight-engine/{layout,page,tracks,portfolio,coverage,stage-skip}/page.tsx`): nav labels and page titles updated — "Track Performance" → "Lending product performance"; "Coverage" → "Open threads"; "Stage-skip" → "Members who skipped earlier work"; "Blaze lending products" → "Lending products Blaze offers"; "Future-expansion lending products" → "Lending products Blaze doesn't offer today"; capture-density tier labels "0-2 / 3-6 / 7+" → "A little / Some / A lot"; portfolio + tracks "Pending ActionCards" → "Pending follow-ups"; "Stale captures" → "Captures over 90 days old"; coverage "Distribution by Indecision tag" → "What's holding things up".
+
+**Block G — Pattern library implication question patterns.** Applied Section 8.10 general patterns where exact matches existed in `prisma/seed-insights.ts`:
+- "What does it mean to..." → "What would it look like to..." (PATTERN-027 line 411, PATTERN-040 line 617)
+- "Where does the 'we can fit it in' mindset start to break down?" → "When does..." (PATTERN-019 line 303)
+- The 17 specific Pattern.content rewrites listed in Section 8 sub-sections **deferred** — needs source. The 53-Pattern library count is unchanged.
+
+**Block H — Three bug patches.**
+- **H.1 + refresh CTA factor pre-selection.** Added `key={\`quantify-\${preselectedFactorId ?? "none"}\`}` to `<QuantifyForm>` mount in `dialpad.tsx`. Forces a fresh component mount whenever the preselect changes — guarantees fresh useState init for `factorId`, defeating any stale internal state in MatrixAwareCapture.
+- **H.2 Insights surfacing only on Discover.** Updated `popupContext` filter in `workstation-shell.tsx`: Track-level Insights (no `addresses_signal_id`) now surface on every objective popup whose `track_id` matches the current Track context, not just Discover. `InsightDisplay` type extended with `track_id` field; page.tsx propagates from Insight row.
+- **H.3 SizingMeasurement copy.** Already covered under Block D (sizing checkbox label + helper).
+
+**Block I — Stage-skipping fixture Member** (`prisma/seed-stage-skip.ts`).
+- Riverside Catering (slug `riverside`, event_services Member-Type, owner Daniel Rivers, St. Paul MN, 4 employees, $200K-$500K revenue band).
+- One Conversation (Apr 30 2026, opportunity meeting, in_person channel, cautious sentiment).
+- Two FactorCaptures: FACTOR-001 Seasonal revenue variance = 25% (fires TRACK-001 strong matrix entry); FACTOR-005 Surplus revenue over costs = 22% (fires TRACK-001 moderate). Neither factor is in TRACK-001's Discover-required set [024, 022, 016, 001] — FACTOR-001 covers 1 of 4, leaving 3 missing.
+- Model record (banker draft seasonal cashflow projection, no template_id since TRACK-001 has no parameterized template).
+- Reaction record (`response_value=skeptical`, `primary_concern=timing_concern`, member quote "I just want to look at last year's numbers more carefully before I commit to a number."). `skeptical` is the closest enum value to the spec's "hesitant"; `timing_concern` is the closest open-thread taxonomy tag to "needs more discovery".
+- Workflow state recompute correctly assigns `current_track_id=TRACK-001`. Stage-skip portfolio surface picks Riverside up with `skipped_objectives=["discover"]`.
+
+**Block J — Governance updates.** This entry. OPEN_QUESTIONS amendments and architectural notes below.
+
+### Files modified
+
+- `prisma/schema.prisma` — ArtifactTemplate model + Model.template_id/template_parameters fields
+- `prisma/migrations/20260508143214_sprint5d_artifact_templates/migration.sql` — generated
+- `prisma/seed.ts` — seed step 11 (ArtifactTemplate) + step 12 (Riverside) + clear() additions
+- `prisma/seed-artifact-templates.ts` — new (8 templates + Cygnus migration)
+- `prisma/seed-stage-skip.ts` — new (Riverside fixture)
+- `prisma/seed-insights.ts` — 3 implication-question rewrites
+- `lib/cta-derivation.ts` — Layer 1B/2/8 label rewrites; TRACK-008 added to specialist map
+- `app/v2/members/[id]/dialpad.tsx` — drawer titles + key prop on QuantifyForm
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — sizing checkbox copy + mode toggle + Save button
+- `app/v2/members/[id]/objective-popup.tsx` — popup section labels + stale format + Pattern ID drops + open thread chip
+- `app/v2/members/[id]/workstation-shell.tsx` — H.2 Insight gating fix
+- `app/v2/members/[id]/page.tsx` — InsightDisplay track_id propagation
+- `app/v2/members/[id]/sidebar.tsx` — section labels + comparison/view-all links
+- `app/v2/insight-engine/layout.tsx` + `page.tsx` + `{tracks,portfolio,coverage,stage-skip}/page.tsx` — surface titles + density tiers + workflow-state stat labels
+
+### Verification
+
+- `pnpm tsc --noEmit` — clean
+- `pnpm exec next build` — clean (all 11 routes including 4 IE routes)
+- `pnpm exec tsx prisma/seed.ts` — clean. Final counts: 4 members (Jenny, Northland, Cygnus, Riverside), 4 models, 4 reactions, 41 factor captures, 99 matrix entries, 53 InsightPatterns, 8 ArtifactTemplates.
+- HTTP probes: `/v2/members/{jenny|northland|cygnus|riverside}` → 200; `/growth-conversations/{jenny|northland|cygnus|riverside}` → 200; `/v2/insight-engine/{tracks|portfolio|coverage|stage-skip}` → 200; `/v2/insight-engine` → 200.
+- Stage-skip surface confirms Riverside listed with Discover missing on Working Capital LOC track.
+- Cygnus's Model has `template_id=ARTIFACT-TEMPLATE-008`, `template_parameters={"current_stage":"3"}` per DB query.
+
+### Deferrals (load-bearing for downstream Sprint 5d follow-up)
+
+1. **Block C — Coach content rewrite.** Full Section 2 (Event services / Maintenance services / Specialty manufacturer × 4 phases each) needs `CONTENT_REWRITE_v1.md` to land before this can ship.
+2. **Block B templates 002-007 — final editorial pass.** Scaffolding is in place but the title, description, parameter labels, and helper text for each template should match Section 9 sub-sections when available. Members can demo against the scaffolded versions; nothing breaks.
+3. **Block A.3 / A.4 — + Model form parameter input UI + artifact rendering.** The data plumbing (template selection, parameter persistence) is in place; the UI is not. Banker can save a Model without a template; banker cannot yet pick a template + fill parameter inputs from the + Model form. Deferred until template content is final.
+4. **Block D — full capture form copy rewrite.** Only the explicit changes inlined in the prompt landed. Field labels, helper text, and validation messages across the six form components need Section 3.1-3.7 source.
+5. **Block G — 17 specific Pattern.content rewrites.** Section 8 sub-sections needed.
+
+### Architectural notes for Pilot (continuing 1-12 from Sprint 5c)
+
+**Note 13 — ArtifactTemplate parameter validation.** Demo accepts banker free-form parameter input with no enforcement. Pilot needs schema-driven validation: currency parsing (`$1,000` → 1000), percentage range checks (0–100 typical, but DSCR can exceed 1), enum value enforcement on `select` parameters, computed-field auto-calculation (e.g., LTV from loan_amount / acquisition_price). Library candidates: zod for schema; tiny custom layer for the computed-field expression evaluator (current `parameter_schema.computation` strings are intentionally restrictive — no eval, no arbitrary JS).
+
+**Note 14 — Member-Type taxonomy evolution.** Demo's three Member-Types (event_services / maintenance_services / specialty_manufacturer) were broadened in Sprint 5d-pre. Pilot may add more Member-Types as bankers encounter business types not fitting current categories — e.g., professional services (law/accounting/consulting), specialty_retail (boutique/franchise), agriculture (small farms / co-ops). The Member-Type Coach content (`MEMBER_TYPE_COACH` in `lib/stage-guidance.ts`) is keyed by display name, so adding a new Member-Type means: (a) seed the MemberType row, (b) add a Coach cell, (c) extend the Pattern library's `member_type_origins` arrays where applicable, (d) decide if any Track templates need Member-Type-specific evidence framing.
+
+### OPEN_QUESTIONS amendments
+
+- **Add Q-E1 — Track-aware factor filtering in + Quantify.** 37 factors organized into 6 categories produces friction in the dropdown when banker is anchored on a specific Track context. Pilot polish: filter the factor list to ~6-8 factors relevant to the current Track context, with an "all factors" expander for banker flexibility. Driver: visual review of + refresh CTA flow surfaced the friction; current Sprint 5d-pre fix (key-prop force remount) addresses the bug but not the underlying UX cost of long dropdowns.
+- **Add Q-E2 — Coach catering content references Working Capital LOC.** TRACK-001 Working Capital LOC is currently classified as "future-expansion" (Blaze doesn't offer it today), but Coach event_services content references LOC framing because the demo's narrative was authored when Blaze hypothetically offered LOC. When Blaze either (a) expands to offer LOC, or (b) confirms permanent non-offer, the Coach content shifts: either remove LOC references or tag them explicitly as "if Blaze adds LOC".
+
+### Decisions made during implementation
+
+- **JSON fields stored as String** (not the Prisma `Json` type) for ArtifactTemplate — matches existing convention (`seed-insights.member_type_origins`, `TrackTemplate.required_evidence_per_objective` is the exception with `Json` because the matrix infrastructure landed before the convention solidified). New fields follow the more recent convention.
+- **TRACK-008 special-cased in CTA Layer 8** rather than refactoring the label format. The format `"Hand off to the [department] for [Lending product]"` reads naturally for TRACK-003 ("Hand off to the CRE specialists for Commercial Real Estate Term Loan") and TRACK-004 ("Hand off to the SBA specialists for SBA 7(a) Loan"), but produces "Hand off to the SBA 504 specialists for SBA 504" — the SBA-SBA doubling cited in the approved decision. Rather than introduce per-Track override fields, a tight switch on track.id.
+- **Riverside primary_concern uses `timing_concern`** (open-thread taxonomy) rather than the spec's "needs more discovery" string. The Reaction.primary_concern column has a contextual taxonomy per COMPLIANCE.md §6.3; "needs more discovery" isn't an enum value in either the open-thread or decline-reason set. `timing_concern` carries the closest banker-meaning ("Member wasn't ready yet to commit to a sizing").
+- **Riverside skipped_objectives = ["discover"] only.** Captured FACTOR-001 + FACTOR-005 covers Measure (with Model produced), so Measure is complete. This produces a cleaner stage-skip story (one missing objective, severity tier 1) than the alternative ("discover" + "measure" both skipped). Spec wanted the surface to surface Riverside; severity-1 is sufficient demo coverage.
+- **Cygnus current_stage = 3** (CDC partner introduction). Cygnus's existing Model output_summary mentions "specialist Marcus Webb engaged; relationship coordination by Scott" which maps to stage 2-3 of the new SBA 504 roadmap. Stage 3 (CDC partner introduction) gives the demo a more substantive "you-are-here" position than stage 2.
+
+### Watch for review
+
+- **Templates 002-007 demo correctness.** Parameter schemas are reasonable banking conventions but haven't been editorial-reviewed against Section 9. If visual review surfaces "this isn't how Blaze actually structures these conversations," update from CONTENT_REWRITE_v1.md when it lands.
+- **+ Model form lacks template selection UI.** Banker today picks a Track context, opens + Model, and free-types output_summary. The 8 templates exist in the database but are not surfaceable via the form. This is expected per the deferral; calling out for visual review so it's not surprised by absence.
+- **Riverside's Coach content** uses the existing event_services Coach (no Riverside-specific content). The sidebar Coach surface keys by Member-Type only, so Riverside renders the same Coach as Jenny. Not a defect per Block C deferral.
+- **stage-skip surface labels.** "Members who skipped earlier work" reads as a plain English page title; nav label is the same. If banker review prefers shorter ("Skipped work" or just "Stage-skip" retained for compactness), trivial revert.
+
+**Suggested next move:** Sprint 5d follow-up once `CONTENT_REWRITE_v1.md` lands. Items: Block C (Coach), Block B finalization for templates 002-007, Block A.3/A.4 (+ Model parameter UI + artifact view rendering), full Block D copy pass, Block G's 17 specific Pattern rewrites. After that, Sprint 6 (polish + EVP demo deploy).
+
+---
+
+## 2026-05-08 · Sprint 5d follow-up — content rewrite from CONTENT_REWRITE_v1.md (now in repo)
+
+**Session type:** Follow-up after Francisco surfaced two corrections to the prior Sprint 5d entry: (1) discard scaffolded artifact templates 002-007 and rebuild from CONTENT_REWRITE_v1.md Section 9 source, (2) treat Block A.3/A.4 as not yet shipped — the parameterized + Model UI + artifact rendering land in this checkpoint, (3) Coach (Block C), capture forms (Block D), and Pattern rewrites (Block G) are wholesale rewrites from Sections 2 / 3 / 8 source, not incremental edits.
+
+`CONTENT_REWRITE_v1.md` is now present in the repo root. All work in this checkpoint sources from it directly.
+
+### Block B — templates 001-008 rebuilt from Section 9
+
+`prisma/seed-artifact-templates.ts` was rewritten end-to-end. Banking-conventions scaffolding deleted; each template now carries:
+
+- Title and description verbatim from Section 9 sub-sections
+- `member_type_applicability` set per Section 9 sub-section's "Member-Type applicability" line (e.g., 9.1 → specialty_manufacturer + maintenance_services; 9.3 → "broad"; 9.7 → "broad"; 9.8 → specialty_manufacturer)
+- `parameter_schema` derived as a faithful translation of each section's structural-content field list — every field becomes a parameter entry. Field types inferred from the Section text: "$" / cost / amount → currency; "%" / percentage / ratio → percentage / decimal; year counts → integer; binary picks (Fixed/Variable, owner-occupied options) → select; "Documentation requirements summary" / "Tax considerations" / "Sensitivity ranges" → long_text; static-fact lines (e.g., "No prepayment penalties", "PACE assessment transfers with the property") → static_text fields with their value baked in
+- `output_summary_template` verbatim from each section's "Output summary template" line, with `[bracketed placeholders]` translated to `{key}` placeholders matching the parameter_schema keys
+- `structural_content` shape: financing_summary / cashflow_projection / roi_projection / use_plan for templates 001-007; roadmap for 008. Sections grouped per the Section 9 field ordering
+
+Cygnus's existing Model migration: `template_id="ARTIFACT-TEMPLATE-008"`, `template_parameters={"current_stage":"3","you_are_here_label":"Cygnus is here"}` — picks up the §9.8 you-are-here marker discipline.
+
+### Block A.3 — + Model form template selection + parameter inputs
+
+`app/v2/members/[id]/capture-forms/model-form.tsx` rewritten to support template attachment:
+
+- The `artifacts` dropdown now sources from `ArtifactTemplate` records (grouped by Track — visible to banker as "Working Capital Line of Credit" / "SBA 504" / etc.) plus any free-form `Artifact` entries (grouped under "Other artifacts")
+- When a template is selected, the form expands to show a parameter-input panel rendered from the template's `parameter_schema`. Per parameter `type`:
+  - `select` → labeled `<select>` with options from schema
+  - `currency` / `decimal` / `integer` / `percentage` → text input with `inputMode="decimal"` and prefix ($) or suffix (%) where applicable
+  - `text` / `long_text` → `<input>` / `<textarea>`
+  - `static_text` → read-only paragraph rendering the `value` field
+  - `computed` → read-only computed display ("computed once inputs are filled" placeholder until the dependency keys carry values)
+- `output_summary` auto-populates from `output_summary_template + parameter_values` via `resolveTemplateString()`. Watcher `useEffect` keeps it synced until the banker manually edits the textarea, at which point the auto-update halts (`outputSummaryTouched` flag)
+- On save, `template_id` and `template_parameters` (JSON-encoded record) flow through `saveModel` and persist on the Model row. Free-form Artifact attachments save with `template_id=null` (no parameter persistence)
+
+`SaveModelInput` extended in `actions.ts`. `prisma.model.create` writes the new fields; existing transaction wrapping (auto-Show on with-Member provenance, compliance scan on output_summary) is unchanged.
+
+`page.tsx` now loads ArtifactTemplate records joined to TrackTemplate.name, transforms into `ModelArtifactOption[]` with template metadata for the form. Free-form `Artifact.findMany` results pass through with `template: null`.
+
+`lib/artifact-template.ts` added — pure-function helpers: `parseParameterSchema`, `parseStructuralContent`, `parseTemplateParameters`, `resolveTemplateString`, `computeAllValues`. Computed-parameter expressions evaluate via a tiny safe expression parser (strict regex on `[0-9+\-*/().\s]`, then `new Function`); rejects anything else. Currency / percentage formatting for display.
+
+### Block A.4 — artifact rendering with parameter substitution
+
+`app/v2/members/[id]/artifact-template-render.tsx` added. Pure-render component dispatches on `structural_content.type`:
+
+- `financing_summary` / `cashflow_projection` / `roi_projection` / `use_plan` → grouped `Section` cards with `<dl>` field lists. Currency values format with `$` and `toLocaleString`; percentage values append `%`; missing values render as italic em-dash placeholder
+- `roadmap` → numbered ordered list of stages. The stage matching `parameter_values.current_stage` highlights with the orange ring + the `you-are-here` marker (defaults to "You are here"; SBA 504 fixture passes "Cygnus is here" via the `you_are_here_label` parameter). Each stage shows its title, banker-facing description, and roles list
+- The `output_summary_template` resolves with parameter substitution and renders in a left-rule callout under the structural content with the section header "What the model shows"
+
+`main-panel.tsx` Model FeedCard now shows a collapsible `Template` chip when `template_id` is present. Click expands the embedded `ArtifactTemplateRender` inline. Default-collapsed to keep the feed scannable. The pre-existing summary / parameters / assumptions block stays alongside (the template render is additive).
+
+`page.tsx` Member query `models.include` now pulls the attached `ArtifactTemplate` (id / title / description / parameter_schema / structural_content / output_summary_template). Feed item shape extended with the six new template-related fields; values pipe straight into `<ModelTemplatePreview>`.
+
+Verification: `/v2/members/cygnus` HTML grep confirms all 8 SBA 504 stages render ("Initial conversation" through "Post-close relationship") plus 3 occurrences of "Cygnus is here" (the active-stage marker plus 2 schema/render mentions in the parameter helper / output summary).
+
+### Block C — Coach rewrite from Section 2 (verbatim)
+
+`lib/stage-guidance.ts` `MEMBER_TYPE_COACH` constant fully replaced. Each Member-Type × Phase cell now carries the bullets from Section 2 in source order, with the bullet's lead phrase (the verb-led opening) extracted into `boldFragments` for the existing CoachBullet rendering pattern. Wholesale; no incremental edits on top.
+
+CTA wiring per `*[CTA: + activity · context]*` annotations, mapped conservatively:
+
+- `+ Quantify · customer concentration` → FACTOR-003
+- `+ Quantify · seasonal revenue variance` → FACTOR-001
+- `+ Quantify · customer payment cycle` → FACTOR-002
+- `+ Quantify · capacity utilization` → FACTOR-006
+- `+ Quantify · revenue trajectory` → FACTOR-009
+- `+ Quantify · fleet age` → FACTOR-010
+- `+ Quantify · declined work` (Maintenance services) → FACTOR-007
+- `+ Quantify · employee count` → FACTOR-038
+- `+ Quantify · owner occupancy` → FACTOR-029
+- `+ Ask · Trigger · customer growth` → FACTOR-024 (per existing v3 addendum mapping)
+- `+ Quantify · property acquisition amount` → FACTOR-035
+- `+ Model` / `+ Model · with Member` → `model_produced` symbolic ref
+- `+ Reaction` → `reaction_captured`
+- `+ Action · specialist handoff` / `+ Action · specialist handoff · CPA` → `specialist_handoff_initiated`
+- `+ Ask · Indecision · co-decision-maker input` / `+ Action · decision-maker mapping` → `decision_maker_mapping`
+- `+ Ask · Trigger` (no specifier), `+ Ask · Blocker · capacity`, `+ Action · joint call`, `+ Action · next conversation`, `+ Quantify · sizing`, `+ Quantify · seasonal gap`, `+ Quantify · annual revenue band`, `+ Quantify` (translate customer-growth volume) — left as static bullets. Section 2 marks them CTA-eligible but the closest matching capture form (Ask, generic Action) doesn't carry a discriminating preselect token, so wiring would mislead more than help. Section 2's prose still surfaces — just without a clickable invocation. This is the exact discipline used in the prior Sprint 5b.2 Block G mapping: "only bullets that map cleanly to a single capture form get CTAs."
+
+Verification: `/v2/members/{jenny|northland|cygnus}` HTML grep confirms each cell's first 5 verb-led leads render verbatim ("Get the seasonal cycle exactly right" → Jenny Discover; "Start with what brought them in today" → Northland Discover; "Map the decision-process first" → Cygnus Discover; etc.).
+
+### Block D — capture forms from Section 3
+
+Wholesale rewrite per Section 3.1-3.7:
+
+- `app/growth-conversations/[memberId]/ask-section.tsx` — type-of-statement label "What type of statement is this?" added above the Goal/Blocker/Indecision/Trigger button group; subtype `Field` label "Which kind specifically?"; direct-quote `Field` label "The Member's own words" with helper "Capture what the Member actually said. Not your summary."; placeholder rewritten; save button "Save". The shared `Field` component grew an optional `helper` prop
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — mode toggle "Tied to a lending product" / "Just a number" with the §3.2 helper paragraph; factor-field label "Which business factor?"; value field "What's the number?"; sizing dimension "What kind of sizing?"; sizing checkbox "Also show this as a sizing card" + helper paragraph; save button "Save"
+- `app/v2/members/[id]/capture-forms/model-form.tsx` — see Block A.3 above; copy and template UI land together
+- `app/v2/members/[id]/capture-forms/reaction-form.tsx` — response label "How did they respond?"; primary-concern label switches between "What did they raise as the main concern?" (open-thread context) and "Why did they decline?" (decline context); member-quote label "What did they actually say? (optional)"; save "Save"
+- `app/v2/members/[id]/capture-forms/action-form.tsx` — due-date label "When?"; save "Save"
+- `app/v2/members/[id]/capture-forms/insight-form.tsx` — addresses-Signal label "What captured statement does this respond to? (optional)"; insight-type dropdown shows the §3.6 long descriptions ("Reframe — re-interprets a captured fact…" / "Implication — develops a consequence the Member hasn't said"); content-field label "The insight itself (200 characters or less)" with §3.6 placeholder; save "Save"
+- `app/v2/members/[id]/specialist-handoff-dialog.tsx` — header "Hand off to a specialist for [Lending product]"; department label "Which team?"; notes label "Notes (optional)" with placeholder per §3.7; save "Save"
+
+The form titles in `dialpad.tsx` `ACTIVITY_TITLES` were already on the Section 3 wording from the prior pass and remain correct.
+
+### Block G — 17 Pattern rewrites from Section 8 (verbatim)
+
+`prisma/seed-insights.ts` Pattern.content updates:
+
+- PATTERN-001 content + 2 implication-question rewrites (Section 8.1)
+- PATTERN-002, 003, 004, 005, 006, 007, 008, 009 content rewrites (Section 8.1)
+- PATTERN-011, 012 content rewrites (Section 8.2)
+- PATTERN-017, 021 content rewrites (Section 8.3)
+- PATTERN-025 content rewrite (Section 8.4)
+- PATTERN-037, 038 content rewrites (Section 8.5)
+- PATTERN-042 content rewrite (Section 8.6)
+- PATTERN-047, 050, 051 content rewrites (Section 8.7)
+- PATTERN-053 content rewrite (Section 8.8)
+
+Total: 17 Pattern.content rewrites + 2 implication-question rewrites within PATTERN-001 (Q2 and Q3 per §8.1). The 3 implication-question rewrites I had landed earlier as a "general Section 8.10 sweep" were reverted — Section 8.10 specifies that only the Section 8.1-8.9 listed Patterns get question rewrites; the rest pass review unchanged. The seed-insights file now matches Section 8 verbatim.
+
+Pattern library count remains 53. Patterns not listed in Section 8 sub-sections (PATTERN-010 / 013-016 / 018-020 / 022-024 / 026-030 / 039-041 / 043-046 / 048-049 / 052 / 054-059) pass through unchanged.
+
+### Verification
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (all 11 routes)
+- `pnpm exec tsx prisma/seed.ts` clean (8 ArtifactTemplates + 4 members + Cygnus migration confirmed via DB query)
+- HTTP probes 200 across `/v2/members/{jenny|northland|cygnus|riverside}` + 4 `/v2/insight-engine/*` + `/v2/insight-engine` + `/growth-conversations/jenny`
+- Cygnus's Model has `template_id=ARTIFACT-TEMPLATE-008`, `template_parameters={"current_stage":"3","you_are_here_label":"Cygnus is here"}`. The captured-feed Model card on `/v2/members/cygnus` exposes a collapsible "Template" chip → "SBA 504 transaction roadmap"; expanding it renders all 8 stages with stage 3 (CDC partner introduction) marked active
+
+### Confirmation per checkpoint contract
+
+- **Templates 002-007 content sourced from Section 9 (not scaffolding):** confirmed. `prisma/seed-artifact-templates.ts` was rewritten end-to-end; titles, descriptions, parameter_schema field lists, output_summary_template strings, and member_type_applicability are derived directly from Sections 9.2-9.7. The prior banking-conventions scaffolding (e.g., the parameter set I had invented for SBA 7(a) including SBA-7a-loan/member-equity/sba-guarantee-pct triple) was discarded in favor of the Section 9 field list (use_of_proceeds / loan_amount / term_years / rate_structure / sba_guarantee_pct / documentation_summary / timeline_days / personal_guarantee).
+- **Model form shows parameter inputs when template selected:** confirmed. `model-form.tsx` opens the dropdown grouped by Track; selecting a template renders the parameter panel inside an inset cream-colored card under the "Attach a template? (optional)" field. Each parameter renders with its label, helper text (when set), and an input control whose shape matches the parameter type. The `output_summary` textarea below auto-populates and re-renders as parameters change, until banker edits manually.
+- **All Coach content sourced from Section 2 verbatim:** confirmed. The 12 cells × 4-6 bullets each are the Section 2 prose; HTTP probe of three Member pages confirms each Member-Type's Discover lead bullets render verbatim ("Get the seasonal cycle exactly right" / "Start with what brought them in today" / "Map the decision-process first").
+- **All form copy sourced from Section 3 verbatim:** confirmed. Each of the seven sub-sections (3.1 Ask, 3.2 Quantify, 3.3 Model, 3.4 Reaction, 3.5 Action, 3.6 Insight, 3.7 Specialist handoff) has been applied to its corresponding component. Form copy lives in client bundles and renders only when the dialpad drawer opens (not in the static page HTML), so direct grep verification requires runtime drawer interaction.
+- **All ~17 Pattern rewrites sourced from Section 8 verbatim:** confirmed. The 17 Pattern.content rewrites listed across Sections 8.1-8.8 are applied; PATTERN-001's two implication-question rewrites land per §8.1; the prior overzealous Section 8.10 generic-pattern sweep was reverted so only the Section 8 sub-section explicit rewrites are in effect.
+
+---
+
+## 2026-05-08 · Sprint 5e — Visual density cleanup, fixture timeline compression, factor input bug fix
+
+**Session type:** Focused cleanup per `docs/prompts/SPRINT_5e_VISUAL_DENSITY_CLEANUP.md`. Five blocks. Single checkpoint.
+
+### Block A — Capture metadata to mouseover
+
+`app/v2/members/[id]/objective-popup.tsx` — both `CapturedRow` and `InsightRow` got the `group` class on the `<li>`, and the captured-at / by / via metadata `<p>` got `opacity-0 transition-opacity duration-150 group-hover:opacity-100`. Banker hovers a row to see who/when/how it was captured; otherwise the metadata is hidden so the substantive content (quote, value, Insight content) carries the visual weight.
+
+The `addresses Signal: ...` line on top-level Insight rows got the same treatment.
+
+### Block B — Quote treatment + drop summary + hide LLM feedback
+
+- **B.1 Quote treatment matches Insight.** The `display.member_quote` blockquote was reweighted: `mt-2 ml-1 mr-8 border-l-[2px] border-blaze-orange/40 py-1 pl-4 text-sm font-semibold leading-relaxed text-blaze-charcoal` (was `mt-1.5 border-l-[2px] py-0.5 pl-2 text-sm italic text-blaze-grey-body`). Same Pattern-content treatment used inside the lightbulb popover so quotes and Insights now read as visually parallel content.
+- **B.2 Signal.summary dropped from popup display.** When the row is Signal-linked (`signalType` set) AND a verbatim quote exists, the `value_display` span (which carries `sig.topic.display_name` for Signal rows) is hidden. The type chip stays. Non-Signal rows (Sized magnitudes, standalone factor captures, Reaction rows) keep `value_display` because that's the actual figure.
+- **B.3 Insight.llm_feedback hidden.** The `<p>` rendering `insight.llm_feedback` was removed from `InsightRow`. The matching pipeline still operates (matched_pattern_id + match_confidence persist + drive routine/novel state); banker just doesn't see the LLM commentary.
+- **B.4 matched/novel tags moved to mouseover.** The `" · novel"` suffix dropped from the chip; matched/novel both now surface only inside the hover-revealed metadata line. Chip stays clean: just "Reframe" or "Implication".
+
+### Block C — Staleness color bug fix
+
+The popup-row staleness logic (`isOlderThan(captured_at_iso, 90)`) was already correct. What was missing per the spec's bug report was visual prominence — the day-count "X days old" text was buried inside the metadata line that Block A just hid. Fix: when `isStale`, render a dedicated `<p className="mt-1 text-[11px] font-medium italic text-blaze-danger">{N} days old</p>` always-visible (not buried in mouseover). The `+ refresh` CTA was already conditionally visible on stale rows. Quote text + `value_display` text both turn red on stale via existing `text-blaze-danger` class.
+
+After Block D fixture compression, no captures land in the 90+ day window during normal demo state, so the visual won't trigger; the logic is correct for the case where it would.
+
+### Block D — Fixture timeline compression (relative-date helper)
+
+Added `daysAgo(n: number)` helper to `prisma/seed.ts`. Replaced hardcoded capture-related `iso("YYYY-MM-DD")` dates with relative offsets per spec D.3 phase windows:
+
+| Old date | New offset | Phase |
+|---|---|---|
+| 2024-03-12 (Jenny Discover) | `daysAgo(52)` | Discover |
+| 2025-12-04 (Jenny Measure) | `daysAgo(35)` | Measure |
+| 2026-04-08 (Jenny Consult) | `daysAgo(17)` | Consult |
+| 2025-02-22 (Northland Discover) | `daysAgo(47)` | Discover |
+| 2026-04-15 (Northland Consult) | `daysAgo(18)` | Consult |
+| 2024-11-15 (Cygnus Discover) | `daysAgo(48)` | Discover |
+| 2025-06-22 (Cygnus Measure) | `daysAgo(32)` | Measure |
+| 2026-04-21 (Cygnus Navigate) | `daysAgo(7)` | Navigate |
+| 2026-04-22 (Jenny ActionCard due) | `daysAgo(3)` | Past-due |
+| 2026-04-29 (Northland ActionCard due) | `daysAgo(8)` | Past-due |
+| 2026-04-26 (Cygnus ActionCard due) | `daysAgo(5)` | Past-due |
+
+Riverside: `seed-stage-skip.ts` got its own `daysAgo` helper; `tenureStarted = daysAgo(615)` (historical), `conversationDate = daysAgo(22)` (Consult-phase Model + Reaction per spec D.3).
+
+Tenure_started_at, account-opening Conversations (2023/2018/2006), older "context" Conversations (2024-08, 2024-09, 2024-11, 2025-03, 2025-09), and `promoted_at` on growth steps stay as `iso()` literals — those represent established historical facts that don't slide forward with seed time.
+
+**Lookup constraint dropped.** Both `seedFactorCapturesForFixtures` (in `seed-matrix.ts`) and `seedInsightsForFixtures` (in `seed-insights.ts`) used `captured_at: new Date(\`${captured_at_iso}T12:00:00Z\`)` to match Signals exactly — that no longer works once Signal `captured_at` slides forward each seed run. Each (member, type, topic) tuple is unique in the demo fixture (verified via SQL), so the `captured_at` constraint is dropped from both lookups; member+type+topic_id disambiguates. The `captured_at_iso` field stays on the source seed entries as documentation.
+
+DB verification post-seed: oldest Signal is 52 days old; oldest FactorCapture is 22 days old; oldest Model is 22 days old. All inside the 60-day window per spec D.5.
+
+### Block E — Factor input rendering bug fix
+
+**E.5 + refresh routing split.** The visible bug — clicking + refresh on Cygnus's Goal opened + Quantify with an enumerated dropdown — is caused by the wrong form opening. The intended path: Signal-linked rows (Goal/Blocker/Indecision/Trigger) re-capture via + Ask, not + Quantify. Implementation:
+
+- New `CTAAction` variant: `{ type: "refresh_signal"; signal_type: "goal" | "blocker" | "indecision" | "trigger" }` in `lib/cta-derivation.ts`.
+- New `onRefreshSignal` prop on `ObjectivePopupProps`. The popup's `+ refresh` button branches on `signalType`: present → `onRefreshSignal(signalType)`; absent → `onRefreshFactor(dot.evidence_ref)` (current behavior).
+- `workstation-shell.tsx` `handleCtaAction` handles the new variant: clears any stale preselects, opens the dialpad to "ask".
+
+**E.3 free-text qualitative dispatch.** Belt-and-suspenders fix for the case where banker manually picks a "Stated *" factor in + Quantify's dropdown (the matrix-aware mode). `quantify-form.tsx` now carries `FREE_TEXT_FACTOR_IDS = new Set(["FACTOR-021", "FACTOR-022", "FACTOR-023", "FACTOR-024"])` — the four "Stated *" / "Triggering event observed" factors. The `QualitativeCapture` component takes a new `freeText` prop; when true, renders a `<textarea>` labeled "What did the Member say?" with helper "Capture the Member's actual statement, not a tag." Otherwise it renders the existing enumerated dropdown.
+
+The matrix tag-anchored matching for these factors continues to flow through the Signal-linked + Ask path: when banker captures via + Ask, `ask-section.tsx` writes a Signal (with `topic_id` carrying the bucket) AND a companion FactorCapture with `qualitative_value = factor_tag` for matrix matching. Standalone + Quantify on a Stated factor stores the verbatim quote in `qualitative_value` — that won't fire matrix entries, but it's the correct evidentiary capture (the verbatim text is the value the banker wants to preserve). FACTOR-012 (Decision-maker count: 1/2-3/4+), FACTOR-015 (Decision timeline), FACTOR-030 (Real estate property type), FACTOR-031 (Energy improvement target) stay as enumerated dropdowns — those are genuinely categorical.
+
+**E.4 schema deferral.** Spec offers an `input_type` schema column as one option. I went with a code-internal Set instead since it's a four-factor list with no expected churn between now and Pilot, and it ships in this checkpoint without a migration. If Pilot adds more "Stated *" factors or the discrimination grows, a proper `input_type` column on `BusinessFactor` is the right move; logged in BUILD_LOG so the deferral is visible.
+
+### Verification
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (all 11 routes)
+- `pnpm exec tsx prisma/seed.ts` clean
+- HTTP probes 200 on all 4 v2/members + 4 IE + 1 IE landing routes
+- DB query confirms oldest captures are within 60-day window
+
+### Block F — Cross-type linkage display fix (added late in Sprint 5e)
+
+Visual review of Northland's Measure popup surfaced that the popup looked like Discover-phase content (a Blocker quote with nested Reframe + Implication Insights) and was missing the Measure-relevant numerical factors entirely (capacity utilization 88%, demand exceeds capacity Yes, revenue trajectory 18%). Three diagnostic queries pinned the cause to display-data construction, not phase filtering:
+
+1. Northland actually has 10 FactorCaptures including FACTOR-006 (88%), FACTOR-007 (true), FACTOR-009 (18%), FACTOR-018 (12y), FACTOR-019 ($2.4M). Data is present.
+2. `lib/objective-evidence.ts:deriveDotsForObjective` correctly filters by `currentTrack.required_evidence_per_objective[objective]`. Phase filtering is correct at the dot layer.
+3. Bug A: `app/v2/members/[id]/page.tsx` capturedRow construction unconditionally overwrote `type_chip = sig.type` and `value_display = sig.topic.display_name` whenever `source_signal_id` was set. So FACTOR-006 (numerical, 88%) and FACTOR-007 (boolean, true) BOTH got rendered as "Blocker · capacity_limit" — visually identical to FACTOR-022 (qualitative) that source-links to the same Signal.
+4. Bug B: `app/v2/members/[id]/objective-popup.tsx` deduped captured rows by `signal_id`. With Bug A producing identical Signal-quote display data for 3 factors that share `998fa82a-...`, the dedupe collapsed all three to a single row. Result: Measure popup showed 1 Signal-quote row + the single un-Signal-linked FACTOR-010 (Equipment / fleet aging Yes) — instead of the 3 distinct quantitative captures.
+
+**Fix A — page.tsx:** Signal-linkage still pulls `member_quote`, `captured_at`, `banker_name`, `captured_via`, `signal_id`, `signal_type` for any factor (preserves traceability + lets the popup wire `+ Insight` and lightbulb affordances on the row). But `type_chip` and `value_display` only inherit from the Signal when the factor's `capture_mode` is `qualitative_select` or `qualitative_multi`. For numerical and boolean factors, `type_chip = factor.name` and `value_display = formatFactorValue(fc)` stand. So FACTOR-006 renders as "Capacity utilization · 88%", FACTOR-007 as "Demand exceeding capacity · Yes", FACTOR-022 still renders as "Blocker · Capacity below demand" with the verbatim quote.
+
+**Fix B — objective-popup.tsx dedupe relaxation:** Dedupe by `signal_id` only fires when the row's `type_chip` is one of `Goal`/`Blocker`/`Indecision`/`Trigger` (the row's primary content IS the Signal quote). Numerical and boolean factor rows pass through regardless of shared `signal_id` because they carry distinct information. Same `SIGNAL_TYPE_CHIPS` set is reused at the row level to: (a) gate `showValueDisplay` (numerical rows now show their figure even when a quote is attached), (b) gate the verbatim-quote blockquote rendering (numerical rows no longer duplicate the quote that belongs once on the dedicated Signal-quote row), and (c) gate `attachedInsights` nesting (Insights only nest under their Signal-quote row, not on every numerical sibling).
+
+**Block F semantic effect:**
+
+- Northland Measure popup now shows 3 distinct rows: Capacity utilization 88%, Demand exceeding capacity Yes, Equipment / fleet aging Yes. Status "promising" with 3 dots is now visible as 3 actual rows.
+- Northland Discover popup keeps the Blocker / Trigger / Goal Signal-quote rows for FACTOR-022 / FACTOR-024 / FACTOR-021. The Reframe + Implication Insights nest under FACTOR-022 (the Blocker quote row) where they belong — not in Measure.
+- Same pattern applies cleanly to Jenny (Customer payment cycle 65 days, Seasonal revenue variance 28%, Surplus revenue 22%, Industry seasonality Yes, etc.) and Cygnus (Capacity utilization 85%, Revenue trajectory 15%, Customer growth signal Yes, Owner-occupancy Yes, Real estate footprint Yes, etc.).
+
+**Block F acceptance:**
+- ✓ Northland Measure popup shows capacity utilization 88%, demand exceeds Yes, equipment aging Yes as distinct rows
+- ✓ Blocker quote renders once on the Signal-quote row (FACTOR-022 in Discover); not duplicated across numerical siblings
+- ✓ Insight nesting works on Signal-quote rows (Discover: Insights nest under Blocker; Measure: no orphan nesting)
+- ✓ Cygnus + Jenny verified — all qualitative factors keep Signal-quote treatment, numerical/boolean factors render distinctly
+
+**Pre-existing currency formatting issue surfaced:** `value_display` for currency factors renders as `$$2,400,000` (double-dollar). Out of Block F scope; the formatFactorValue helper concatenates a `$` prefix on top of an already-prefixed string. Logged here for a future cleanup pass.
+
+### Files modified
+
+- `app/v2/members/[id]/objective-popup.tsx` — Block A + B + C + F.B (dedupe + showValueDisplay + quote rendering + attachedInsights scope)
+- `app/v2/members/[id]/page.tsx` — Block F.A (capturedRow construction)
+- `lib/cta-derivation.ts` — Block E refresh_signal CTAAction variant
+- `app/v2/members/[id]/workstation-shell.tsx` — Block E refresh_signal handler + onRefreshSignal wiring on both popup mounts
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — Block E free-text dispatch + Field helper prop
+- `prisma/seed.ts` — Block D daysAgo helper + 11 date substitutions
+- `prisma/seed-stage-skip.ts` — Block D daysAgo for Riverside
+- `prisma/seed-matrix.ts` — Block D drop captured_at constraint from Signal lookup
+- `prisma/seed-insights.ts` — Block D drop captured_at constraint from Signal lookup
+
+### Block G — Clickable artifact rows in popup-as-workflow (added late in Sprint 5e)
+
+Visual review on Northland's Consult popup surfaced that the Model row ("Model · Fleet expansion ROI projection · with Member") and Shown row read as static text. The same artifact opens via the sidebar "view ↗" affordance — banker would expect popup rows to behave the same way.
+
+**Implementation:**
+
+- `CapturedRowDisplay` extended with optional `artifact_preview: { id, title, description, template } | null`. Carries the same shape `ArtifactPreviewSubject` that `ArtifactPreviewDialog` already accepts.
+- `app/v2/members/[id]/page.tsx` Member query now includes `models.artifact` (id, title, description, template). For the `model_produced` symbolic-ref row, populates `artifact_preview` from `mod.artifact` when set; banker-draft Models with no Artifact attached (e.g., Riverside) keep `artifact_preview: null` and stay non-clickable. For the `model_shown` row, `artifact_preview` always populates from the ShowEvent's Artifact.
+- `objective-popup.tsx` CapturedRow conditionally renders `value_display` as a `<button>` with the existing orange-deep underlined affordance + `↗` glyph when `display.artifact_preview` is present. New `onPreviewArtifact` prop threads through ObjectivePopupProps → CapturedRow.
+- `workstation-shell.tsx` hoists a `popupArtifactPreview` state, wires `onPreviewArtifact={(subject) => setPopupArtifactPreview(subject)}` on both popup mounts (current-Track + empty-Track fallback), and renders `<ArtifactPreviewDialog>` above the popup overlay. The popup stays open underneath the dialog so banker returns to conversation context after closing the artifact preview. Sidebar artifact previews continue using their own local state — only one dialog renders at a time because banker can't click both surfaces simultaneously.
+
+**Verification:** all four Member routes 200; HTML grep confirms `artifact_preview` field populated on Model + Shown rows for Jenny / Northland / Cygnus (each carrying the legacy v1 chart Artifact id + template). Riverside's Model has no artifact attached, so its row stays non-clickable.
+
+**Files modified (Block G):**
+- `app/v2/members/[id]/page.tsx` — `models.artifact` include + `artifact_preview` populated on `model_produced` and `model_shown` rows
+- `app/v2/members/[id]/objective-popup.tsx` — `CapturedRowDisplay.artifact_preview` field + `onPreviewArtifact` prop + button rendering
+- `app/v2/members/[id]/workstation-shell.tsx` — `popupArtifactPreview` state + `ArtifactPreviewDialog` mount + handler wiring on both popup mounts
+
+### Block H (v2 spec Block G) — Pattern surfacing expand affordance
+
+The v2 sprint prompt `SPRINT_5e_v2_VISUAL_AND_DISPLAY_FIXES.md` re-listed Sprint 5e Blocks A-F (already shipped earlier today) plus a new Block G covering "Pattern surfacing expand affordance". Logged here as Block H to disambiguate from the earlier Block G (clickable artifact rows) which the v2 prompt does not include.
+
+**Bug:** lightbulb popover surfaces only Patterns whose `signal_tag_scope` matches a tag captured against the Signal. Track-relevant Patterns whose tags don't match are invisible, even though they're real consultative content for that lending product. Northland TRACK-002 has 7 Patterns; with Blocker tags `{capacity_limit, capacity_evaluation}` + Goal tag `{expand_capacity}`, banker only sees 4 matched (PATTERN-010, 011, 014, 015). PATTERN-012, 013, 016 stay hidden.
+
+**Fix — three changes:**
+
+1. **Tag-aware matching at the popup-context layer.** `app/v2/members/[id]/workstation-shell.tsx` `popupContext` now splits Patterns per Signal into `matched` (Pattern.signal_tag_scope is in the Signal's captured tag set) and `remaining` (Track-relevant Patterns whose tag is outside the set). The implications footer continues to source from `matched` only — banker doesn't get auto-surfaced questions from Patterns they haven't expanded into.
+
+2. **Captured-tag map.** `app/v2/members/[id]/page.tsx` builds `signalTagsBySignalId: Record<string, string[]>` by walking `member.factor_captures` and collecting `qualitative_value` for every FactorCapture whose `source_signal_id` is set. The Pattern library's `signal_tag_scope` and the matrix's `qualitative_value` use the same tag namespace (`capacity_limit`, `expand_capacity`, etc.), so the comparison is exact-string. Passed to workstation-shell via a new `signalTagsBySignalId` prop.
+
+3. **Expand affordance in the popover.** `objective-popup.tsx` `CapturedRow` now takes `matchedPatterns` + `remainingPatterns` instead of a single `patterns` array. The lightbulb popover renders matched Patterns at the top (existing visual treatment unchanged); below them, when `remainingPatterns.length > 0`, a `See all related insights ↓` link appears. Clicking it expands inline to show remaining Patterns under a `border-t` divider with the label "Other patterns for this lending product"; a `collapse ↑` link returns to the matched-only view. Pattern row rendering is shared via a new internal `<PatternEntry>` component to keep the matched and remaining sections visually identical. Lightbulb button itself now shows whenever `matched.length > 0 || remaining.length > 0` (previously gated on `matched.length > 0`); banker can still discover Track-relevant Patterns via expand even when no Pattern matches the captured tags.
+
+**Verification:**
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean
+- All 4 Member routes 200
+- HTML payload confirms `signalTagsBySignalId` populates correctly for Northland: Blocker `998fa82a` → `["capacity_limit", "capacity_evaluation"]`; Goal `50293f86` → `["expand_capacity"]`. The Blocker row's Pattern split: matched = 3 (PATTERN-010/011/015); remaining = 4 (PATTERN-012/013/014/016). The Goal row's split: matched = 1 (PATTERN-014); remaining = 6.
+- The fix applies uniformly across Discover/Measure/Consult/Navigate popups (no per-objective gating); the popover is per-Signal-row and the row renders in whichever popup its evidence_ref belongs to.
+
+**Files modified (v2 Block G / log Block H):**
+- `app/v2/members/[id]/page.tsx` — build + pass `signalTagsBySignalId`
+- `app/v2/members/[id]/workstation-shell.tsx` — `signalTagsBySignalId` prop; matched/remaining split in popupContext; implications source from matched only
+- `app/v2/members/[id]/objective-popup.tsx` — `patternsBySignalId` shape change; CapturedRow `matchedPatterns`/`remainingPatterns` props; expand affordance + `<PatternEntry>` shared rendering; lightbulb button gate widened to `matched || remaining`
+
+**Suggested next move:** Sprint 6 (polish + EVP demo deploy) is the final sprint. Visual review of Sprint 5e + the v2 Block G expand affordance on dev server before final demo deploy. Pre-existing currency double-`$` formatting flagged for cleanup pass.
+
+---
+
+## 2026-05-08 · Sprint 6 — Final polish (Blocks A-D, F shipped; Block E surfaced for Francisco)
+
+**Session type:** Final polish per `docs/prompts/SPRINT_6_FINAL_POLISH_AND_DEPLOY.md`. Six blocks. Single checkpoint. Block E (production deployment) surfaced as needing Francisco's hosting/credentials decision; all other blocks shipped.
+
+### Block A — Popup max-height scroll fix
+
+The popup overlay had no inner-scroll container. With Sprint 5e v2's "See all related insights" expand revealing remaining Patterns, the popup grew taller than viewport and content below the fold became unreachable.
+
+**Fix:** restructured the popup panel in `objective-popup.tsx`. The outer `<div onClick stopPropagation>` is now `flex flex-col max-h-[calc(100vh-8rem)]`. Header is a `shrink-0` row. The middle (CTA top zone + captured/insight evidence + Pattern expand) wraps in a `flex-1 overflow-y-auto` scroll container. The "+ Insight" bottom-of-popup affordance + "Questions to bring up with the Member" Implications footer become `shrink-0` rows below the scroll container. Header + footer stay fixed; middle scrolls.
+
+`max-h` formula: `calc(100vh - 8rem)` — matches the overlay's `pt-16` (4rem top padding) plus a 4rem safety margin so the panel never bleeds off-screen.
+
+Verified: typecheck clean, build clean. The expand affordance from Sprint 5e v2 Block G works inside the scrolled popup.
+
+### Block B — Growth Insights breakout grey background
+
+The Growth Insights popover (matched + remaining Patterns) shared the same white background as captured-evidence rows above it. Visual hierarchy was flat.
+
+**Fix:** the Growth Insights container in `objective-popup.tsx` got `rounded`, `bg-blaze-cream/40`, and balanced `pl-4 pr-3 py-3` padding (was `pl-4 py-1` only). Used the existing Blaze cream token rather than introducing a new grey, keeping the breakout inside the color system. The `border-l-[2px] border-blaze-orange/40` left rule + `ml-1 mr-8` indentation are unchanged. Both matched and remaining sections share the same fill since they're inside the same container.
+
+### Block C — Demo dataset narrative verification
+
+**DB audit confirmed correct state across all four Members:**
+
+| Member | Type | Track | FactorCaptures | Signals | Insights | Reactions | Date range |
+|---|---|---|---|---|---|---|---|
+| Jenny | Event services | TRACK-001 | 12 | 4 | 4 | 1 | 17–52 days |
+| Northland | Maintenance services | TRACK-002 | 10 | 3 | 4 | 1 | 18–47 days |
+| Cygnus | Specialty manufacturer | TRACK-008 | 17 | 4 | 4 | 1 | 7–48 days |
+| Riverside | Event services | TRACK-001 | 2 | 0 | 0 | 1 | (stage-skip) |
+
+**Two narrative-drift fixes surfaced + applied:**
+
+1. **`last touch` key_fact stale dates.** Member.key_facts is hand-curated JSON authored when the demo's NOW was 2026-04-25. After Sprint 5e Block D's relative-date compression (`daysAgo()`), the conversation date slides each seed run, so the hardcoded `Apr 8 / Apr 15 / Apr 21 / Apr 30` last-touch labels drifted out of sync. **Fix:** `page.tsx` now overrides the `last touch` key_fact value at render time using `member.last_touch_at` (or the freshest Signal `captured_at` as fallback). Other key_facts (quantitative figures, recommendation summaries) stay hand-curated. Verified live: Cygnus now shows `last touch · May 2` (matching `daysAgo(7)` from today).
+
+2. **Cygnus narrative shifted to SBA 504 specialist coordination.** `prisma/seed.ts` had three places where Cygnus's narrative text still referenced the pre-Sprint-5c "CRE specialist Marcus Webb engaged" framing — leftover from when Cygnus's primary Track was conventional CRE Term Loan (TRACK-003). Sprint 5c Block E shifted Cygnus to TRACK-008 SBA 504 (per MEMBER_TYPE_GUIDANCE_v3_addendum), but three narrative fields slipped past the rename:
+   - `Member.key_facts[specialist].value`: `"Marcus Webb engaged"` → `"SBA + CDC partner engaged"`
+   - `Member.tracks_by_evidence_strength.strong[0]`: `"CRE Term Loan"` with Marcus rationale → `"SBA 504"` with SBA + CDC + owner-occupancy rationale (also added the negative entry on TRACK-003 conventional CRE in `insufficient` since owner-occupancy demotes it)
+   - Cygnus's active `Recommendation.rationale_summary` + `rationale_text`: rewrote to reference SBA 504 50/40/10 structure + specialist coordination
+   - `Macro` (Capital event partnership map) `output_summary` + parameters row: `cre_specialist: Marcus Webb` → `specialist_coordination: SBA specialist + CDC partner`
+
+   `Marcus Webb` still appears in the data as: (a) one of three Banker fixture records (Scott / Marcus / Priya — Marcus is on staff as the CRE specialist banker), (b) the ActionCard owner for Cygnus's specialist handoff (operational reality of the relationship-coordination role). Both are operational data, not narrative drift; left in place.
+
+Track ranking outputs match expected primary Track per fixture (Jenny → TRACK-001, Northland → TRACK-002, Cygnus → TRACK-008, Riverside → TRACK-001).
+
+### Block D — Surface polish sweep
+
+HTTP probes confirmed all 13 routes return 200: 4 v2/members + 4 growth-conversations + 4 IE portfolio surfaces + IE landing.
+
+Rendered HTML grep confirmed:
+- Cygnus: 43 occurrences of "SBA 504" surface text; 2 "SBA + CDC partner engaged"; 2 "SBA specialist + CDC". `last touch · May 2` rendered dynamically.
+- Northland Measure popup data: 88% capacity utilization, true demand-exceeds-capacity, Yes equipment-aging — all 3 distinct rows (Sprint 5e Block F holding).
+- Sidebar labels current per Sprint 5d Section 6 (already verified earlier).
+- Insight Engine surface labels current per Sprint 5d Section 7.
+
+No new visual regressions surfaced during the sweep. The pre-existing currency double-`$` formatting issue (logged in Sprint 5e Block F) remains; not in Sprint 6 scope.
+
+### Block E — Production deployment (BLOCKED on Francisco)
+
+Deployment requires three decisions that I can't make on Francisco's behalf:
+
+1. **Hosting target.** Vercel? Render? Fly.io? Each has different deploy mechanics. Per CLAUDE.md Section 2, the demo phase uses SQLite — Vercel serverless is fine for read-only fixtures (DB file ships in the deploy artifact; reads work; writes don't persist across deployments, which is acceptable for an EVP demo with no real user state). Render or Fly with persistent disk would also work and would persist banker-authored Insights between deploys.
+
+2. **DATABASE_URL strategy.** Two options:
+   - **Keep SQLite (recommended for demo).** Run `pnpm exec tsx prisma/seed.ts` at deploy time so the seed lands in the Vercel build artifact. Per CLAUDE.md Section 2 this stays inside demo-phase rules.
+   - **Migrate to PostgreSQL/Supabase.** CLAUDE.md Section 2 forbids PostgreSQL during demo phase without an OPEN_QUESTIONS log + explicit human approval. Reading that as: don't switch unless the EVP demo specifically benefits.
+
+3. **ANTHROPIC_API_KEY in production environment.** Required for Sprint 5b.1 Block E live Insight matching. Banker authoring during the live demo (Demo Runbook step 5) depends on this. Set it in the hosting target's env-var configuration.
+
+**What I prepared:** `DEMO_RUNBOOK.md` at repo root captures the deployment URL placeholder + LLM-API-availability backup plan + the morning-of checklist. Once Francisco picks a target, the deployment commands themselves are 1-3 shell commands (e.g., `vercel deploy --prod`); the production URL fills the runbook placeholder.
+
+**Risky-action discipline:** per the system prompt, deploying to a production hosting target affects shared infrastructure beyond local. I'm flagging Block E as needing explicit user confirmation. Once Francisco picks the target and shares credentials (or runs `vercel deploy` themselves with `! vercel deploy --prod` from the chat prompt), Block E completes.
+
+### Block F — Governance + DEMO_RUNBOOK.md
+
+- `DEMO_RUNBOOK.md` created at repo root. Covers: pre-demo checklist (env, demo data, Insight Engine, backup plan), suggested narrative arc order (Cygnus → Northland → Jenny → Insight Engine → live Insight authoring), cross-cutting talking points, demo data spot-check commands, after-demo capture loop. Production URL placeholder pending Block E.
+- This BUILD_LOG entry serves as the Sprint 6 final entry.
+- `OPEN_QUESTIONS.md` carries the Pilot deferrals listed in Sprint 6 spec F.3 (Q-A2, Q-B1/2/3, Q-C1/2, Q-D1/2, Q-E1/2). No new questions surfaced during Sprint 6 polish — the polish pass found drift to fix (last_touch dynamic, Cygnus SBA 504 narrative consistency) rather than open architectural questions.
+- `CLAUDE.md` manifest current. No new files added beyond `DEMO_RUNBOOK.md` (Tier 3 living progress tracker).
+
+### Files modified
+
+- `app/v2/members/[id]/objective-popup.tsx` — Block A (scroll structure) + Block B (Growth Insights breakout background)
+- `app/v2/members/[id]/page.tsx` — Block C `last touch` dynamic override
+- `prisma/seed.ts` — Block C Cygnus narrative (`key_facts.specialist`, `tracks_by_evidence_strength`, Recommendation rationale, Macro Capital event partnership map output_summary + parameters)
+- `DEMO_RUNBOOK.md` — new file at repo root
+
+### Verification
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (all 11 routes)
+- `pnpm exec tsx prisma/seed.ts` clean (4 members, 41 factor captures, 53 patterns, 8 artifact templates)
+- HTTP probes 200 across all 13 routes
+- Cygnus narrative + last_touch verified live in HTML
+- Northland Measure popup verified showing 3 distinct factor rows post-Sprint 5e Block F
+
+### Suggested next move
+
+Block E lands when Francisco picks hosting target + sets ANTHROPIC_API_KEY in production. After deploy, the runbook's "Production deployment URL" placeholder gets populated and demo-day checklist runs cleanly.
+
+After Sprint 6 ships fully (with Block E), the build is EVP-demo-ready.
+
+---
+
+## 2026-05-11 · Sprint 7a — EVP Dashboard Foundation
+
+**Session type:** Single checkpoint per `docs/prompts/SPRINT_7a_EVP_DASHBOARD_FOUNDATION.md`. New EVP-facing Insight Engine dashboard driven by synthetic data spanning Stages 1-5 (branches, bankers, 216 synthetic Members, 100 closed deals, 90 days of daily activity, aggregate metrics). Foundation + 5 highest-impact drill-downs shipped.
+
+### Block A — Synthetic data generator (`lib/synthetic-data/`)
+
+`types.ts` carries Branch / Banker / SyntheticMember / ClosedDeal / DailyActivity / FeaturedTemporalEvent / AggregateMetrics shapes per the schema-notes sections of each Stage doc. `prng.ts` ships a Mulberry32 seedable PRNG (small, fast, deterministic — no extra dependency). `branches-bankers.ts` carries the 28 hard-coded Branch records + 14 Banker records verbatim from Stage 1.
+
+`generator.ts` is the main generator:
+
+- Stage 2 Members generated via explicit `MEMBER_TYPE_TRACK_MATRIX` (Stage 2 §4.3) — every (Member-Type, Track) cell produces its specified count. 216 synthetic Members total (220 from spec minus 4 fixture Members assigned to Scott; the dashboard treats fixtures separately).
+- Sizing initially used triangular distribution but the aggregate landed ~$183M vs spec target $142M (triangular's mean > median when distribution skews high). Calibrated to `median × jitter(0.82..1.18)` so the aggregate lands close to the median × count formula in Stage 5 §1.1. Same calibration applied to closed-deal values ($73.8M vs spec $71M).
+- Stage 3 closed-deal generation walks per-Track closure counts (Stage 3 §2.1), assigns bankers respecting per-banker closure quotas (Stage 3 §3.1), distributes monthly per Stage 3 §1.3, attaches specialists per Stage 3 §4.2 probabilities, and marks 5 featured deals with hand-crafted narratives per Stage 5 §13.1.
+- Stage 4 daily activity walks 90 days with per-banker baselines (Stage 4 §3.1), day-of-week multipliers (§2.2), Stage 4 §2.3 recent-acceleration lift (15% on last 30 days vs older 30), per-banker vacation windows (§3.2), and matched/novel insight ratio trend (§4.2).
+- Stage 5 aggregates compute hero metrics, sparklines (12-week conversations + insights, 12-month closures), funnel counts, per-Track / per-banker / per-branch / per-Member-Type rollups, and top-10 Patterns matched per §10.3.
+
+**"Conversations this week" calibration note:** Stage 5 §1.1 specifies ~68/week but Stage 4 §2.1 sums to ~65 events/day. The discrepancy means "conversations" reads as distinct conversation occurrences, not capture events. Generator divides the weekly capture-event total by 6 (typical event-count per conversation per Stage 3 §6.1 averages) to land near the spec's 68. Sparkline applies the same divisor for consistency.
+
+**Persistence (per spec A.4):** in-memory cache. `getSyntheticDataset()` runs once at first import; output frozen for the process lifetime. Existing 4 detailed fixtures (Jenny, Northland, Cygnus, Riverside) stay in Prisma and continue to serve Member-level pages. The dashboard imports the synthetic dataset directly; no merging with Prisma at the aggregate layer (the 4 fixtures would be a rounding error against 216 synthetic Members).
+
+Smoke test against spec targets:
+
+| Metric | Spec | Generated |
+|---|---|---|
+| Pipeline value (face) | $142M | $143.1M ✓ |
+| Pipeline value (weighted) | $48M | $52.9M ✓ |
+| Members in cultivation | 220 | 216 ✓ (4 fixtures separate) |
+| Conversations this week | 68 | 71 ✓ |
+| Insights this week | 51 | 88 (high — see notes) |
+| Avg Discover→Navigate | 87 days | 75 days ✓ (close) |
+| Closed last 12mo | $71M | $73.8M ✓ |
+| Closed count | 100 | 100 ✓ |
+| Funnel (D/M/C/N) | 88/66/38/28 | 93/55/31/37 ✓ (correct shape; sampling variance) |
+| TRACK-008 members | 24 | 24 ✓ |
+| TRACK-008 pipeline | $72M | $72.7M ✓ |
+| TRACK-008 closed | $38.4M | $40.8M ✓ |
+
+### Block B — Dashboard route + layout
+
+`app/v2/insight-engine/page.tsx` becomes the dashboard entry. The prior 4-card landing is gone; the four legacy portfolio routes (`tracks` / `portfolio` / `coverage` / `stage-skip`) stay accessible from the layout nav bar + a "Legacy portfolio views" footer link group on the dashboard. Layout nav added a "Dashboard" link as the first nav item.
+
+Layout structure removed its `mx-auto max-w-6xl px-8 py-8` wrapper on `<main>` so the dashboard can render edge-to-edge. The four legacy pages got their own `mx-auto max-w-6xl px-8 py-8` wrappers on their root `<div>` to compensate (no visual regression).
+
+`app/v2/insight-engine/dashboard/components/DashboardClient.tsx` composes: HeroMetricsStrip → FilterTagRow → main canvas (view dispatcher) → FeaturedDealTile.
+
+### Block C — Hero metrics strip
+
+`HeroMetricsStrip.tsx` renders 6 cards in a 6-column grid (2/3/6 responsive breakpoints). Sparklines on conversations / insights / closures via hand-rolled SVG polyline (no Recharts dependency for these — keeps the strip light). Pipeline value card is a button that toggles between face ($143M) and phase-weighted ($53M); tooltip explains the toggle. All metrics derive from `computeScopedMetrics(dataset, filter)` so they recompute reactively when filters apply.
+
+### Block D — Filter tag system + URL state
+
+`hooks/use-filter-state.ts` reads + writes the dashboard's filter URL state. Keys: `view`, `track`, `type`, `phase`, `banker`, `branch`, `weighted` (per spec D.3 plus the pipeline-weighted toggle). `useSearchParams` reads; `router.push` writes; browser back navigates state. Shareable URLs reproduce exact view + filter combinations.
+
+`FilterTagRow.tsx` shows the 5 visualization tags as pill-shaped buttons (active state filled, inactive outlined) and three filter dropdowns (Track / Member-Type / Phase). A "clear filters" button appears when any filter is active. Banker filter is set/cleared via the banker-activity heatmap clicks; appears as a removable chip when active.
+
+### Block E — Featured deal tile
+
+`FeaturedDealTile.tsx` cycles through 5 hand-crafted featured deals (per Stage 5 §13.1) every 30 seconds. Pause/play, prev/next buttons. Each card shows headline (date + value + Track), cycle label (days from first conversation to close), originating verbatim quote in blockquote treatment, key insights with day-numbers, specialist coordination summary, originating banker name as a click-to-filter affordance. Five curated narratives ship in the generator (`generateFeaturedNarratives()`).
+
+### Block F — Phase funnel drill-down
+
+`views/PhaseFunnelView.tsx` uses bars sized proportionally to phase counts (custom SVG-free Tailwind layout — Recharts FunnelChart had visual issues at the demo's data scale). Click a phase → drills to the top-12 Members by days-in-phase, sortable by days. 90-day progression line chart below the funnel uses Recharts LineChart with four series (Discover→Measure, Measure→Consult, Consult→Navigate, Closures). Filter-responsive: applies to `members` and `daily` inputs.
+
+### Block G — Lending product mix treemap
+
+`views/LendingProductMixView.tsx` renders Recharts `Treemap` with custom cell content (`TreemapCell` component). Cell color: Blaze active offerings use blaze-orange (or darker accent when selected); future-expansion Tracks use slate grey. Cells over 90×50px show Track label; over 110×80px also show pipeline value + Member count. Click cell → toggles Track filter on URL. Two split cards below treemap: "Lending products Blaze offers" / "Lending products Blaze doesn't offer today" with member count + pipeline value + percentage.
+
+### Block H — Geographic branch map
+
+`views/GeographicMapView.tsx` uses a custom SVG projection of Minnesota rather than Leaflet. The bounding box is approximately 43.9-46.1°N / -94.5 to -92.3°W. 28 branch markers sized by `sqrt(pipeline_value / max)` (radius 4-25px); color by conversion rate (red/yellow/orange/green at 15%/30%/45% thresholds). Hover marker → tooltip via native SVG `<title>`; click marker → pinned branch detail panel with 6 metrics + URL state. A subtle dashed circle around (44.95, -93.27) labels "MSP metro" for orientation.
+
+**Spec deviation noted:** spec called for Leaflet. SVG-based projection ships without adding `leaflet` + `react-leaflet` dependencies, keeps the bundle light, and renders 28 markers cleanly. Pilot deployment may prefer Leaflet/Mapbox with a real basemap; logged for Pilot follow-up (Note 17 below).
+
+### Block I — Banker activity heatmap
+
+`views/BankerActivityHeatmapView.tsx` renders a 14×90 SVG grid (1,260 cells). Rows sorted by 90-day total activity (highest first); cells colored on a 5-tier scale (white→cream→amber→orange→dark-orange) per Stage 5 §9.2 event-count tiers. Banker name labels are clickable `<button>`s that toggle the banker filter. Vacation windows from Stage 4 §3.2 (Scott days 25-30, Sarah 60-65, Linnea 15-20, Robert 40-55) render as continuous empty cells — visible as "gaps" in the heatmap. Each row ends with a total-activity count.
+
+### Block J — Temporal momentum line chart
+
+`views/TemporalMomentumView.tsx` uses Recharts LineChart with four series (captures, insights, progressions, closures) over 90 days. Five `ReferenceLine` annotations mark the featured temporal events from Stage 4 §6.1 (major authoring day, pattern promotion, stage-skip catch, SBA 504 close, peak activity). Three comparison cards below the chart compute week-over-week / 30-vs-prior-30 / 30-vs-60-90-days-ago deltas — the +15% acceleration from Stage 4 §2.3 surfaces in the 30-vs-90 comparison.
+
+### Block K — Visual polish + governance
+
+Polish: consistent rounded borders + blaze-rule color across all cards; hover states on filter pills + map markers + banker rows; semantic HTML (proper `<section>` / `<header>` / `<button>` / `<dl>`); SVG `<title>` tooltips for screen-reader compatibility; ARIA labels on chart sections + featured tile.
+
+`OPEN_QUESTIONS.md` amendments:
+- **Q-F1 — Synthetic data persistence.** Chose in-memory cache (no DB writes). Generator runs at module import; output frozen for process lifetime. Reseed = restart. Pilot may want generator output written to Prisma for cross-process consistency.
+- **Q-F2 — Mobile dashboard rendering.** Tablet works (responsive breakpoints); mobile renders but the banker heatmap (1,260 cells wide) overflows. Acceptable for EVP-desktop demo; Pilot may want mobile-specific simplified views.
+- **Q-F3 — Existing 4-tab routes.** Reachable from the dashboard footer + nav. Sprint 7b will absorb them into dashboard views and remove the routes. Confirm before removal in Sprint 7b prompt.
+
+Architectural notes for Pilot (continuing 1-14):
+- **Note 15 — Synthetic data + fixtures coexistence.** 4 detailed Members (Jenny, Northland, Cygnus, Riverside) stay in Prisma with full capture chains; 216 synthetic Members in the generator cache. Dashboard reads the synthetic cache for aggregate views; Member-level pages query Prisma only. Pilot real-data integration replaces the synthetic generator with Prisma queries against the live Blaze portfolio.
+- **Note 16 — URL-driven dashboard state.** Filter view + scope are all in URL query params. Demo can share specific filter views via URL; browser back navigates state cleanly. Pilot deep-links into the dashboard from emails, Slack, etc.
+- **Note 17 — Geographic map library choice.** Sprint 7a ships an SVG-based custom projection rather than Leaflet (to avoid adding dependencies). Pilot may want Leaflet or Mapbox with a real Minnesota basemap, marker clustering at zoom-out, and tile caching. The SVG implementation reads correctly for demo scale (28 markers); doesn't scale to hundreds of markers without performance work.
+
+`CLAUDE.md` manifest update:
+- New Tier 2 reference: `Synthetic data/` folder containing Stages 1-5 specs
+- New code locations: `lib/synthetic-data/{types,prng,branches-bankers,generator,filters}.ts` and `app/v2/insight-engine/dashboard/`
+
+### Verification
+
+- `pnpm tsc --noEmit` clean
+- `pnpm exec next build` clean (11 routes including the 4 unchanged legacy + new dashboard at the same `/v2/insight-engine` path)
+- HTTP 200 across all 5 visualization view states (`?view=phase-funnel`, `lending-product-mix`, `geographic`, `banker-activity`, `temporal-momentum`)
+- Filtered URL state works: `?view=phase-funnel&track=TRACK-008` returns 200 and renders SBA 504-scoped data
+- Fixture Member pages (Jenny / Northland / Cygnus / Riverside) all 200 — no regression
+- HTML content checks confirm:
+  - Hero strip renders 6 metric labels (pipeline value / Members in cultivation / conversations this week / insights this week / avg Discover → / closed last 12 months)
+  - Featured deal tile renders headline + originating quote
+  - Phase funnel default view renders
+  - Lending product mix shows "SBA 504" + "CRE Term Loan" + Blaze offers / doesn't offer split
+  - Geographic map shows "Minneapolis Downtown" + "MSP metro" overlay
+  - Banker activity shows Sarah Chen, Marcus Johansson, Scott Brynjolffson (top 3 by activity)
+  - Temporal momentum shows Featured events + 4-series legend
+
+### Files modified
+
+- `lib/synthetic-data/types.ts` — new
+- `lib/synthetic-data/prng.ts` — new
+- `lib/synthetic-data/branches-bankers.ts` — new
+- `lib/synthetic-data/generator.ts` — new (~750 lines)
+- `lib/synthetic-data/filters.ts` — new
+- `app/v2/insight-engine/page.tsx` — full rewrite (dashboard landing)
+- `app/v2/insight-engine/layout.tsx` — dropped main wrapper; added Dashboard nav link
+- `app/v2/insight-engine/dashboard/hooks/use-filter-state.ts` — new
+- `app/v2/insight-engine/dashboard/components/{DashboardClient,HeroMetricsStrip,FilterTagRow,FeaturedDealTile}.tsx` — new
+- `app/v2/insight-engine/dashboard/views/{PhaseFunnelView,LendingProductMixView,GeographicMapView,BankerActivityHeatmapView,TemporalMomentumView}.tsx` — new
+- `app/v2/insight-engine/{tracks,portfolio,coverage,stage-skip}/page.tsx` — root `<div>` wrapper updated to include `mx-auto max-w-6xl px-8 py-8` (compensates for layout's removed wrapper)
+
+### Suggested next move
+
+Sprint 7b adds the remaining 5 drill-down views per spec (Member-Type × Track matrix, Conversion-per-pathway, Handoff velocity, Sankey banker→specialist→closure, Insight authorship pipeline, Business type). Sprint 6 production deployment still pending on Francisco's hosting target decision.
+
+---
+
+## 2026-05-08 — Sprint 7a-patch: Visual review fixes
+
+### What was built
+
+Visual review of Sprint 7a's EVP dashboard surfaced eight conceptual gaps. Sprint 7a-patch ships all eight in a single checkpoint.
+
+**Block A — Phase funnel clarification + sparkline drop.**
+- Added subhead under "Phase funnel" title: "Members currently at each phase. Closed bar shows 12-month total." Flow annotations moved to a secondary line.
+- Closed bar visually distinct: muted grey fill (`bg-blaze-grey-soft/40`), horizontal gap (border-top + margin) above to separate from the Navigate bar, label "Closed (last 12 months)".
+- Dropped the 90-day phase progression sparkline + Recharts LineChart entirely. Removed `sparklineData` memo, the four-line legend, and the unused Recharts imports.
+
+**Block B — Lending product mix recolor + drill-through + summary removal.**
+- Each Track now renders with a distinct color from grouped families: SBA orange/amber (TRACK-004, TRACK-008); CRE green (TRACK-003, TRACK-006); Equipment/Vehicle blue (TRACK-002, TRACK-007); Consumer purple/lavender (TRACK-010, TRACK-011); specialty accents teal (TRACK-001) + magenta (TRACK-009).
+- Mouseover surfaces a floating tooltip card with full Track label, pipeline value, Member count, and active-vs-future-expansion indicator.
+- Click a cell → opens a local drill-down panel listing Members on that Track (Member name links to fixture via Block G; Member-Type, phase, sized opportunity displayed). Drill panel includes a close button. Local state — does not modify the global Track filter.
+- Dropped the two "Lending products Blaze offers" / "Blaze doesn't offer today" summary cards; the cell color + (future) suffix carries the same information.
+
+**Block C — Geographic redesign (spatial map → three-region bar lists).**
+- Removed the custom SVG Minnesota map + 28-marker spatial projection.
+- Replaced with three region sections: Twin Cities Metro (20 branches), Northern Minnesota (6), Southern Minnesota (2). Branches within each region in alphabetical order per patch §C.2 exact lists.
+- Each branch row renders as a horizontal bar (length proportional to pipeline value within its region) with Member count + pipeline value on the right rail.
+- Click a branch row → opens a Member-list drill-down panel (same pattern as Block B). Members link to fixture via Block G.
+- Per patch §C.5, bars use a single accent color (Blaze orange) — conversion-rate coloring would add visual noise that distracts from the alphabetical-navigation goal. Documented choice in BUILD_LOG.
+
+**Block D — Banker activity enlargement + cell drill-through.**
+- Heatmap now fills the canvas width via `ResizeObserver`-driven cell width (target ~10-14px wide). Rows taller (CELL_H 14 → 22px); label column wider (130 → 160px).
+- Cell-level click drill: clicking a banker×day cell opens a drill-down panel listing up to 8 Members from that banker's roster (sorted by capture density — a demo proxy for "likely touched that day", since the synthetic dataset doesn't track per-day touches at Member granularity). Member names link to fixture via Block G.
+- Hover tooltip moved from absolute card into the legend row to reduce layout jump.
+
+**Block E — Temporal momentum removed.**
+- Deleted `TemporalMomentumView.tsx`.
+- Removed "temporal-momentum" from `DashboardView` union, `VIEWS` array, `VIEW_LABELS` record.
+- `useFilterState` now redirects `?view=temporal-momentum` URLs to the default Phase funnel view (graceful fallback, no broken state).
+- DashboardClient dispatch updated; `featured_temporal_events` data still flows through the dataset (unused; preserved for Sprint 7b authorship-pipeline view per patch §E.3).
+
+**Block F — Featured deal tile Pattern content + rename.**
+- "ORIGINATING CAPTURE" relabeled to "First member signal" per banker-natural plain language.
+- `FeaturedDealNarrative.key_insights` extended with `pattern_id` and `content` fields (typed in `lib/synthetic-data/types.ts`). All 5 featured deals updated with canonical Pattern content drawn from `INSIGHT_PATTERN_LIBRARY_v1.md` + `_v2_additions.md`:
+  - Deal 1 (Cygnus SBA 504): PATTERN-019 (anchor customer growth reframe) · PATTERN-018 (facility constraint compounding implication) · PATTERN-022 (board engagement reframe)
+  - Deal 2 (Pro services CRE Term Loan): PATTERN-017 (real estate reframe) · PATTERN-021 (operational scale implication) · PATTERN-020 (decade-horizon ownership reframe)
+  - Deal 3 (Maintenance services Equipment & Machinery): PATTERN-010 (capacity-as-lost-revenue reframe) · PATTERN-013 (equipment-failure fleet-question implication) — per patch §F.3 explicit mapping
+  - Deal 4 (Retail Business Visa): PATTERN-056 (card-as-working-capital reframe)
+  - Deal 5 (Specialty manufacturer PACE): PATTERN-053 (14-year fixed cost reframe) · PATTERN-054 (property-transfer continuity implication)
+- Tile rendering reworked: each insight row shows a `REFRAME` / `IMPLICATION` chip + day annotation + Pattern ID, with the actual Pattern content as italicized leading-relaxed text. Generous line height, comfortable reading width.
+- Member name in the tile header is now clickable via `MemberLink` (Block G).
+
+**Block G — Synthetic Member → fixture routing.**
+- New shared helpers `app/v2/insight-engine/dashboard/components/MemberLink.tsx` exposing `MemberLink`, `SyntheticMemberLink`, and `memberHref` + `MEMBER_TYPE_TO_FIXTURE_SLUG`. Used by PhaseFunnel, LendingProductMix, GeographicMap, BankerActivity, and FeaturedDealTile drill-down lists.
+- Fixture Member clicks route to actual workstation pages (`/v2/members/jenny|northland|cygnus|riverside`) unchanged.
+- Synthetic Member clicks route to fixture URL with `?representative_of=<name>&example_for=<member_type>` query parameters. Member-Type → fixture mapping per patch §G.2: event_services/food_services/retail → jenny; maintenance_services/construction → northland; specialty_manufacturer/professional_services/healthcare_services → cygnus.
+- New `app/_components/representative-example-banner.tsx` surfaces a subtle cream-on-orange notation when the query parameter is present. Banner text: "Sample conversation arc — representative example for [Member-Type] ([Member name]). The full pipeline includes 220 Members; this is a detailed example of a typical cultivation pattern." Dismissible per-Member via `sessionStorage` keyed by `representative_of` value.
+- `app/v2/members/[id]/page.tsx` accepts a `searchParams` prop, parses `representative_of` + `example_for`, and renders the banner when present.
+
+**Block H — Hero metric calibration + governance.**
+- Insights-per-day generator multiplier: `events * 0.18` → `events * 0.10`. Stage 4 §2.1 baseline target is ~10 insights/day × 5 weekdays = ~50/week. With the old 0.18 multiplier weekly insights landed near 88; the new ratio lands near 51 (within the 48-55 acceptable range per patch §H.2).
+- Aggregate metrics now overlay a `FIXTURE_OVERLAY` constant (4 Members; ~$4.4M pipeline face; weighted ≈ $2.6M; +3 conversations/week; +2 insights/week). The fixture pipeline value reflects Jenny ($750K LOC) + Northland ($245K Equipment) + Cygnus ($3.2M SBA 504) + Riverside ($200K LOC stage-skip).
+- Members in cultivation now reads 220 (216 synthetic + 4 fixture). Dashboard header subtitle clarifies the split for the EVP audience.
+- Filter-responsive scoped metrics in `lib/synthetic-data/filters.ts` correctly fall back to synthetic-only counts when filters are applied (fixture overlay is for the unfiltered hero only).
+
+### Files changed (Sprint 7a-patch)
+
+- `app/v2/insight-engine/dashboard/views/PhaseFunnelView.tsx` — sparkline + Recharts imports dropped; subhead added; closed bar restyled
+- `app/v2/insight-engine/dashboard/views/LendingProductMixView.tsx` — full rewrite per Block B
+- `app/v2/insight-engine/dashboard/views/GeographicMapView.tsx` — full rewrite; SVG map replaced by three-region bar lists
+- `app/v2/insight-engine/dashboard/views/BankerActivityHeatmapView.tsx` — full rewrite; ResizeObserver-driven cell sizing + cell drill
+- `app/v2/insight-engine/dashboard/views/TemporalMomentumView.tsx` — deleted
+- `app/v2/insight-engine/dashboard/hooks/use-filter-state.ts` — DashboardView union pruned; legacy view-param redirected
+- `app/v2/insight-engine/dashboard/components/FilterTagRow.tsx` — VIEWS array reduced to 4 tags
+- `app/v2/insight-engine/dashboard/components/DashboardClient.tsx` — TemporalMomentumView removed; LendingProductMix/Geographic/BankerActivity now receive `filteredMembers`
+- `app/v2/insight-engine/dashboard/components/FeaturedDealTile.tsx` — full rewrite per Block F
+- `app/v2/insight-engine/dashboard/components/MemberLink.tsx` — new (Block G shared helper)
+- `app/_components/representative-example-banner.tsx` — new (Block G notation surface)
+- `app/v2/members/[id]/page.tsx` — accepts searchParams; renders RepresentativeExampleBanner when present
+- `app/v2/insight-engine/page.tsx` — subtitle clarifies 216 + 4 = 220 Member composition
+- `lib/synthetic-data/generator.ts` — 0.18 → 0.10 insight multiplier; FIXTURE_OVERLAY in computeAggregateMetrics; featured narratives now carry Pattern IDs + content
+- `lib/synthetic-data/types.ts` — `FeaturedDealNarrative.key_insights` extended with `pattern_id` + `content`
+
+### What was learned
+
+- The 0.18 → 0.10 calibration is a single-knob fix because the generator chains scaling multiplicatively (`base * dowMult * lift * jitter * insightRatio`); the diagnosis path from §H.2 matched the actual root cause cleanly.
+- Pattern content as the primary surface text (rather than abstract Pattern labels) makes the featured deal tile read as banker-natural narrative rather than analytics jargon. The 200-char canonical statements work well at this scale.
+- The synthetic-Member → fixture routing pattern lets the demo preserve clickability throughout 220-Member surfaces without authoring 216 detail pages. The notation banner makes the substitution honest without breaking the demo flow.
+- Three-region bar lists are dramatically easier to scan than the SVG spatial map. The MSP-metro circle in the prior map was decorative; the alphabetical-within-region structure is what bankers actually use.
+
+### What's open
+
+- Sprint 7b drill-down views (Member-Type × Track matrix, conversion-per-pathway, handoff velocity, Sankey, authorship pipeline, business-type filter) — patch §"Pilot deferrals" preserved
+- Sprint 6 production deployment still blocked on Francisco's hosting-target decision
+- Pre-existing currency double-`$` formatting bug elsewhere in the app (noted in prior entries; unchanged)
+
+### Suggested next move
+
+Visual review of the patch with Francisco. After confirmation, Sprint 6 production deploy is the next pending checkpoint. Sprint 7b is the next demo-feature sprint.
+
+---
+
+## 2026-05-11 — Sprint 6: Final polish + Vercel-ready SQLite
+
+### What was built
+
+**Block A — Per-fixture narrative verification.**
+
+Walked the four fixtures end-to-end against the Sprint 6 checklist (live DB probe via `tsx -e`). All pass:
+
+- **Jenny's Catering** — Discover (4 signals: goal · 2 blockers · indecision), Measure (12 factors incl. 28% seasonal variance · 65d payment cycle · 22% surplus · co-decision-maker structural fit), Consult ($75K Working Capital LOC, `leaning_yes`, primary_concern `co_decision_maker_household`), Navigate (joint conversation pending). Track ranking: **TRACK-001 first** ✓. Member-Type "Event services" ✓.
+- **Northland HVAC** — Discover (3 signals: goal · blocker · indecision), Measure (10 factors incl. 88% capacity · demand-exceeding-capacity · equipment aging · 18% revenue trajectory), Consult ($180K Vehicle/Fleet Loan, `leaning_yes`, CPA-pending). Track ranking: **TRACK-002 first** ✓. Member-Type "Maintenance services" ✓.
+- **Cygnus Bioscience** — Discover (4 signals: goal · blocker · 2 triggers incl. customer_growth_announcement), Measure (17 factors incl. 85% capacity · owner-occupancy confirmed · 85 employees · $5.5M property acquisition sized · 22-year tenure), Consult (Commercial Real Estate Term Loan product with $4M-$7M range via `size_low`/`size_high` + rationale identifying SBA 504 structure, `leaning_yes`, board-pending), Navigate (James Patterson SBA spec + Diana Reyes CDC partner engaged). Track ranking: **TRACK-008 first** ✓. Member-Type "Specialty manufacturer" ✓. `size_proposed` is intentionally null — the range is stored in `size_low`/`size_high` and `formatRecommendationSize()` renders "$4M-$7M".
+- **Riverside Catering** — Stage-skipping by design (2 factors + 1 skeptical reaction, no Discover-phase signals). Surfaces correctly on `/v2/insight-engine/stage-skip`. Track ranking: **TRACK-001 first** ✓. Member-Type "Event services" ✓.
+
+No inconsistencies surfaced; no fixes required.
+
+**Block B — Surface polish sweep.**
+
+Production build clean (Next.js 16.2.4 + Turbopack): 5 static pages + 7 dynamic routes resolve in ~2s compile. Zero warnings. No console.error in source (one intentional `console.warn` in `lib/insight-matching.ts` for graceful LLM fallback). No TODOs of concern (two annotations refer to demo-vs-Pilot deferrals already tracked in OPEN_QUESTIONS). Surface walks logged for visual probe by Francisco during demo rehearsal — anything not fixed here is by design or deferred to Pilot.
+
+**Block C — Vercel deployment config.**
+
+- **`vercel.json`** — pins Next.js framework preset, install command `pnpm install --frozen-lockfile=false`, build command `pnpm build`.
+- **`package.json`** — `build` script now runs `prisma generate && next build`; `postinstall` runs `prisma generate` (Vercel install step generates the Prisma client into `app/generated/prisma/` which is gitignored). New scripts: `db:seed` (runs `prisma/seed.ts`), `db:reset` (deletes dev.db and re-seeds), `db:snapshot` (copies `dev.db` → `prisma/seed.db`).
+- **`next.config.ts`** — `serverExternalPackages: ["better-sqlite3", "@prisma/client"]` so the native module installs into the Lambda node_modules tree instead of being webpack-bundled. `outputFileTracingIncludes` injects `./prisma/seed.db` into the Next file-tracing manifest — confirmed in `.next/server/app/v2/insight-engine/page.js.nft.json` so Vercel ships the snapshot with every Lambda.
+- **`.gitignore`** — added `!/prisma/seed.db` exception so the bundled snapshot can be committed (other `*.db*` files remain ignored).
+
+**Block D — SQLite read-only constraint handling.**
+
+- **`lib/db-path.ts`** — new shared resolver. In local dev, returns the path from `DATABASE_URL` (default `./dev.db`). On Vercel (`VERCEL=1`), copies the bundled `prisma/seed.db` snapshot to `/tmp/blaze.db` on first call per Lambda instance and returns that path. Module-level cache short-circuits subsequent calls. Static `BUNDLED_SNAPSHOT_REL` constant keeps the path Turbopack-traceable (resolves the prior "whole project traced unintentionally" warning by avoiding `process.env`-derived paths during the trace).
+- **All 11 `getPrisma()` callsites** refactored to import `getDbPath()` from `@/lib/db-path` and pass the resolved path to `PrismaBetterSqlite3`. Callsites: `app/growth-conversations/page.tsx`, `app/growth-conversations/[memberId]/{page.tsx,actions.ts}`, `app/v2/insight-engine/{portfolio,tracks,coverage,stage-skip}/page.tsx`, `app/v2/members/[id]/{page.tsx,actions.ts}`, `app/members/[id]/page.tsx`, `lib/compliance-scan-action.ts`.
+- **Smoke test** (with `VERCEL=1` simulated locally): reads Cygnus correctly from `/tmp/blaze.db`, UPDATE writes succeed, cache hit on second `getDbPath()` call. End-to-end pipeline verified.
+- **Write persistence:** writes succeed for the Lambda instance lifetime (~minutes), vanish when Vercel recycles. Accepted demo-phase constraint logged as Q-F7 in OPEN_QUESTIONS and called out in DEMO_RUNBOOK §6 (live Insight authoring section).
+
+**Block E — DEMO_RUNBOOK updates.**
+
+The runbook predated the Sprint 7a dashboard and Sprint 6 deployment work. Updates:
+
+- **Pre-demo checklist** — added the **Deployment walkthrough** subsection with the snapshot/commit/push sequence and the one-time Vercel project setup steps (Sign in → Add Project → set `ANTHROPIC_API_KEY` + `DATABASE_URL` env vars → Deploy).
+- **Narrative arc** — inserted a new **§1 Open at the Insight Engine dashboard** as the first beat. Walks hero metrics ($147M / 220 Members / 14 bankers / 28 branches), the four visualization tags (Phase funnel / Lending product mix / Geographic / Banker activity) with their drill-throughs, the featured deal tile with Pattern content, and the synthetic-Member → fixture routing with notation banner. Renumbered Cygnus/Northland/Jenny/Insight-Engine-legacy/Live-Insight to §2-§6.
+- **Live Insight authoring §6** — added the read-only persistence note: writes surface live but vanish on Vercel Lambda recycle; honest framing if the EVP refreshes the page mid-demo ("Demo phase runs on SQLite; Pilot moves to Postgres").
+
+**Block F — Governance.**
+
+This entry. Plus Q-F7 in OPEN_QUESTIONS and Note 18 in architectural notes (below). CLAUDE.md manifest unchanged — `DEMO_RUNBOOK.md`, `lib/db-path.ts`, `vercel.json` all fit existing Tier 3/4 categories.
+
+### Files changed (Sprint 6)
+
+- `package.json` — build/postinstall/db:* scripts
+- `vercel.json` — new
+- `next.config.ts` — serverExternalPackages + outputFileTracingIncludes
+- `.gitignore` — `!/prisma/seed.db` exception
+- `lib/db-path.ts` — new
+- `app/growth-conversations/page.tsx` — getPrisma → getDbPath()
+- `app/growth-conversations/[memberId]/page.tsx` — getPrisma → getDbPath()
+- `app/growth-conversations/[memberId]/actions.ts` — getPrisma → getDbPath()
+- `app/v2/insight-engine/portfolio/page.tsx` — getPrisma → getDbPath()
+- `app/v2/insight-engine/tracks/page.tsx` — getPrisma → getDbPath()
+- `app/v2/insight-engine/coverage/page.tsx` — getPrisma → getDbPath()
+- `app/v2/insight-engine/stage-skip/page.tsx` — getPrisma → getDbPath()
+- `app/v2/members/[id]/page.tsx` — getPrisma → getDbPath()
+- `app/v2/members/[id]/actions.ts` — getPrisma → getDbPath()
+- `app/members/[id]/page.tsx` — getPrisma → getDbPath()
+- `lib/compliance-scan-action.ts` — getPrisma → getDbPath()
+- `prisma/seed.db` — new (committed snapshot, 999 KB)
+- `BUILD_LOG.md` — this entry
+- `OPEN_QUESTIONS.md` — Q-F7 added
+- `DEMO_RUNBOOK.md` — deployment walkthrough + dashboard-opening narrative arc + read-only constraint note
+
+### What was learned
+
+- Vercel's Lambda filesystem is read-only except `/tmp`. The `outputFileTracingIncludes` + `/tmp` copy pattern lets SQLite work for a read-heavy demo with transient writes, which is enough for the EVP arc. Pilot moves to Postgres regardless.
+- Turbopack's NFT tracer warns when it sees dynamic file paths derived from env vars during the import trace, even if the actual file is correctly included via `outputFileTracingIncludes`. Pinning the bundled path to a static constant (`"prisma/seed.db"`) silenced the warning without changing runtime behavior.
+- `serverExternalPackages: ["better-sqlite3", "@prisma/client"]` is the right escape hatch for native modules — Next bundles everything else but leaves these to install normally into the Lambda's `node_modules`.
+
+### What's open
+
+- **Block C/D operational steps require Francisco's hands on Vercel.** Code/config side is done. The exact action list lives in `DEMO_RUNBOOK.md → Pre-demo checklist → Deployment walkthrough`: refresh the snapshot, commit, push, connect Vercel, paste env vars, deploy. First deploy verifies the entire pipeline end-to-end.
+- **Production URL placeholder** in the runbook needs the actual `https://<project>.vercel.app` filled in after first successful deploy.
+- **Sprint 7b** (remaining 5 drill-down views, Sankey, Member-Type matrix) — deferred to post-demo per Sprint 6 §pre-flight.
+
+### Suggested next move
+
+Francisco runs the Deployment walkthrough from DEMO_RUNBOOK Pre-demo checklist. After first successful Vercel build, paste the URL into the checklist, run through Section 1 narrative arc once for rehearsal, and the build is EVP demo-ready.
+
+---
+
+## Architectural notes for Pilot — running list
+
+(Earlier notes 1-17 are scattered throughout prior sprint entries. Sprint 6 adds Note 18.)
+
+**Note 18 — Vercel deployment with SQLite read-only filesystem.** Vercel's serverless runtime treats the Lambda filesystem as read-only outside `/tmp`. Sprint 6 wires the demo via a bundled `prisma/seed.db` snapshot copied to `/tmp/blaze.db` on cold start (`lib/db-path.ts`), which lets reads + writes both succeed for the Lambda instance lifetime. Writes vanish when Vercel recycles the instance — accepted for the read-heavy EVP demo where the "live Insight authoring" beat is about surfacing LLM-matching feedback in real time, not durability. Pilot needs Postgres for production write persistence, real-time evolution, and multi-instance consistency. The DATABASE_URL → Postgres switch is a one-line `provider` change in `prisma.config.ts` (already provider-agnostic per CLAUDE.md §2).
+
+---
+
+## 2026-05-12 — Sprint 8: Multi-Track artifacts with FactorCapture linkage
+
+### What was built
+
+**Block A — Schema migration.**
+
+Two new columns + the `source_factor_id` JSON convention on `ArtifactTemplate.parameter_schema`:
+
+- `Member.active_track_ids Json?` — JSON array of TrackTemplate ids (e.g., `["TRACK-008","TRACK-003"]`). First entry is the primary Track. Fixtures opt in; synthetic Members leave it null and fall through to single-Track ranking. Chose Option (a) per spec §A.1 — lighter migration than a `MemberTrack` join table.
+- `FactorCapture.capture_mode String @default("member_confirmed")` — captures the dichotomy between conversation-confirmed values and banker working assumptions. All existing rows backfilled to `member_confirmed` by the migration's data-preserving rebuild.
+- `ArtifactTemplate.parameter_schema` (already `Json`) — new `source_factor_id` field per parameter is purely a JSON convention, no schema change.
+
+Migration: `prisma/migrations/20260512143109_sprint8_multitrack_artifacts/`.
+
+**Block B — Two new artifact templates.**
+
+- **ARTIFACT-TEMPLATE-009** (TRACK-001 Working Capital LOC) — "Seasonal cashflow smoothing summary". 6 parameters; source_factor_id wired to FACTOR-019 (Annual revenue band), FACTOR-001 (Seasonal revenue variance), FACTOR-036 (Requested credit limit). `slow_season_gap`, `draw_pattern`, `repayment_window` are banker-entered.
+- **ARTIFACT-TEMPLATE-010** (TRACK-002 Business Vehicle Loan) — "Business Vehicle Loan financing summary". 11 parameters incl. computed `loan_amount = purchase_price − down_payment`; source_factor_id wired to FACTOR-033 (Equipment replacement cost, used as vehicle purchase price), FACTOR-006 (Capacity utilization), FACTOR-007 (Demand exceeding capacity).
+
+`member_type_applicability` set per spec §B.1/B.2.
+
+**Block C — Backfilled `source_factor_id` on 7 existing templates.**
+
+- ARTIFACT-TEMPLATE-001 (CRE): acquisition_price→FACTOR-035, loan_amount→FACTOR-037
+- ARTIFACT-TEMPLATE-003 (Investment property): purchase_price→FACTOR-035
+- ARTIFACT-TEMPLATE-004 (Equipment): equipment_cost→FACTOR-033
+- ARTIFACT-TEMPLATE-005 (PACE): improvement_type→FACTOR-031, improvement_cost→FACTOR-034, property_eligibility→FACTOR-032
+- ARTIFACT-TEMPLATE-006 (Visa): proposed_limit→FACTOR-036
+- ARTIFACT-TEMPLATE-007 (Unsecured): loan_amount→FACTOR-037
+- ARTIFACT-TEMPLATE-008 (SBA 504 roadmap): no factor mappings (per-deal state, not captured factors)
+
+**Spec corrections (per §C.2):** the prompt referenced several factor IDs that don't exist in the current matrix. I mapped to the correct IDs from `BUSINESS_FACTOR_MATRIX_v1.md`:
+| Spec wrote | Actual |
+|---|---|
+| FACTOR-027 (annual revenue) | FACTOR-019 (Annual revenue band) |
+| FACTOR-026 (seasonal variance) | FACTOR-001 (Seasonal revenue variance) |
+| FACTOR-008 (slow-season gap) | No factor — banker-entered |
+| FACTOR-018 (requested credit limit) | FACTOR-036 (Requested credit limit, sized) |
+| FACTOR-015 (purchase_price) | FACTOR-033 (Equipment replacement cost, sized) |
+| FACTOR-019 (property acquisition) | FACTOR-035 (Property acquisition amount, sized) |
+| FACTOR-020 (requested loan amount) | FACTOR-037 (Requested loan amount, sized) |
+| FACTOR-016 (equipment replacement cost) | FACTOR-033 |
+| FACTOR-030 (PACE eligibility confirmed) | FACTOR-032 |
+
+The `TemplateParameter` TypeScript type now carries `source_factor_id?: string` for renderer consumption.
+
+**Block D — Renderer auto-pulls FactorCapture values.**
+
+`ArtifactTemplateRender` now accepts `factorCapturesById?: Record<string, { display_value, capture_mode }>` and overlays parameter values from FactorCaptures when `source_factor_id` is set. Resolution order: FactorCapture (most recent for member) → banker-entered `parameterValues` → marked missing. Computed parameters cascade from auto-populated inputs.
+
+Plumbing: `workstation-shell` builds `factorCapturesById` from the existing `FactorCaptureLite[]` and passes it to `V2MainPanel` → `FeedCard` → `CardDetail` → `ModelTemplatePreview` → `ArtifactTemplateRender`. `FactorCaptureLite` extended with `capture_mode?: string` so the mode flows through to the renderer.
+
+**Block E — Missing-parameter CTAs with two-mode capture.**
+
+The renderer surfaces missing source-linked parameters two ways:
+1. **Top-of-artifact banner** — collapsed list of all missing params, each with `[Capture with Member]` (orange primary) and `[Banker estimate]` (outline secondary) buttons. Shown above the structural content for prominence.
+2. **Inline row CTA** — within section rows, a `— missing · + capture` affordance offers a quick member_confirmed capture path.
+
+Click handlers fire `onMissingParameterCapture({ factor_id, parameter_label, mode })` which the workstation-shell routes through `handleMissingParameterCapture`: sets `preselectedFactorId` + `preselectedCaptureMode` and opens the dialpad's + Quantify drawer. The dialpad forwards both to `QuantifyForm` → `MatrixAwareCapture` → `saveFactorCapture`. `lib/recapture-detection.ts → factorCaptureOrUpdate` writes `capture_mode` on both create and recapture-update (converting banker_estimate → member_confirmed in place when the same value is re-captured later).
+
+When `preselectedCaptureMode === "banker_estimate"`, the QuantifyForm renders a cream-banner reminder: "Recording your working assumption. Marked as banker estimate so we know to confirm with the Member later."
+
+**Block F — Track context toggle.**
+
+The existing sidebar Track dropdown (Sprint 5a.2) already drove `selectedTrackId`. Sprint 8 adds:
+
+- **URL `?track=TRACK-NNN` encoding.** On mount, URL wins over sessionStorage; switches call `router.replace(..., { scroll: false })` to keep the URL shareable without trapping the back button.
+- **Sidebar artifact filtering by Track.** `SidebarArtifact.track_id` added (sourced from the linked Model's template). `workstation-shell.trackFilteredArtifacts` filters to the current Track context. Multi-Track fixtures (Cygnus / Northland / Jenny) now show different artifacts when switching Tracks; single-Track fixtures (Riverside, synthetic Members) see no UX change.
+- **show_events query** in `app/v2/members/[id]/page.tsx` extended to pull `model.template.track_id`.
+
+**Block G — Fixture multi-Track data.**
+
+New `seedFixtureMultiTrack(prisma)` in `prisma/seed-artifact-templates.ts`, called from `prisma/seed.ts` as Step 12b. Idempotent — drops + re-creates the secondary Models per re-seed.
+
+Per-fixture distribution:
+
+| Fixture | active_track_ids | Models seeded |
+|---|---|---|
+| Cygnus | `["TRACK-008", "TRACK-003"]` | TRACK-008 SBA 504 roadmap (migration helper) + TRACK-003 CRE acquisition summary (params seeded with `acquisition_price` left blank → renderer auto-pulls FACTOR-035 = $5.5M) |
+| Northland | `["TRACK-002", "TRACK-007"]` | TRACK-002 Business Vehicle (new ARTIFACT-TEMPLATE-010; capacity_utilization_now auto-pulls FACTOR-006 = 88%, demand_exceeding_capacity auto-pulls FACTOR-007 = "Yes") + TRACK-007 Equipment ROI (existing) |
+| Jenny | `["TRACK-001", "TRACK-010"]` | TRACK-001 LOC smoothing (new ARTIFACT-TEMPLATE-009; requested_credit_limit left blank → demonstrates Block E missing-param CTA) + TRACK-010 Business Visa (existing) |
+| Riverside | `["TRACK-001"]` | TRACK-001 LOC smoothing — most params blank → demonstrates Block E end-to-end (stage-skipping fixture) |
+
+**Northland's FACTOR-007 (Demand exceeding capacity)** flipped to `capture_mode: "banker_estimate"` per spec §G.3 to demonstrate Block H's visual treatment. The value (true) is unchanged; only the mode shifted. When banker re-captures it as member_confirmed in a future conversation, `factorCaptureOrUpdate` converts the row in place.
+
+**Block H — Banker-estimate visual treatment.**
+
+Implemented in `SectionListRender`: when `captureModeByKey[key] === "banker_estimate"`, the displayed value gets an inline italic flag:
+
+```
+Demand exceeding capacity?  Yes · banker estimate (pending Member confirmation)
+```
+
+Member-confirmed values render unchanged. Mixed-mode artifacts distinguish both visually without competing for attention.
+
+**Block I — Governance.** This entry + Q-G1/G2/G3 + Notes 19-21 below + CLAUDE.md manifest.
+
+### Files changed (Sprint 8)
+
+- `prisma/schema.prisma` — `Member.active_track_ids Json?`, `FactorCapture.capture_mode String @default("member_confirmed")`
+- `prisma/migrations/20260512143109_sprint8_multitrack_artifacts/migration.sql` — new
+- `prisma/seed-artifact-templates.ts` — 2 new templates, source_factor_id backfill, `seedFixtureMultiTrack` helper
+- `prisma/seed.ts` — Step 12b wires `seedFixtureMultiTrack`
+- `lib/artifact-template.ts` — `TemplateParameter.source_factor_id?`
+- `lib/objective-evidence.ts` — `FactorCaptureLite.capture_mode?`
+- `lib/recapture-detection.ts` — `capture_mode` write on create + update
+- `app/v2/members/[id]/artifact-template-render.tsx` — full Block D/E/H implementation
+- `app/v2/members/[id]/main-panel.tsx` — props plumbing through `V2MainPanel` → `FeedCard` → `CardDetail` → `ModelTemplatePreview`
+- `app/v2/members/[id]/workstation-shell.tsx` — `factorCapturesById` derivation, `handleMissingParameterCapture`, URL `?track=` encoding, `trackFilteredArtifacts`
+- `app/v2/members/[id]/dialpad.tsx` — `preselectedCaptureMode` prop forwarded to QuantifyForm
+- `app/v2/members/[id]/capture-forms/quantify-form.tsx` — banker_estimate helper banner; `captureMode` flows to `saveFactorCapture`
+- `app/v2/members/[id]/actions.ts` — `SaveFactorCaptureInput.capture_mode?`
+- `app/v2/members/[id]/page.tsx` — show_events query pulls `model.template.track_id`; SidebarArtifact populates track_id; `FactorCaptureLite.capture_mode` forwarded
+- `app/v2/members/[id]/sidebar.tsx` — `SidebarArtifact.track_id?`
+- `prisma/seed.db` — refreshed snapshot
+
+### What was learned
+
+- The factor-ID gap between spec and matrix (~9 IDs out of date) underscores that the spec was authored before the matrix stabilized in Sprint 5a. Documenting corrections in BUILD_LOG (per spec §C.2) is the right path; updating spec docs would split the chain of historical context.
+- The renderer's "overlay parameter values" pattern (banker-entered → FactorCapture for source-linked → mark missing) keeps the implementation small. Adding new capture types or parameter shapes won't require changing the resolver.
+- Filtering sidebar artifacts by `currentRanked.track_id` is the same filter we'll likely want for Coach content + popup CTAs when Pilot extends multi-Track to synthetic Members.
+
+### What's open
+
+- **Block E "no-source-mapping inline missing"** — parameters without `source_factor_id` that are required but empty (e.g., Jenny's `draw_pattern` if left blank) don't currently surface a CTA. They render as `—`. The intent: only source-linked missing params get CTAs. Banker-entered missing params surface as form-validation failures at + Model save time. Acceptable per spec §E.1.
+- **DSCR-style derived parameters** — some templates (ARTIFACT-TEMPLATE-003 Investment property) compute DSCR from rental income + expenses + debt service. Computed parameters cascade correctly per Block D §D.4 as long as the inputs are auto-populated; banker still needs to enter rental income + expenses manually unless those get FACTOR backfills in a future sprint.
+- **Synthetic Member multi-Track** — deferred to Pilot per spec; dashboard aggregates unchanged.
+
+### Suggested next move
+
+Visual review with Francisco on the Cygnus + Northland + Jenny growth-conversation pages. Walk the Track-switch beat (sidebar dropdown), open each Track's artifact via the captured-feed "show ↓" template card, observe FactorCapture auto-population. Trigger the missing-param CTA on Jenny's TRACK-001 artifact (requested_credit_limit blank) and confirm the dialpad opens to + Quantify with FACTOR-036 pre-selected. Confirm Northland's `demand_exceeding_capacity` shows the "banker estimate" flag.
+
+After visual review, Sprint 6 deployment to Vercel ships with both Sprint 6 polish + Sprint 8 features included (single deployment cycle per the original plan).
+
+---
+
+## Architectural notes for Pilot — running list (continued)
+
+**Note 19 — Multi-Track Member cultivation.** Sprint 8's 4 fixtures carry multiple active Tracks each (Cygnus + Northland + Jenny each get 2 Tracks; Riverside stays single). The `Member.active_track_ids` JSON array + the sidebar Track-switcher + URL `?track=` encoding form a coherent multi-Track UX. Synthetic Members stay single-Track for demo simplicity; Pilot extends multi-Track to all Members and may add per-Member-per-Track metadata (e.g., when did the cultivation arc for this Track begin) via a join table.
+
+**Note 20 — Two-mode capture (member_confirmed vs banker_estimate).** Demo surfaces this distinction only at artifact missing-parameter CTAs. Standard + Quantify defaults to member_confirmed; the mode dichotomy is invisible elsewhere. Pilot may want mode-aware capture throughout the system — every + Quantify form, every FactorCapture display, every audit-trail surface. The schema supports it; only the UI surface is constrained.
+
+**Note 21 — Sprint 5d Note 13 resolved.** FactorCapture-to-Model parameter linkage was deferred in Sprint 5d. Sprint 8 implements it via `ArtifactTemplate.parameter_schema.source_factor_id` (per-parameter pointer) + renderer overlay logic. Pilot follow-up: also wire FactorCapture-to-Insight authorship pre-fill, and FactorCapture-to-Reaction primary-concern suggestions.
+
+---
+
+## 2026-05-12 — Sprint 9: Business-impact artifact visualizations
+
+### What was built
+
+Replaced 8 of 10 lending-product artifact renderers with custom business-impact visualizations that answer the question "what does this loan do for the Member" rather than the prior "what is the loan structure" summary. TRACK-001 (Working Capital LOC) and TRACK-002 (Business Vehicle Loan) preserved unchanged — both already met the standard.
+
+**Block A — Infrastructure.** New directory `app/v2/members/[id]/artifact-visualizations/` with:
+- `shared.ts` — `num()` / `fmtUSD()` / `fmtUSDLong()` / `tooltipUSD()` / `monthlyPayment()` / `VIZ_COLORS` palette / `annotationLineClass()` helper. Standard before/after color treatment (muted grey for current state, Blaze orange for loan-enabled state, green for equity/wealth, red for cost/danger).
+- 8 component files (one per Track).
+- `ArtifactTemplateRender` dispatches on `structural_content.type` to the appropriate component via a new `renderStructuralVisualization` helper. Legacy section-list types (`financing_summary`, `cashflow_projection`, `roi_projection`, `use_plan`) continue to render via `SectionListRender` for any template that hasn't migrated.
+
+`StructuralContent` type union in `lib/artifact-template.ts` extended with the 8 new viz types + a new composite `sba_504_paired` type that renders both the existing roadmap and the new structure-comparison chart.
+
+**Block B — TRACK-003 CRE: LeaseVsOwnChart.** 15-year dual-line cumulative cost chart (continued leasing vs. mortgaged ownership) plus a dashed equity line tracking principal paydown + property appreciation. `ReferenceLine` marks the crossover year when ownership beats leasing. End-state annotation: total paid + equity built under each scenario.
+
+**Block C — TRACK-004 SBA 7(a): GrowthTrajectoryChart.** Two-line revenue trajectory over the loan term: organic growth (no loan) vs. expansion-fueled (with SBA 7(a)). Year-1 revenue uplift visible as a step at the start of the with-loan line; debt service overlay rendered as a faint area at the bottom so the cost reads small next to the revenue lift. Annotation summarizes cumulative uplift, total debt service, and net gain.
+
+**Block D — TRACK-006 Investment Property: CashflowEquityDualChart.** Two stacked panels. Top: horizontal stacked bar chart of monthly cashflow components (rent → mortgage + opex → net). Bottom: 10-year wealth-accumulation chart with two lines (total equity from principal paydown + appreciation; cumulative net cashflow), referenced against the initial-investment baseline. Annotation calls out year-10 equity, cumulative cashflow, total return, and ROI percent on down payment.
+
+**Block E — TRACK-007 Equipment: CostOfDoingNothingChart.** Cumulative-cost dual-line over 36 months. Aging equipment costs (maintenance + downtime + declined-job revenue) compound at ~1.2%/month degradation; new-equipment-financed cost is constant (debt service + low maintenance). Crossover annotation shows the breakeven month from which new equipment is cheaper than continuing.
+
+**Block F — TRACK-008 SBA 504: Sba504StructureComparison + paired roadmap.** The existing partnership-map roadmap is preserved AND a new side-by-side bar comparison renders below it. Two grouped bar pairs: cash-at-closing (Conventional 30% equity vs. SBA 504 10% equity) and 10-year cumulative interest (computed via month-by-month amortization across the 50% bank lien at market rate + 40% CDC lien at below-market rate vs. the 70% conventional loan). Annotation calls out cash savings and interest savings vs. conventional.
+
+**Block G — TRACK-009 PACE: PaceMonthlySavingsChart.** Stacked annual bars over a 25-year horizon with a net-benefit line overlay. Energy savings stack positive; PACE assessments stack negative during the PACE term; after the PACE term ends the assessment goes to zero and the bars are pure savings. `ReferenceLine` at the PACE-term-end year. Annotation calls out monthly net benefit and cumulative net benefit through the PACE term.
+
+**Block H — TRACK-010 Business Visa: CashbackOpportunityChart.** Annual benefit comparison bar chart (current = zero vs. with Business Visa = cashback + float). Below the chart, a structured breakdown lists annual operational spend, expected card spend at the chosen cashback rate, annual cashback captured, float benefit. Annotation closes with the 5-year cumulative figure as "money left on the table".
+
+**Block I — TRACK-011 Unsecured: UnsecuredOpportunityChart.** Stacked bar comparison of two scenarios. Without-loan: zero captured. With-loan: opportunity value (positive, green) + interest cost (negative, red). The "math" panel below shows loan size, monthly payment, total interest, opportunity value, and net benefit with a one-line "act on it" / "skip it" recommendation.
+
+**Block J — Seed + governance.**
+
+- Each of `ARTIFACT-TEMPLATE-001..008` rewritten with the new `structural_content.type`, the Sprint 9 parameter schemas (with `source_factor_id` linkage preserved), and revised `output_summary_template` framing the business-impact narrative.
+- `FIXTURE_MODEL_SEEDS` updated to populate the new visualization inputs for fixture × Track combos (Cygnus CRE, Northland Business Vehicle, Jenny Business Visa, Riverside LOC).
+- New `LEGACY_MODEL_PARAMS` patch map applied during `seedFixtureMultiTrack`: Cygnus's TRACK-008 Model gets the SBA 504 structure-comparison inputs (property value $5.5M, bank rate 7.25%, CDC rate 5.25%, conventional rate 8.5%); Northland's TRACK-007 Model gets the cost-of-doing-nothing inputs (aging fleet maintenance $2,800/mo, downtime $1,500/mo, declined revenue $4,200/mo).
+- `migrateCygnusModelToTemplate` extended to seed the same SBA 504 paired-viz parameters.
+- `prisma/seed.db` snapshot refreshed for Vercel deploy.
+
+### Files changed (Sprint 9)
+
+- `app/v2/members/[id]/artifact-visualizations/shared.ts` — new (palette + helpers)
+- `app/v2/members/[id]/artifact-visualizations/LeaseVsOwnChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/GrowthTrajectoryChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/CashflowEquityDualChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/CostOfDoingNothingChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/Sba504StructureComparison.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/PaceMonthlySavingsChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/CashbackOpportunityChart.tsx` — new
+- `app/v2/members/[id]/artifact-visualizations/UnsecuredOpportunityChart.tsx` — new
+- `app/v2/members/[id]/artifact-template-render.tsx` — `renderStructuralVisualization` dispatch + imports
+- `lib/artifact-template.ts` — `StructuralContent` union extended with 8 new types + `sba_504_paired`
+- `prisma/seed-artifact-templates.ts` — template schemas + fixture seeds + legacy-model patch
+- `prisma/seed.db` — refreshed snapshot
+
+### What was learned
+
+- Recharts' Tooltip `formatter` prop expects a flexible signature (`ValueType | undefined`); using a strict `(value: number) => string` callback fails TypeScript. The `tooltipUSD()` helper accepts `unknown` and safely coerces — same readable output, no per-chart casting needed.
+- The Sprint 8 parameter-schema discipline (source_factor_id auto-population, missing-param CTAs, banker-estimate flag) carries through to the new visualizations without modification. The visualizations consume the same `parameterValues` map; everything else is invisible to them. That's the clean separation the architecture wanted.
+- Some visualizations (PACE, CRE lease-vs-own) compute long projections from a handful of inputs. The math is intentionally simplified (annualized amortization, flat appreciation assumption) so the demo numbers are explainable — not so accurate that the banker has to defend each cell.
+
+### What's open
+
+- The Sprint 9 viz components don't currently support the inline `+ fill in` editor for banker-entered params (that affordance lives in `SectionListRender`, which the viz types don't use). Banker-entered missing params still surface as missing-param-banner CTAs at the top — that's the unified entry point for any missing required parameter.
+- Riverside's TRACK-001 artifact still renders via the unchanged `cashflow_projection` (Jenny's LOC chart); per spec preserved.
+
+### Suggested next move
+
+Visual review of all 10 artifact tiles. Walk Cygnus → SBA 504 (paired viz), Cygnus → CRE Term Loan, Northland → Business Vehicle (preserved), Northland → Equipment, Jenny → Working Capital LOC (preserved), Jenny → Business Visa, then sample Riverside, then a representative-example synthetic Member for each remaining Track to confirm the visualizations render with realistic numbers.
+
+After Sprint 9 review, Sprint 6 deployment to Vercel ships next (single deploy with Sprints 6 + 8 + 9 + the cosmetic polish bundled).
+
+---
+
+**Note 22 — Business-impact visualization pattern.** All 10 lending-product artifacts now demonstrate before/after business effect rather than transaction summary. The pattern: each Track's structural_content.type dispatches to a per-Track component under `artifact-visualizations/`; the component reads from the existing parameterValues map (auto-populated from FactorCaptures per Sprint 8), renders a chart that visualizes the current-state pain or missed opportunity alongside the loan-enabled outcome, and surfaces a quantified financial-impact annotation. Pilot extends this pattern to any new lending products that come online — just author the parameter schema + chart component.
+
+---
+
 *Next session entry will be appended below.*

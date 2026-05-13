@@ -31,6 +31,11 @@ import {
   type SizingMeasurementDraft,
   type SizingMeasurementEdit,
 } from "./actions";
+import { scanText } from "@/lib/compliance-keywords";
+import {
+  ComplianceScanModal,
+  type ScanFieldResult,
+} from "@/app/_components/compliance-scan-modal";
 
 // ────────────────────────────────────────────────
 // Types — server passes these in
@@ -212,12 +217,15 @@ export function SizeSection({
   conversationId,
   priorMeasurements,
   dimensions,
+  onSaveSuccess,
 }: {
   memberId: string;
   bankerId: string;
   conversationId: string | null;
   priorMeasurements: SizePriorMeasurement[];
   dimensions: SizeDimensionOption[];
+  // Sprint 4.7 Block L — optional callback for v2 drawer wrapper.
+  onSaveSuccess?: () => void;
 }) {
   const router = useRouter();
   const [pendingNew, setPendingNew] = useState<PendingNew[]>([]);
@@ -226,6 +234,11 @@ export function SizeSection({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Sprint 4.7 Block Q — submit-time keyword scan over their_words +
+  // methodology_note across pending captures.
+  const [pendingScan, setPendingScan] = useState<{
+    fieldsWithMatches: ScanFieldResult[];
+  } | null>(null);
 
   function addNew() {
     setPendingNew((current) => [
@@ -280,6 +293,60 @@ export function SizeSection({
       setError("No measurements to save.");
       return;
     }
+
+    // Sprint 4.7 Block Q — scan their_words + methodology_note across
+    // all pending captures.
+    const scanFieldsWithMatches: ScanFieldResult[] = [];
+    pendingNew.forEach((p, i) => {
+      if (p.draft.their_words) {
+        const matches = scanText(p.draft.their_words);
+        if (matches.length > 0) {
+          scanFieldsWithMatches.push({
+            fieldName: `Quantify.their_words[new #${i + 1}]`,
+            matches,
+          });
+        }
+      }
+      if (p.draft.methodology_note) {
+        const matches = scanText(p.draft.methodology_note);
+        if (matches.length > 0) {
+          scanFieldsWithMatches.push({
+            fieldName: `Quantify.methodology_note[new #${i + 1}]`,
+            matches,
+          });
+        }
+      }
+    });
+    if (pendingEdit) {
+      if (pendingEdit.draft.their_words) {
+        const matches = scanText(pendingEdit.draft.their_words);
+        if (matches.length > 0) {
+          scanFieldsWithMatches.push({
+            fieldName: "Quantify.their_words[edit]",
+            matches,
+          });
+        }
+      }
+      if (pendingEdit.draft.methodology_note) {
+        const matches = scanText(pendingEdit.draft.methodology_note);
+        if (matches.length > 0) {
+          scanFieldsWithMatches.push({
+            fieldName: "Quantify.methodology_note[edit]",
+            matches,
+          });
+        }
+      }
+    }
+    if (scanFieldsWithMatches.length > 0) {
+      setPendingScan({ fieldsWithMatches: scanFieldsWithMatches });
+      return;
+    }
+
+    dispatchSave();
+  }
+
+  function dispatchSave() {
+    setPendingScan(null);
     startTransition(async () => {
       const result = await saveSizeCaptures({
         member_id: memberId,
@@ -306,6 +373,7 @@ export function SizeSection({
         setPendingEdit(null);
         setExpandedId(null);
         router.refresh();
+        onSaveSuccess?.();
       } else {
         setError(result.error);
       }
@@ -479,6 +547,21 @@ export function SizeSection({
         >
           {success}
         </p>
+      )}
+      {/* Sprint 4.7 Block Q — soft-advisory keyword scan modal. */}
+      {pendingScan && (
+        <ComplianceScanModal
+          bankerId={bankerId}
+          memberId={memberId}
+          fieldsWithMatches={pendingScan.fieldsWithMatches}
+          onContinue={dispatchSave}
+          onEdit={() => setPendingScan(null)}
+          onCancel={() => {
+            setPendingScan(null);
+            setPendingNew([]);
+            setPendingEdit(null);
+          }}
+        />
       )}
     </div>
   );

@@ -20,6 +20,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { getDbPath } from "@/lib/db-path";
 
 import {
   computeSuggestedNextStep,
@@ -28,6 +29,8 @@ import {
 } from "@/lib/suggested-next-step";
 import { getStageGuidance, type StepPhase } from "@/lib/stage-guidance";
 import { GrowthConversationsHeader } from "../_shared";
+import { ComplianceDisclaimerBanner } from "@/app/_components/compliance-disclaimer-banner";
+import { CaptureDisciplineCallout } from "@/app/_components/capture-discipline-callout";
 import {
   AnchorProgressBar,
   type AnchorStage,
@@ -52,11 +55,9 @@ import {
 import { formatRecommendationSize } from "@/lib/format-size";
 
 function getPrisma() {
-  const dbPath = (process.env.DATABASE_URL ?? "file:./dev.db").replace(
-    /^file:/,
-    "",
-  );
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbPath }) });
+  return new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: getDbPath() }),
+  });
 }
 
 const NOW = new Date("2026-04-25T12:00:00Z");
@@ -385,7 +386,7 @@ export default async function GrowthConversationsPrefilledPage({
   // ids ("ask-1", "ask-2"); for unique labels, the slug matches the
   // shape ("ask", "size", "show", "resolve", "connect"). Lifecycle
   // stages slugify to "decision-pending" / "funded" /
-  // "specialist-engagement" / "closed".
+  // "specialist-engagement" / "introduced".
   const anchorStages: AnchorStage[] = stages.map((s) => ({
     ...s,
     anchor_id: `stage-${slugifyStageLabel(s.label)}`,
@@ -413,7 +414,11 @@ export default async function GrowthConversationsPrefilledPage({
       />
       <GrowthConversationsHeader
         bankerName={member.primary_banker.display_name}
+        memberSlug={slug}
       />
+      {/* Sprint 4.6 Block D — compliance disclaimer banner. Visible
+          first session visit; dismissible per session. */}
+      <ComplianceDisclaimerBanner />
 
       {/* Sprint 4 §4.1b C — breadcrumb. The "Growth Conversations"
           segment links to the standalone-entry page; the Member name is
@@ -476,8 +481,8 @@ export default async function GrowthConversationsPrefilledPage({
                 ? "funded"
                 : stage.label === "Specialist engagement"
                 ? "specialist_engagement"
-                : stage.label === "Closed"
-                ? "closed"
+                : stage.label === "Introduced"
+                ? "introduced"
                 : null;
               const guidance = stepPhase
                 ? getStageGuidance(
@@ -642,8 +647,17 @@ export default async function GrowthConversationsPrefilledPage({
         </div>
       </div>
 
+      {/* Sprint 4.6 Block E — Capture discipline coach affordance.
+          Footer-level link; click opens the modal with the verbatim
+          100-word callout per COMPLIANCE.md §10.4. The framing is the
+          F-7 banker-prose discipline made accessible at the moment of
+          capture. */}
+      <div className="mx-auto mt-12 max-w-6xl px-8">
+        <CaptureDisciplineCallout />
+      </div>
+
       <div
-        className="mt-12 h-1 w-full"
+        className="mt-6 h-1 w-full"
         style={{ backgroundImage: "var(--blaze-gradient)" }}
         aria-hidden
       />

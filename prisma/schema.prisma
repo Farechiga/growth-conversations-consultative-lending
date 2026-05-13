@@ -352,48 +352,62 @@ enum RecommendationResponse {
 //     prior `committed` state remains in the audit trail per the existing
 //     immutability discipline.
 
-// Recommendation.primary_concern — extended from Data Framework §4.4 with
-// `bank_capability` per Q-013 resolution. Sprint 4 §4.2a refinement #3
-// extended the enum further with declined-context reasons so the Resolve
-// form can offer two contextual option sets:
+// Recommendation.primary_concern — Sprint 4.6 Block A (compliance posture
+// floor) refactored the enum to a strict business-factor-only taxonomy
+// per COMPLIANCE.md §6 and the resolved Q-041. The enum now carries two
+// context-specific value sets; the resolve form picks the appropriate
+// set based on `member_response` and renders the appropriate field
+// label:
 //
-//   Open-thread set (engaged / leaning_yes / neutral / leaning_no /
-//     skeptical / confused responses):
-//       none, rate, speed, commitment, spouse, cpa, partner, timing,
-//       bank_capability, other
+//   Open-thread context (engaged / leaning_yes / committed) — 8 values
+//     reflecting business-decision-process facts. Field label:
+//     "Primary concern".
+//       pricing_concern, terms_concern, timing_concern,
+//       co_decision_maker_household, external_advisor, co_owner_or_board,
+//       service_or_capability_concern, other_open_thread
 //
-//   Decline-reason set (declined / dismissive responses):
-//       rate (rendered as "Rate too high"),
-//       terms_unfavorable, going_with_competitor, no_longer_needed,
-//       timing (rendered as "Timing wrong"),
-//       does_not_qualify, bank_capability (rendered as "Doesn't trust
-//       institution"), lost_interest, found_alternative,
-//       circumstances_changed, other
+//   Decline-reason context (declined / dismissive) — 10 values
+//     reflecting member-stated business reasons for declining. Field
+//     label: "Member's stated reason for declining".
+//       pricing_uncompetitive, terms_uncompetitive, timing_misaligned,
+//       chose_alternative_lender, chose_alternative_funding,
+//       need_resolved_otherwise, need_no_longer_present,
+//       wants_to_revisit_later, service_or_capability_concern,
+//       other_member_stated
 //
-// Some values appear in both sets with different banker-facing labels;
-// the form's label map (PRIMARY_CONCERN_LABELS in resolve-section.tsx)
-// resolves the contextual prose. SQLite stores the column as TEXT, so
-// this enum extension is a TS-type change only — no DDL migration is
-// required. A marker migration exists for change-history tracking.
+// `service_or_capability_concern` appears in both sets with the same
+// semantic meaning. All values are member-direction; bank-side
+// underwriting determinations (does_not_qualify, etc.) are explicitly
+// excluded — those go to Closing notes free text per §8.2 and are
+// deferred to Q-042 governance for any future structured capture.
+//
+// Migration history: prior values (rate / timing / spouse / cpa / partner
+// / bank_capability / does_not_qualify / Sprint-4-§4.2a decline values)
+// were mapped to the new taxonomy in migration
+// `20260429210607_sprint4_6_compliance_taxonomy_refactor`. SQLite stores
+// the column as TEXT so DDL is unchanged; the Prisma client validates
+// writes against this enum.
 enum RecommendationPrimaryConcern {
-  none
-  rate
-  speed
-  commitment
-  spouse
-  cpa
-  partner
-  timing
-  bank_capability
-  other
-  // Sprint 4 §4.2a refinement #3 — decline-reason values.
-  terms_unfavorable
-  going_with_competitor
-  no_longer_needed
-  does_not_qualify
-  lost_interest
-  found_alternative
-  circumstances_changed
+  // Open-thread context
+  pricing_concern
+  terms_concern
+  timing_concern
+  co_decision_maker_household
+  external_advisor
+  co_owner_or_board
+  other_open_thread
+  // Decline-reason context
+  pricing_uncompetitive
+  terms_uncompetitive
+  timing_misaligned
+  chose_alternative_lender
+  chose_alternative_funding
+  need_resolved_otherwise
+  need_no_longer_present
+  wants_to_revisit_later
+  other_member_stated
+  // Shared across both contexts
+  service_or_capability_concern
 }
 
 // ============================================================
@@ -430,6 +444,12 @@ model Banker {
   reviewed_artifacts          Artifact[]
   promoted_rules              Rule[]
   authored_private_notes      Json?
+  // Sprint 4.6 Block C — compliance scan telemetry reverse relation.
+  compliance_scan_events      ComplianceScanEvent[]
+  // Sprint 4.7 Block B — v2 phase 1 entities reverse relations.
+  built_models                Model[]
+  captured_reactions          Reaction[]
+  shown_events                ShowEvent[]
 }
 
 // IndustryFamily — Data Framework §5.2. Banker-facing label is "Business type".
@@ -640,6 +660,11 @@ model Artifact {
   created_at          DateTime         @default(now())
 
   growth_steps        GrowthStep[]
+  // Sprint 4.7 Block B — v2 entities. ShowEvent records when an
+  // Artifact is rendered to a Member; Model optionally records that an
+  // Artifact was produced by a banker-built model.
+  show_events         ShowEvent[]
+  models              Model[]
 }
 
 // ============================================================
@@ -671,6 +696,34 @@ model Member {
   private_notes           Json?
   // [derived] Most recent Conversation timestamp; set during seed step 6.
   last_touch_at           DateTime?
+  // Sprint 4.7 Block D — v2 key facts strip. 3-5 hand-curated facts
+  // per Member fixture for the v2 workstation's key facts strip
+  // (ARCHITECTURE_V2 §6.2). Schema:
+  //   [{ label: string, value: string, source_type: string,
+  //      source_id: string | null }, ...]
+  // For demo, hand-curated in seed.ts. For Pilot, an algorithm chooses
+  // most-consequential facts from captured evidence; out of demo scope.
+  key_facts               Json?
+  // Sprint 4.7 Block M — Tracks-supported-by-current-evidence cohort.
+  // Hand-curated per fixture per ARCHITECTURE_V2 §10.4 (true cross-
+  // portfolio anonymized intelligence is not feasible at three Members).
+  // Schema:
+  //   {
+  //     strong:       [{ track_name, evidence_count, rationale }, ...],
+  //     moderate:     [{ track_name, evidence_count, rationale }, ...],
+  //     insufficient: [{ track_name, rationale }, ...]
+  //   }
+  // Surfaced inside the Land objective panel. Compliance-careful framing
+  // verbatim per COMPLIANCE.md §10.2 / ARCHITECTURE_V2 §10.2 — never
+  // "candidate tracks" or "recommended for".
+  tracks_by_evidence_strength Json?
+  // Sprint 8 Block A — multi-Track cultivation (fixtures only). JSON
+  // array of TrackTemplate.id strings (e.g., ["TRACK-001","TRACK-010"]).
+  // First entry is the primary Track (used for ranking displays).
+  // Synthetic Members leave this null and fall through to single-Track
+  // behavior via the ranked-Track inference. Per CLAUDE.md §2 SQLite
+  // demo constraint, we store as Json rather than a join table.
+  active_track_ids        Json?
   // [derived] Count of Signals where active = true; set during seed step 6.
   active_signal_count     Int             @default(0)
   // [derived] Count of ActionCards where status in (open, in_progress); set during seed step 6.
@@ -684,6 +737,18 @@ model Member {
   recommendations         Recommendation[]
   summary_snapshots       MemberSummarySnapshot[]
   sizing_measurements     SizingMeasurement[]
+  compliance_scan_events  ComplianceScanEvent[]
+  // Sprint 4.7 Block B — v2 entities reverse relations.
+  models                  Model[]
+  reactions               Reaction[]
+  show_events             ShowEvent[]
+  // Sprint 5a.1 — Business Factor Matrix reverse relation.
+  factor_captures         FactorCapture[]
+  // Sprint 5b.1 — Insight architecture + specialist handoff.
+  insights                Insight[]
+  specialist_handoffs     SpecialistHandoff[]
+  // Sprint 5b.2 — denormalized workflow state for portfolio queries.
+  workflow_state          MemberWorkflowState?
 
   @@index([primary_banker_id])
   @@index([member_type_id])
@@ -710,6 +775,10 @@ model Conversation {
   origin_action_cards     ActionCard[]
   summary_snapshots       MemberSummarySnapshot[]
   sizing_measurements     SizingMeasurement[]
+  // Sprint 4.7 Block B — v2 entities reverse relations.
+  models                  Model[]
+  reactions               Reaction[]
+  show_events             ShowEvent[]
 
   @@index([member_id])
   @@index([banker_id])
@@ -1087,4 +1156,538 @@ enum ParameterProvenance {
   captured_signal
   banker_assumption
   member_stated_in_followup
+}
+
+// Sprint 4.6 Block C — ComplianceScanEvent: telemetry capture for the
+// submit-time keyword scan over [FL:BANKER-PROSE] fields. Per
+// COMPLIANCE.md §7.4 and the Sprint 4.6 prompt §C.5, every scan event
+// (whether the banker continues, edits, or cancels) is logged so Pilot
+// can calibrate the keyword list against real banker behavior.
+//
+// This is the lightweight stand-in for the full immutable trace log
+// (deferred per Path C-modified to Pilot — see ARCHITECTURE_V2.md §11
+// and Q-039 in OPEN_QUESTIONS.md). Demo phase doesn't surface this
+// telemetry anywhere; it accumulates for analytics use post-EVP.
+model ComplianceScanEvent {
+  id              String   @id @default(uuid())
+  occurred_at     DateTime @default(now())
+  banker_id       String
+  banker          Banker   @relation(fields: [banker_id], references: [id])
+  // The form field that fired the scan, e.g.
+  // "Resolve.customer_response", "Resolve.closing_notes",
+  // "Resolve.action_card_description". Free-form string so new
+  // [FL:BANKER-PROSE] fields can be added without schema changes.
+  field_name      String
+  // JSON array of { term: string, group: string } objects. Stored as
+  // Json (TEXT under SQLite) so the structured shape survives without
+  // a join table — query patterns are aggregations over (term × group)
+  // counts, which Json operators handle adequately for demo scale.
+  matched_terms   Json
+  // Banker's response to the soft-advisory prompt:
+  //   "continued"  — banker confirmed and saved
+  //   "edited"     — banker returned to the field and revised
+  //   "cancelled"  — banker discarded the capture
+  banker_action   String
+  // Optional Member context — populated when the scan fires inside a
+  // member-context form (Resolve, ActionCard description). Not all
+  // [FL:BANKER-PROSE] fields are member-context (e.g., a future
+  // global note); nullable accommodates both shapes.
+  member_id       String?
+  member          Member?  @relation(fields: [member_id], references: [id])
+
+  @@index([banker_id, occurred_at])
+  @@index([field_name])
+}
+
+// ============================================================
+// Sprint 4.7 Block B — v2 phase 1 entities (per ARCHITECTURE_V2 §11).
+//
+// Three new entities support the v2 workstation's two-layer model
+// (objectives × activities). Existing entities (Member, Conversation,
+// Banker, Artifact, Signal, SizingMeasurement, Recommendation,
+// ActionCard) are reused unchanged; v2 reads work alongside v1.
+//
+// The `Objective` entity from ARCHITECTURE_V2 §11.1 is implemented as
+// derived state in `lib/v2-objectives.ts` rather than a persisted
+// table — objectives are largely computed from existing captures via
+// the EVIDENCE_FRAMEWORK.md catalog. Persisting them would duplicate
+// derivable state. Demo simplicity > schema purity.
+//
+// Migration `<timestamp>_sprint4_7_v2_phase_1_entities` ships the three
+// CREATE TABLE statements + indexes additively. v1 schema unchanged.
+// ============================================================
+
+// Model — Sprint 4.7 Block B / ARCHITECTURE_V2 §11.2.
+//
+// Captures the + Model activity output. A Model is a banker-constructed
+// artifact (cashflow projection, ROI calculation, etc.) with structured
+// parameters, assumptions, and an output summary. The `built_with_member`
+// boolean is the critical evidentiary distinction per ARCHITECTURE_V2
+// §4: "With Member" (collaborative during conversation) is stronger
+// evidence than "Banker draft."
+//
+// Supersession discipline parallel to Signal / SizingMeasurement: when
+// a banker re-runs the model with refined assumptions, the new row
+// references the prior via `superseded_by_id` and the prior is marked
+// inactive. Audit trail preserved.
+model Model {
+  id                  String        @id @default(uuid())
+  member_id           String
+  member              Member        @relation(fields: [member_id], references: [id])
+  conversation_id     String?
+  conversation        Conversation? @relation(fields: [conversation_id], references: [id])
+  // Optional reference to an Artifact this Model produced or
+  // referenced. A Model may exist without an Artifact (e.g., a
+  // banker-built calculation that wasn't formalized into a shareable
+  // chart) and an Artifact may exist without a Model (the canonical
+  // demo Artifacts pre-date v2's Model entity).
+  artifact_id         String?
+  artifact            Artifact?     @relation(fields: [artifact_id], references: [id])
+  built_with_member   Boolean
+  parameters          Json
+  assumptions         Json
+  output_summary      String
+  built_at            DateTime      @default(now())
+  built_by_banker_id  String
+  built_by_banker     Banker        @relation(fields: [built_by_banker_id], references: [id])
+  active              Boolean       @default(true)
+  superseded_by_id    String?
+  superseded_by       Model?        @relation("ModelSupersession", fields: [superseded_by_id], references: [id])
+  superseded_at       DateTime?
+  superseding_models  Model[]       @relation("ModelSupersession")
+
+  show_events         ShowEvent[]
+
+  // Sprint 5d Block A — parameterized artifact template support.
+  // When set, the Model was built using an ArtifactTemplate;
+  // template_parameters is a JSON-encoded object of parameter values
+  // per the template's parameter_schema. Output summary, structural
+  // content, and rendering all derive from template + parameters.
+  template_id         String?
+  template            ArtifactTemplate? @relation(fields: [template_id], references: [id])
+  template_parameters String?
+
+  @@index([member_id, active])
+  @@index([conversation_id])
+  @@index([artifact_id])
+  @@index([template_id])
+}
+
+// ArtifactTemplate — Sprint 5d Block A.
+//
+// Parameterized artifact templates per Track. Each template defines
+// the parameter_schema banker fills during + Model capture, the
+// output_summary_template that renders with parameters, and structural
+// content (chart spec / ROI table / SBA 504 roadmap) for artifact view.
+// JSON fields are stored as String (SQLite convention; lib/factor-evaluator
+// pattern reuse).
+model ArtifactTemplate {
+  id                          String        @id // ARTIFACT-TEMPLATE-NNN
+  track_id                    String
+  track                       TrackTemplate @relation(fields: [track_id], references: [id])
+
+  title                       String
+  description                 String
+
+  // JSON-encoded array of Member-Type ids, or the literal 'broad'.
+  member_type_applicability   String
+
+  // JSON-encoded parameter schema:
+  // { parameters: [{ key, label, type, options?, required?, default?, helper?, computed?, computation? }, ...] }
+  parameter_schema            String
+  // Template string with {parameter_key} placeholders. Rendered by
+  // resolveTemplateString() in lib/artifact-template.ts.
+  output_summary_template     String
+  // JSON-encoded structural content. Shape varies by template type
+  // (cashflow projection / ROI table / SBA 504 roadmap with stages).
+  // Renderer dispatches on structural_content.type.
+  structural_content          String
+
+  created_at                  DateTime      @default(now())
+
+  models                      Model[]
+
+  @@index([track_id])
+}
+
+// Reaction — Sprint 4.7 Block B / ARCHITECTURE_V2 §11.3.
+//
+// Captures the + Reaction activity output: the Member's response to a
+// Show event. The optional `member_quote` field is the evidentiary
+// centerpiece — verbatim what the Member said. Subject to the Sprint
+// 4.6 compliance keyword scan ([FL:BANKER-PROSE]).
+//
+// `show_event_id` is optional: a Reaction can be captured without a
+// preceding Show (e.g., banker captures Member's reaction to a
+// previously-known artifact). When present, it's the linkage that lets
+// the captured feed render "Member reacted to <Show>."
+model Reaction {
+  id                    String        @id @default(uuid())
+  member_id             String
+  member                Member        @relation(fields: [member_id], references: [id])
+  conversation_id       String?
+  conversation          Conversation? @relation(fields: [conversation_id], references: [id])
+  show_event_id         String?
+  show_event            ShowEvent?    @relation(fields: [show_event_id], references: [id])
+  response_value        ReactionValue
+  member_quote          String?
+  // Sprint 4.7.2 Block A — primary concern column. Stored as String
+  // because the contextual taxonomy uses two different enum sets
+  // (open-thread context vs decline-reason context). The reused
+  // RecommendationPrimaryConcern enum (Sprint 4.6 v1 Resolve) covers
+  // both contexts; storing as String avoids tight Prisma single-enum
+  // coupling. Application-layer validates which subset is allowed
+  // per response_value (see app/v2/.../capture-forms/reaction-form.tsx).
+  primary_concern       String?
+  captured_at           DateTime      @default(now())
+  captured_by_banker_id String
+  captured_by_banker    Banker        @relation(fields: [captured_by_banker_id], references: [id])
+
+  @@index([member_id])
+  @@index([conversation_id])
+  @@index([show_event_id])
+}
+
+// Sprint 4.7.2 Block A — ReactionValue expansion. v2 Reaction subsumes
+// v1 Resolve's terminal states; enum grows from 5 → 7 values. Per
+// ARCHITECTURE_V2.md §11.7: v2 ReactionValue is a deliberate subset of
+// v1 RecommendationResponse — `funded` moves to Navigate via ActionCard
+// outcome; `neutral` is subsumed by absence-of-Reaction; `leaning_no`
+// folds into `skeptical` for v2.
+enum ReactionValue {
+  engaged
+  leaning_yes
+  skeptical
+  confused
+  dismissive
+  committed
+  declined
+}
+
+// ShowEvent — Sprint 4.7 Block B / ARCHITECTURE_V2 §11.4.
+//
+// Captures the + Show activity output: the moment an Artifact was
+// rendered to a Member during a conversation. Decouples "an artifact
+// was produced" (Model) from "an artifact was rendered" (ShowEvent).
+//
+// The same Model can be Shown multiple times (Q1 review, Q2 follow-up,
+// etc.); each Show is a distinct ShowEvent. ShowEvent without a Model
+// is fine (e.g., showing the demo Artifact that pre-dates v2's Model
+// entity).
+model ShowEvent {
+  id                  String        @id @default(uuid())
+  member_id           String
+  member              Member        @relation(fields: [member_id], references: [id])
+  conversation_id     String?
+  conversation        Conversation? @relation(fields: [conversation_id], references: [id])
+  artifact_id         String
+  artifact            Artifact      @relation(fields: [artifact_id], references: [id])
+  model_id            String?
+  model               Model?        @relation(fields: [model_id], references: [id])
+  shown_at            DateTime      @default(now())
+  shown_by_banker_id  String
+  shown_by_banker     Banker        @relation(fields: [shown_by_banker_id], references: [id])
+  context_note        String?
+
+  reactions           Reaction[]
+
+  @@index([member_id])
+  @@index([artifact_id])
+  @@index([conversation_id])
+}
+
+// ============================================================
+// Sprint 5a.1 — Business Factor Matrix infrastructure.
+//
+// Four entities that drive the Track-ranking switchboard and (in
+// Sprint 5a.2) the popup-as-workflow surface. Sourced from
+// BUSINESS_FACTOR_MATRIX_v1.md at repo root:
+//   - BusinessFactor: 28 factors organized by category (Section 1)
+//   - TrackTemplate: 5 Tracks (Section 2)
+//   - MatrixEntry: ~80 factor-track relevance rows with strength,
+//                  threshold rule, banker rationale (Section 3)
+//   - FactorCapture: per-Member captured factor values, with
+//                    optional source linkage to existing Signal /
+//                    SizingMeasurement / Reaction records (Section 4)
+//
+// These entities are additive — no v1 or earlier-v2 entity changes.
+// The matrix is read-only at runtime (seed-driven); FactorCapture
+// is the only matrix-related entity that grows during banker
+// workflow.
+// ============================================================
+
+model BusinessFactor {
+  // FACTOR-NNN identifier per matrix file Section 1.
+  id                  String   @id
+  name                String
+  // Banker-facing diagnostic question; surfaces on + Quantify form
+  // when banker selects this factor.
+  diagnostic_question String
+  // numerical | boolean | qualitative_select | qualitative_multi
+  capture_mode        String
+  // snake_case key used in MatrixEntry.threshold_rule field references
+  // (e.g., "seasonal_variance_pct >= 20" looks up the FactorCapture
+  // whose factor.field_name = "seasonal_variance_pct").
+  field_name          String   @unique
+  unit                String?
+  // cashflow | capacity | decision_process | industry_structural |
+  // member_stated | banking_relationship
+  category            String
+  // JSON-encoded array of allowed values for qualitative_select factors.
+  enum_values         String?
+  notes               String?
+  created_at          DateTime @default(now())
+
+  matrix_entries      MatrixEntry[]
+  factor_captures     FactorCapture[]
+
+  @@index([category])
+  @@index([field_name])
+}
+
+model TrackTemplate {
+  // TRACK-NNN identifier per matrix file Section 2.
+  id                              String   @id
+  name                            String
+  banker_description              String
+  typical_size_band               String?
+  // JSON: { discover: [...], measure: [...], consult: [...], navigate: [...] }
+  // Each array carries factor IDs (FACTOR-NNN) or symbolic strings
+  // (e.g., "model_produced", "model_shown", "reaction_captured").
+  // Sprint 5a.2's popup-as-workflow logic resolves the symbolic refs.
+  required_evidence_per_objective Json
+  // Sprint 9 Patch E — JSON string[] of MemberType.id values for which
+  // this Track is a natural fit. Drives the Track context dropdown's
+  // applicability filter on /v2/members/[id]. The "compare to other
+  // lending products" surface ignores this filter so the banker can
+  // still reach inapplicable Tracks when warranted. Nullable for
+  // backward compatibility; treated as "applicable to all Member-Types"
+  // when null (e.g., legacy synthetic data).
+  member_type_applicability       Json?
+  notes                           String?
+  created_at                      DateTime @default(now())
+
+  matrix_entries                  MatrixEntry[]
+  artifact_templates              ArtifactTemplate[]
+}
+
+model MatrixEntry {
+  id                String   @id @default(cuid())
+  factor_id         String
+  factor            BusinessFactor @relation(fields: [factor_id], references: [id])
+  track_id          String
+  track             TrackTemplate  @relation(fields: [track_id], references: [id])
+  // strong | moderate | negligible | negative
+  strength          String
+  // Threshold rule string, evaluated by lib/factor-evaluator.ts.
+  // Null for presence-based or unconditional matrix entries.
+  // Examples: "seasonal_variance_pct >= 20",
+  //           "growth_obstacle_tag == cashflow_volatility",
+  //           "decision_timeline IN [6_months, 12_months]"
+  threshold_rule    String?
+  // Banker-facing rationale; surfaces in popup CTAs and the
+  // Tracks-supported panel rationale text.
+  banker_rationale  String
+  created_at        DateTime @default(now())
+
+  // The unique constraint includes strength because some factor-track
+  // pairs have entries at multiple tiers (e.g., FACTOR-001/TRACK-001
+  // has both a strong entry at threshold ≥ 20% and a moderate entry
+  // at the 10..20% range).
+  @@unique([factor_id, track_id, strength, threshold_rule])
+  @@index([factor_id])
+  @@index([track_id])
+  @@index([strength])
+}
+
+model FactorCapture {
+  id                  String   @id @default(cuid())
+  member_id           String
+  member              Member   @relation(fields: [member_id], references: [id])
+  factor_id           String
+  factor              BusinessFactor @relation(fields: [factor_id], references: [id])
+  // One of the three value columns is set per the factor's capture_mode.
+  numerical_value     Float?
+  boolean_value       Boolean?
+  qualitative_value   String?
+  unit                String?
+  // Optional traceability to the underlying capture entity. Lets the
+  // popup-as-workflow surface (Sprint 5a.2) show "this factor was
+  // captured via this Goal/SizingMeasurement/Reaction."
+  source_signal_id    String?
+  source_sizing_id    String?
+  source_reaction_id  String?
+  captured_at         DateTime @default(now())
+  banker_id           String
+  // Sprint 8 Block A — capture-mode dichotomy.
+  //   'member_confirmed' — captured in-conversation with the Member,
+  //     verbatim or directly observed. Default.
+  //   'banker_estimate'  — banker's working assumption, pending Member
+  //     confirmation in a future conversation. Surfaces a visual flag
+  //     (Sprint 8 Block H) wherever the captured value is displayed.
+  // The two-mode UI surfaces only at artifact missing-parameter CTAs
+  // (Sprint 8 Block E); standard + Quantify defaults to member_confirmed.
+  capture_mode        String   @default("member_confirmed")
+
+  @@index([member_id])
+  @@index([factor_id])
+  @@index([member_id, factor_id])
+}
+
+// ============================================================
+// Sprint 5b.1 — Insight architecture + specialist handoff
+// ============================================================
+//
+// Three new entities:
+//   - InsightPattern: senior-authored canonical Patterns (institutional
+//     knowledge for banker consultative reference). Status workflow
+//     supports draft → approved → archived.
+//   - Insight: banker-authored, two-state lifecycle (routine when LLM
+//     match confidence ≥ 0.7; novel when below). Can address a Signal.
+//   - SpecialistHandoff: Layer 3 CTA artifact. Created when banker
+//     initiates handoff to a specialist (CRE / SBA / treasury / credit).
+// ============================================================
+
+model InsightPattern {
+  // PATTERN-NNN identifier from INSIGHT_PATTERN_LIBRARY_v1.md.
+  id                          String   @id
+  // FK to TrackTemplate.id (TRACK-001 etc.).
+  track_id                    String
+  // Signal-tag this Pattern addresses (e.g. cashflow_volatility,
+  // capacity_limit, real_estate). Used by Lightbulb-icon ranking and
+  // by the matching pipeline to filter candidates.
+  signal_tag_scope            String
+  // 'reframe' (reinterprets a captured fact) or 'implication'
+  // (develops a not-yet-articulated consequence).
+  insight_type                String
+  // 200-char canonical statement, Member-Type-agnostic.
+  content                     String
+  // JSON: array of 2-3 Rackham-style implication questions.
+  implication_questions       String
+  // JSON: array of Member-Type identifiers where Pattern was observed.
+  // Metadata for library navigation; not used in matching.
+  member_type_origins         String
+  // 'broad' or JSON-encoded array of Member-Type ids. Senior-author
+  // judgment for which Member Types this Pattern applies to.
+  member_type_applicability   String
+  // 'draft' | 'approved' | 'archived'. All demo seed Patterns ship as
+  // 'approved'.
+  status                      String
+  authored_at                 DateTime @default(now())
+  authored_by                 String   // banker id of senior lender
+  approved_at                 DateTime?
+  approved_by                 String?
+
+  insights                    Insight[]
+
+  @@index([track_id])
+  @@index([signal_tag_scope])
+  @@index([track_id, signal_tag_scope])
+}
+
+model Insight {
+  id                  String   @id @default(cuid())
+  member_id           String
+  member              Member   @relation(fields: [member_id], references: [id])
+  // FK to TrackTemplate.id — banker chose this Track context when
+  // authoring. May differ from current Track if banker switches.
+  track_id            String
+  // Optional Signal reference — the Goal/Blocker/Indecision/Trigger
+  // this Insight addresses. Null when the Insight is Track-level not
+  // Signal-attached.
+  addresses_signal_id String?
+  // 'reframe' | 'implication'. Default depends on addressed Signal
+  // type per Block E.1 (Goal/Blocker → reframe; Indecision/Trigger
+  // → implication).
+  insight_type        String
+  // 200-char banker authorship.
+  content             String
+  // FK to InsightPattern.id. Null when no clean match (state='novel').
+  matched_pattern_id  String?
+  matched_pattern     InsightPattern? @relation(fields: [matched_pattern_id], references: [id])
+  // Anthropic API match-confidence judgment, 0-1. Null on novel.
+  match_confidence    Float?
+  // Cached LLM feedback string (200 char). Populated on save; survives
+  // even if the LLM API is later unreachable.
+  llm_feedback        String?
+  // 'routine' (matched ≥ 0.7) | 'novel' (no match or below threshold).
+  state               String
+  authored_at         DateTime @default(now())
+  authored_by         String   // banker_id
+
+  @@index([member_id])
+  @@index([track_id])
+  @@index([addresses_signal_id])
+  @@index([state])
+  @@index([matched_pattern_id])
+}
+
+model SpecialistHandoff {
+  id                       String   @id @default(cuid())
+  member_id                String
+  member                   Member   @relation(fields: [member_id], references: [id])
+  track_id                 String
+  // 'CRE specialists' | 'SBA specialists' | 'treasury management' |
+  // 'commercial credit underwriting'. Stored as String for forward
+  // compatibility with Pilot department-tag expansion.
+  department_tag           String
+  // Optional 200-char free-text notes about specialist preference.
+  specialist_preference    String?
+  // 'initiated' | 'specialist_engaged' | 'closed'. Demo flows to
+  // 'initiated' only; status transitions are Pilot work.
+  status                   String   @default("initiated")
+  initiated_at             DateTime @default(now())
+  initiated_by             String   // banker_id
+
+  @@index([member_id])
+  @@index([track_id])
+  @@index([status])
+}
+
+// ============================================================
+// Sprint 5b.2 — MemberWorkflowState (portfolio query support)
+// ============================================================
+//
+// Denormalized per-Member workflow state. Recomputed on capture writes
+// via lib/workflow-state.ts → recomputeWorkflowState(). Drives portfolio
+// surfaces (Track Performance, Member portfolio, Coverage, Stage-skip)
+// without per-query re-aggregation across Signals/Insights/Reactions/etc.
+//
+// Demo scale (~3 fixtures, ~30-40 captures total) doesn't need this for
+// performance — synchronous on-write recompute is fine. Pilot scale
+// (~thousands of Members) will need async recompute via queue (see
+// BUILD_LOG Architectural Note 10).
+
+model MemberWorkflowState {
+  id        String  @id @default(cuid())
+  member_id String  @unique
+  member    Member  @relation(fields: [member_id], references: [id])
+
+  // Capture density (drives Track Performance tier filters).
+  total_captures        Int @default(0)
+  factor_captures_count Int @default(0)
+  signals_count         Int @default(0)
+  insights_count        Int @default(0)
+  reactions_count       Int @default(0)
+
+  // Workflow state signals (drive Coverage + Member portfolio surfaces).
+  open_thread_count   Int @default(0)
+  stale_capture_count Int @default(0)
+
+  // Last touch across all capture entities — drives Member portfolio
+  // default sort (oldest-first to surface neglected Members).
+  last_touch_at DateTime?
+
+  // Track context. current_track_id mirrors the top-ranked Track from
+  // rankTracksForMember at recompute time; null when ranker returns
+  // empty (Member below 2-evidence threshold).
+  current_track_id                 String?
+  pending_action_card_count        Int     @default(0)
+  pending_specialist_handoff_count Int     @default(0)
+
+  recomputed_at DateTime @default(now()) @updatedAt
+
+  @@index([member_id])
+  @@index([last_touch_at])
+  @@index([current_track_id])
 }

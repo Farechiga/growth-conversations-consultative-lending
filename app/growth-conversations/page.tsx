@@ -13,17 +13,18 @@
 import "dotenv/config";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { getDbPath } from "@/lib/db-path";
 
 import { GrowthConversationsHeader } from "./_shared";
+import { ComplianceDisclaimerBanner } from "@/app/_components/compliance-disclaimer-banner";
+import { CaptureDisciplineCallout } from "@/app/_components/capture-discipline-callout";
 import { MemberLookup, type LookupMember } from "./member-lookup";
 import { Breadcrumb } from "@/app/_components/breadcrumb";
 
 function getPrisma() {
-  const dbPath = (process.env.DATABASE_URL ?? "file:./dev.db").replace(
-    /^file:/,
-    "",
-  );
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbPath }) });
+  return new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: getDbPath() }),
+  });
 }
 
 const SIMULATED_CURRENT_BANKER_NAME = "Scott Brynjolffson";
@@ -89,6 +90,12 @@ export default async function GrowthConversationsLandingPage() {
       <GrowthConversationsHeader
         bankerName={currentBanker?.display_name ?? SIMULATED_CURRENT_BANKER_NAME}
       />
+      {/* Sprint 4.6 Block D — compliance disclaimer banner. Visible on
+          first session visit; dismissible per session via sessionStorage.
+          Sits below the page header, above page content. The framing is
+          load-bearing per COMPLIANCE.md §3.3 — Member Signals is a
+          banker tool, not a credit decisioning system. */}
+      <ComplianceDisclaimerBanner />
       {/* Sprint 4 §4.1b C — breadcrumb. "Growth Conversations" is the
           terminal segment (current page); the home segment links back
           to the demo's home Member profile. */}
@@ -115,6 +122,10 @@ export default async function GrowthConversationsLandingPage() {
             paragraph was explaining what a Member lookup is. */}
         <div className="mt-6">
           <MemberLookup members={lookupMembers} />
+        </div>
+        {/* Sprint 4.6 Block E — Capture discipline coach affordance. */}
+        <div className="mt-12">
+          <CaptureDisciplineCallout />
         </div>
       </main>
       <div

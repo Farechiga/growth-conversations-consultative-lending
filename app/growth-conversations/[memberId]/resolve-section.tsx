@@ -39,6 +39,11 @@ import {
   saveResolveCaptures,
   type SaveResolveInput,
 } from "./actions";
+import { scanText } from "@/lib/compliance-keywords";
+import {
+  ComplianceScanModal,
+  type ScanFieldResult,
+} from "@/app/_components/compliance-scan-modal";
 
 // ────────────────────────────────────────────────
 // Types
@@ -91,56 +96,63 @@ const RESPONSE_OPTIONS: Array<{
   { label: "funded", value: "funded" },
 ];
 
-// Sprint 4 §4.2a refinement #3 — Primary concern options are contextual.
+// Sprint 4.6 Block A — Compliance posture floor primary_concern options.
 //
-// When the Member is on an open-thread response (engaged / leaning_yes /
-// neutral / leaning_no / skeptical / confused), the dropdown surfaces
-// reasons the deal is *not yet closed* — what's holding the Member back.
+// Refactored from the v1 hybrid taxonomy to a strict business-factor-only
+// taxonomy per COMPLIANCE.md §6 and the resolved Q-041. Two contextual
+// option sets, with `service_or_capability_concern` shared between them:
 //
-// When the Member declined or dismissed, the dropdown surfaces *why* —
-// the closure context. Some values (rate, timing, bank_capability)
-// appear in both sets with different banker-facing labels: e.g., "rate"
-// is "Rate" (a hesitation factor) for an engaged Member but "Rate too
-// high" (a decline reason) for a declined Member. The schema stores
-// the same enum value either way; the contextual label resolution
-// happens here in the form.
+//   Open-thread (engaged / leaning_yes / committed): 8 values reflecting
+//     business-decision-process facts. Field label: "Primary concern".
 //
-// The two sets are kept in code rather than a reference table for the
-// demo; pilot phase may lift to a SizingDimension-style controlled
-// vocabulary table if banking-product-specific reason taxonomies are
-// needed.
+//   Decline-reason (declined / dismissive): 10 values reflecting member-
+//     stated business reasons for declining. Field label: "Member's
+//     stated reason for declining".
+//
+// All values are member-direction. Bank-side underwriting determinations
+// (`does_not_qualify`, etc.) are not part of this taxonomy — they're
+// deferred to Q-042 governance. Stigmatizing language ("doesn't trust
+// the institution", "doesn't qualify") removed for UDAAP and Reg B
+// §1002.9 hygiene.
 const PRIMARY_CONCERN_OPTIONS_OPEN_THREAD: Array<{
   label: string;
   value: NonNullable<SaveResolveInput["primary_concern"]>;
 }> = [
-  { label: "rate", value: "rate" },
-  { label: "speed", value: "speed" },
-  { label: "commitment", value: "commitment" },
-  { label: "spouse", value: "spouse" },
-  { label: "CPA / accountant", value: "cpa" },
-  { label: "partner", value: "partner" },
-  { label: "timing", value: "timing" },
-  { label: "bank capability", value: "bank_capability" },
-  { label: "other", value: "other" },
-  { label: "(none)", value: "none" },
+  { label: "Pricing concern", value: "pricing_concern" },
+  { label: "Terms concern", value: "terms_concern" },
+  { label: "Timing concern", value: "timing_concern" },
+  { label: "Needs household co-decision-maker input", value: "co_decision_maker_household" },
+  { label: "Needs external advisor review", value: "external_advisor" },
+  { label: "Needs co-owner / board input", value: "co_owner_or_board" },
+  { label: "Service or capability concern", value: "service_or_capability_concern" },
+  { label: "Other (open thread)", value: "other_open_thread" },
 ];
 
 const PRIMARY_CONCERN_OPTIONS_DECLINE_REASON: Array<{
   label: string;
   value: NonNullable<SaveResolveInput["primary_concern"]>;
 }> = [
-  { label: "Rate too high", value: "rate" },
-  { label: "Terms unfavorable", value: "terms_unfavorable" },
-  { label: "Going with competitor", value: "going_with_competitor" },
-  { label: "No longer needed", value: "no_longer_needed" },
-  { label: "Timing wrong", value: "timing" },
-  { label: "Doesn't qualify (DTI / credit / collateral)", value: "does_not_qualify" },
-  { label: "Doesn't trust the institution", value: "bank_capability" },
-  { label: "Lost interest", value: "lost_interest" },
-  { label: "Found alternative funding source", value: "found_alternative" },
-  { label: "Business circumstances changed", value: "circumstances_changed" },
-  { label: "Other", value: "other" },
+  { label: "Pricing uncompetitive", value: "pricing_uncompetitive" },
+  { label: "Terms uncompetitive", value: "terms_uncompetitive" },
+  { label: "Timing misaligned", value: "timing_misaligned" },
+  { label: "Chose alternative lender", value: "chose_alternative_lender" },
+  { label: "Chose alternative funding", value: "chose_alternative_funding" },
+  { label: "Need resolved otherwise", value: "need_resolved_otherwise" },
+  { label: "Need no longer present", value: "need_no_longer_present" },
+  { label: "Wants to revisit later", value: "wants_to_revisit_later" },
+  { label: "Service or capability concern", value: "service_or_capability_concern" },
+  { label: "Other (member-stated)", value: "other_member_stated" },
 ];
+
+// Set of values valid in each context — used for auto-clear when the
+// banker switches Response across contexts and the existing concern
+// value is no longer valid in the new dropdown.
+const OPEN_THREAD_VALUES = new Set(
+  PRIMARY_CONCERN_OPTIONS_OPEN_THREAD.map((o) => o.value),
+);
+const DECLINE_REASON_VALUES = new Set(
+  PRIMARY_CONCERN_OPTIONS_DECLINE_REASON.map((o) => o.value),
+);
 
 const SOURCE_OPTIONS: Array<{
   label: string;
@@ -247,6 +259,7 @@ export function ResolveSection({
   current,
   bankers,
   indecisionTopics,
+  onSaveSuccess,
 }: {
   memberId: string;
   bankerId: string;
@@ -255,6 +268,8 @@ export function ResolveSection({
   current: ResolveCurrentState | null;
   bankers: ResolveBankerOption[];
   indecisionTopics: ResolveIndecisionTopicOption[];
+  // Sprint 4.7 Block L — optional callback for v2 drawer wrapper.
+  onSaveSuccess?: () => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(current === null);
@@ -264,6 +279,15 @@ export function ResolveSection({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Sprint 4.6 Block C — pending scan state. Non-null when the
+  // submit-time keyword scan flagged terms in any [FL:BANKER-PROSE]
+  // field; the modal renders and the underlying save is paused. The
+  // payload is captured here so onContinue can resume the save without
+  // re-running validation.
+  const [pendingScan, setPendingScan] = useState<{
+    fieldsWithMatches: ScanFieldResult[];
+    payload: SaveResolveInput;
+  } | null>(null);
 
   function update<K extends keyof DraftState>(key: K, value: DraftState[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -358,12 +382,55 @@ export function ResolveSection({
       closing_notes: isTerminalNo ? draft.closing_notes : null,
     };
 
+    // Sprint 4.6 Block C — submit-time keyword scan over
+    // [FL:BANKER-PROSE] fields. Three fields scanned: Customer
+    // response (their_words), Closing notes, and the ActionCard
+    // description (when the ActionCard sub-form is visible). If any
+    // matches, pause the save and show the soft-advisory modal; the
+    // modal's onContinue handler resumes by calling dispatchSave.
+    const scanFields: Array<{ fieldName: string; text: string | null }> = [
+      { fieldName: "Resolve.customer_response", text: draft.their_words },
+    ];
+    if (isTerminalNo) {
+      scanFields.push({
+        fieldName: "Resolve.closing_notes",
+        text: draft.closing_notes,
+      });
+    }
+    if (!isCommitted && !isTerminalNo && actionCardVisible) {
+      scanFields.push({
+        fieldName: "Resolve.action_card_description",
+        text: draft.action_card_description,
+      });
+    }
+    const fieldsWithMatches: ScanFieldResult[] = scanFields
+      .map((f) => ({
+        fieldName: f.fieldName,
+        matches: f.text ? scanText(f.text) : [],
+      }))
+      .filter((f) => f.matches.length > 0);
+
+    if (fieldsWithMatches.length > 0) {
+      setPendingScan({ fieldsWithMatches, payload });
+      return;
+    }
+
+    dispatchSave(payload);
+  }
+
+  // Performs the actual saveResolveCaptures dispatch + post-save UI
+  // updates. Called either directly from commitSave (when the scan
+  // returns no matches) or from the ComplianceScanModal's onContinue
+  // (after the banker confirms the soft-advisory prompt).
+  function dispatchSave(payload: SaveResolveInput) {
+    setPendingScan(null);
     startTransition(async () => {
       const result = await saveResolveCaptures(payload);
       if (result.ok) {
         setSuccess("Resolve captures saved");
         setEditing(false);
         router.refresh();
+        onSaveSuccess?.();
       } else {
         setError(result.error);
       }
@@ -381,17 +448,38 @@ export function ResolveSection({
   }
 
   return (
-    <EditForm
-      current={current}
-      draft={draft}
-      update={update}
-      bankers={bankers}
-      indecisionTopics={indecisionTopics}
-      isPending={isPending}
-      onSave={commitSave}
-      onCancel={cancelEdit}
-      error={error}
-    />
+    <>
+      <EditForm
+        current={current}
+        draft={draft}
+        update={update}
+        bankers={bankers}
+        indecisionTopics={indecisionTopics}
+        isPending={isPending}
+        onSave={commitSave}
+        onCancel={cancelEdit}
+        error={error}
+      />
+      {/* Sprint 4.6 Block C — soft-advisory keyword scan modal. Renders
+          only when the scan flagged terms in any [FL:BANKER-PROSE]
+          field. onContinue resumes the paused save; onEdit returns the
+          banker to the form (modal closes, no save); onCancel discards
+          the entire capture (modal closes + form resets). */}
+      {pendingScan && (
+        <ComplianceScanModal
+          bankerId={bankerId}
+          memberId={memberId}
+          fieldsWithMatches={pendingScan.fieldsWithMatches}
+          onContinue={() => dispatchSave(pendingScan.payload)}
+          onEdit={() => setPendingScan(null)}
+          onCancel={() => {
+            setPendingScan(null);
+            setDraft(makeInitialDraft(bankerId));
+            setEditing(current === null);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -424,7 +512,13 @@ function CurrentStateView({
       ).find((o) => o.value === current.primary_concern)?.label ??
       current.primary_concern.replace(/_/g, " ")
     : null;
-  const concernFieldLabel = isTerminalNoCurrent ? "Decline reason" : "Primary concern";
+  // Sprint 4.6 Block A — view-mode field label switches contextually.
+  // "Primary concern" for engaged-spectrum; "Member's stated reason for
+  // declining" for declined / dismissive (per COMPLIANCE.md §8 explicit
+  // member-direction framing).
+  const concernFieldLabel = isTerminalNoCurrent
+    ? "Member's stated reason for declining"
+    : "Primary concern";
 
   const pieces: ReactNode[] = [];
   pieces.push(
@@ -565,14 +659,36 @@ function EditForm({
           <Field label="Member response" required>
             <select
               value={draft.response ?? ""}
-              onChange={(e) =>
-                update(
-                  "response",
+              onChange={(e) => {
+                const newResponse =
                   e.target.value === ""
                     ? null
-                    : (e.target.value as SaveResolveInput["response"]),
-                )
-              }
+                    : (e.target.value as SaveResolveInput["response"]);
+                update("response", newResponse);
+                // Sprint 4.6 Block A.2 — auto-clear primary_concern
+                // when the response change moves across contexts and
+                // the existing concern value is no longer in the new
+                // dropdown's option set. Addresses the watch-item
+                // flagged in the previous turn's BUILD_LOG: a banker
+                // who picked an open-thread value then switched to
+                // declined would otherwise see an empty-looking
+                // dropdown carrying a now-invalid value. React batches
+                // these two `update` calls inside the same event
+                // handler (React 18+), so the result is a single
+                // re-render with both fields updated.
+                if (!newResponse) {
+                  // Clearing response also clears concern (concern
+                  // dropdown is hidden when response is null anyway).
+                  if (draft.primary_concern) update("primary_concern", null);
+                } else if (draft.primary_concern) {
+                  const validSet = TERMINAL_NO_RESPONSES.has(newResponse)
+                    ? DECLINE_REASON_VALUES
+                    : OPEN_THREAD_VALUES;
+                  if (!validSet.has(draft.primary_concern)) {
+                    update("primary_concern", null);
+                  }
+                }
+              }}
               className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
             >
               {/* Sprint 4 §4.2a fix #2 — Select… empty option. */}
@@ -592,7 +708,7 @@ function EditForm({
               hasn't picked a response yet). */}
           {draft.response && (
             <Field
-              label={isTerminalNo ? "Decline reason" : "Primary concern"}
+              label={isTerminalNo ? "Member's stated reason for declining" : "Primary concern"}
               required={concernRequired}
             >
               <select
@@ -648,16 +764,19 @@ function EditForm({
         </div>
         <div className="mt-3">
           {/* Sprint 4 §4.2a fix #1 — relabeled "Direct quote" to
-              "Customer response" with helper text. The field captures the
-              *reason* for the decision, not the emotional reaction. Never
-              pre-populates from the prior Recommendation; always starts
-              empty so each save reflects a fresh decision rationale. */}
+              "Customer response". Sprint 4.6 Block B — helper text
+              updated to the verbatim COMPLIANCE.md §10.2 framing. The
+              banker-prose discipline ([FL:BANKER-PROSE]) anchors the
+              field on observable business factors and steers away from
+              personal-characteristic capture. Permanent (not
+              dismissible). Field never pre-populates from prior
+              Recommendation; each save captures a fresh rationale. */}
           <label className="block">
             <span className="text-xs text-blaze-grey-body">
               Customer response
             </span>
             <span className="block text-[11px] italic text-blaze-grey-soft">
-              What factor caused this decision?
+              Focus on what the Member said and the business factors driving their decision. Avoid notes about personal characteristics, household circumstances, or social context.
             </span>
             <textarea
               value={draft.their_words ?? ""}
@@ -684,7 +803,20 @@ function EditForm({
 
         {isTerminalNo && (
           <div className="mt-4">
-            <Field label="Closing notes (optional)">
+            {/* Sprint 4.6 Block B — banker-prose helper text
+                ([FL:BANKER-PROSE]) per COMPLIANCE.md §10.2. Permanent;
+                not dismissible. Closing notes is the explicit free-
+                text safety valve for context that doesn't fit the
+                decline-reason taxonomy (per Q-042 / COMPLIANCE.md §5
+                Pre-application observation handling). The framing
+                pushes capture toward business-cashflow factors. */}
+            <label className="block">
+              <span className="text-xs text-blaze-grey-body">
+                Closing notes (optional)
+              </span>
+              <span className="block text-[11px] italic text-blaze-grey-soft">
+                Focus on observable business and cashflow factors: financing structure, timing, terms, costs, alternatives, business situation, decision process.
+              </span>
               <textarea
                 value={draft.closing_notes ?? ""}
                 onChange={(e) =>
@@ -694,10 +826,10 @@ function EditForm({
                   )
                 }
                 rows={3}
-                className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+                className="mt-1 w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
                 placeholder="Why the Member declined; whether to revisit later; any context for the next banker who picks up the relationship"
               />
-            </Field>
+            </label>
           </div>
         )}
 
@@ -772,17 +904,32 @@ function EditForm({
               </label>
               {actionCardVisible && (
                 <div className="mt-3 space-y-3">
-                  <Field label="Description" required={isEngagement}>
+                  {/* Sprint 4.6 Block B — banker-prose helper text
+                      ([FL:BANKER-PROSE]) per COMPLIANCE.md §10.2. The
+                      ActionCard description surfaces in operational
+                      queues + Member-facing follow-up communications;
+                      keeping it business-action-focused is doubly
+                      important for UDAAP hygiene. */}
+                  <label className="block">
+                    <span className="text-xs text-blaze-grey-body">
+                      Description{" "}
+                      {isEngagement && (
+                        <span className="ml-1 text-blaze-orange-deep">*</span>
+                      )}
+                    </span>
+                    <span className="block text-[11px] italic text-blaze-grey-soft">
+                      Describe the business action and timing. Avoid notes about the Member's personal characteristics.
+                    </span>
                     <textarea
                       value={draft.action_card_description}
                       onChange={(e) =>
                         update("action_card_description", e.target.value)
                       }
                       rows={2}
-                      className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+                      className="mt-1 w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
                       placeholder="What the banker commits to do next, e.g., 'Send LOC application materials Friday; follow up Tuesday'"
                     />
-                  </Field>
+                  </label>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Owner" required={isEngagement}>
                       <select

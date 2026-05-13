@@ -34,23 +34,22 @@ The demo phase is complete when **all** of the following are true:
 
 ## 3. In scope
 
-### 3.1 Modules (three required surfaces)
+### 3.1 Modules (post-Sprint 4.7)
 
-**Growth Conversations** (renamed from Meeting Recap per DEMO_BUILD_PLAN.md v2 §10)
-- Two entry paths: from a Member profile (member prefilled) or from the standalone module (banker selects via Member lookup)
-- Single scrolling page with all stages visible (Ask · Size · Show · Resolve · Decision pending · Funded), anchor progress bar on the right
-- Track-agnostic Ask + Size phases (discovery captures that surface Signals which the rule engine matches to a Track); Show + Resolve track-specific
-- Each Growth step's capture form matches the capture schema for its shape (Ask, Size, Show, Propose, Resolve, Connect)
-- Stage-by-stage save commits that stage's GrowthStepExecution + produced Signals/ActionCards/Recommendations
-- Signal longevity awareness: prior Ask + Size captures visible with timestamps when re-entering; banker can update stale captures with audit trail preserving prior state
-- Skip handling: per-stage checkbox + popup confirmation; skipped state captured in schema for analytics
+**v2 Member workstation** *(Sprint 4.7 → 4.7.2 — primary banker-facing surface)*
+- Single page per Member at `/v2/members/[id]`. Replaces the v1 split between Member profile + Growth Conversations per ARCHITECTURE_V2 §7
+- Two-layer model: persistent **objectives** (Discover · Measure · Consult · Navigate) × situational **activities** (+ Ask, + Quantify, + Model, + Reaction, + Action)
+- Sticky activity dialpad surfaces capture forms in right-drawers; objectives surface accumulated evidence in the sidebar via dot vocabulary (filled / outlined / faint / accented)
+- Captured feed renders six card variants recent-first across all activity types; primary tag is the substantive type (Goal/Blocker/etc. for Ask; Sized/Model/Shown/Reaction/Resolution for the others)
+- + Reaction form subsumes v1 Resolve's response-value + member-quote + primary-concern (contextual taxonomy per COMPLIANCE.md §6.3)
+- ShowEvents fire two ways: auto-created on + Model save with "with Member" provenance, OR explicitly via "Record show" button on the sidebar artifact preview dialog
+- Compliance disclaimer banner + capture-discipline footer reused from Sprint 4.6; submit-time keyword scan fires on all banker-prose fields
+- Click-in-place navigation discipline: no clicks on the workstation result in page navigation away
 
-**Member profile**
-- Six bands: identity strip, active state summary, active signals, active proposals, open work, history
-- Sidebar with private notes and forward signals
-- Suggested next step pinned above the fold
-- Read-mostly (no inline editing of Member fields)
-- Member summary band uses the templated summary per Semantic Discipline §3.4
+**v1 Member profile + Growth Conversations** *(legacy; retained for cohabitation during build)*
+- Original v1 routes (`/members/[id]`, `/growth-conversations/[memberId]`) remain reachable
+- Q-X1 — opt-in cross-link to v2 via `?v2=true` query param during build phase; default flips at Sprint 6 for EVP demo
+- All v1 capture forms still functional; v2 dialpad reuses AskSection / SizeSection / ResolveSection components in drawer wrappers
 
 **Insight Engine**
 - All six views: Signal volume and trend, Growth track performance, Artifact effectiveness, Indecision diagnostics, Forward pipeline, Coverage gaps

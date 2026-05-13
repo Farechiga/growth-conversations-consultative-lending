@@ -11,47 +11,57 @@
  * tracked as TODO items inline rather than in OPEN_QUESTIONS to avoid noise.
  */
 
+// Sprint 4.6 Block A — Recommendation.primary_concern descriptions for the
+// 17-value compliance-posture-floor taxonomy per COMPLIANCE.md §6 and the
+// resolved Q-041. The descriptions below are banker-facing prose for the
+// Resolve form's expanded help, summary templates, and Insight Engine
+// surfaces. All values are member-direction (capture what the Member said
+// or what's driving their decision process) — bank-side underwriting
+// determinations are excluded by design and deferred to Q-042 governance
+// for any future structured capture.
+//
+// The taxonomy splits into three groups:
+//   1. Open-thread (engaged / leaning_yes / committed) — 7 unique values
+//   2. Decline-reason (declined / dismissive) — 9 unique values
+//   3. Shared (`service_or_capability_concern`) — appears in both
 export const RECOMMENDATION_PRIMARY_CONCERN_DESCRIPTIONS = {
-  none: "No specific concern — the member is ready to commit or has no remaining hesitation.",
-  rate:
-    "Member's hesitation is rooted in the price of the proposal. Resolution typically requires either rate negotiation, comparison to alternatives, or reframing the cost in terms of total benefit.",
-  speed:
-    "Member's hesitation is rooted in timing — either the bank's processing speed, the member's decision-making timeline, or the urgency of the underlying need. Distinct from `bank_capability` (institutional capacity) and `timing` (broader sequencing).",
-  commitment:
-    "Member is hesitant about the binding nature of the proposal — long-term debt service, multi-year commitment, or irreversibility. Often surfaces as preference for phased or smaller-pilot structures.",
-  spouse:
-    "Member needs spousal input before committing. Common in owner-operator businesses where the spouse is involved in financial decisions even if not in operations. Resolution requires bringing the spouse into a subsequent conversation.",
-  cpa:
-    "Member needs to verify with their accountant before committing. The accountant's role is typically to vet tax and cash-flow implications. Resolution requires the bank providing materials the member can share with the CPA, then following up after that meeting.",
-  partner:
-    "Member needs business-partner input before committing. Distinct from `spouse` (personal authority) — a partner is a co-decision-maker in the business. Resolution requires bringing the partner into the conversation.",
-  timing:
-    "The proposal is right but the timing is wrong — seasonality, an anticipated business event, or sequencing relative to other commitments. Resolution typically requires a calendared follow-up rather than rate or structure change.",
-  bank_capability:
-    "Member's hesitation is rooted in uncertainty about whether the bank can actually deliver on a proposal of the specified size, structure, or sophistication. Distinct from `rate` (which is about price) or `speed` (which is about timing) — `bank_capability` is about institutional capacity. Most common in established commercial relationships where the member is comparing the bank's offering to a regional or national commercial bank's track record.",
-  other:
-    "Hesitation that does not fit the canonical concern types. Always paired with banker_note context so the underlying reason is recoverable; chronic use of `other` is a signal that a new canonical value should be proposed.",
-  // Sprint 4 §4.2a refinement #3 — decline-reason values. These surface
-  // only when Recommendation.response is `declined` or `dismissive`; the
-  // form's contextual option set switches to these for closure capture.
-  // Some decline reasons reuse open-thread values with different
-  // banker-facing labels (rate → "Rate too high", timing → "Timing
-  // wrong", bank_capability → "Doesn't trust institution") — see
-  // resolve-section.tsx for the contextual label resolution.
-  terms_unfavorable:
-    "Member declined because the structural terms (covenants, prepayment penalties, collateral requirements, amortization shape) didn't fit their situation, even setting aside rate. Resolution path is product-design — different structure, paired product, or specialist consultation.",
-  going_with_competitor:
-    "Member chose another lender's offer. Important to capture which competitor and why — pricing, relationship, speed, sophistication — for portfolio-level pattern analysis. Distinct from `lost_interest` (no longer pursuing) and `circumstances_changed` (need disappeared).",
-  no_longer_needed:
-    "The underlying need that prompted the conversation has resolved without bank financing. Member solved it with internal cash, a different bank product, or by changing the underlying business plan. Distinct from `circumstances_changed` (broader business pivot) and `going_with_competitor` (competitive loss).",
-  does_not_qualify:
-    "Member doesn't meet the underwriting bar for this product — DTI, credit profile, collateral coverage, or operating history. The conversation closes here even if the member would have committed; the decline is on the bank's side. Often paired with a referral to specialist or to a different product the member does qualify for.",
-  lost_interest:
-    "Member's engagement faded between conversations without a specific blocker. Distinct from `going_with_competitor` (lost to alternative) and `circumstances_changed` (specific event). Often signals the original framing didn't sustain attention; pattern analysis at the Insight Engine layer tracks lost-interest rates by product and Member Type.",
-  found_alternative:
-    "Member solved the need with non-bank financing — owner equity injection, vendor financing, customer prepayment, equity raise, or a non-traditional alternative. Important to capture for Insight Engine analytics tracking which alternatives are eroding bank-financing market share by Member Type.",
-  circumstances_changed:
-    "A specific business event shifted the calculus — lost a major customer, changed strategy, sold the business, paused expansion. The decline is contextual rather than about the proposal itself; the Member may re-engage when circumstances stabilize.",
+  // Open-thread context
+  pricing_concern:
+    "Member is open to the proposal but pricing — rate, fees, or all-in cost — is the open thread. Resolution typically requires rate review, structure adjustment, or reframing the cost against total benefit. Distinct from `pricing_uncompetitive` (decline-context: Member chose elsewhere on price).",
+  terms_concern:
+    "Member is open to the proposal but the structural terms (covenants, collateral asks, amortization, prepayment) are the open thread. Resolution requires product-design adjustment or specialist consultation.",
+  timing_concern:
+    "Member is open to the proposal but timing (cashflow, business calendar, sequencing relative to other commitments) is the open thread. Resolution typically requires a calendared follow-up rather than structure or pricing change.",
+  co_decision_maker_household:
+    "Member needs input from a household co-decision-maker before advancing — typically a spouse or family member with shared financial authority. Common in owner-operator businesses. Resolution requires bringing the co-decision-maker into a subsequent conversation. Direction-explicit framing replaces the prior `spouse` enum value.",
+  external_advisor:
+    "Member needs to verify with an external professional advisor (accountant, attorney, financial planner) before advancing. The advisor's role is typically to vet tax, cashflow, or legal implications. Resolution requires materials the Member can share with the advisor, then a follow-up after that consultation. Replaces the prior `cpa` enum value.",
+  co_owner_or_board:
+    "Member needs input from a business co-owner, board member, or other governance authority before advancing. Distinct from `co_decision_maker_household` (personal authority); a co-owner or board member is a business co-decision-maker. Resolution requires bringing them into the conversation. Replaces the prior `partner` enum value.",
+  other_open_thread:
+    "Open thread that doesn't fit the canonical engaged-context values. Always paired with banker_note context so the underlying reason is recoverable; chronic use of `other_open_thread` is a signal that a new canonical value should be proposed.",
+  // Decline-reason context
+  pricing_uncompetitive:
+    "Member declined because pricing — rate, fees, or all-in cost — was higher than an alternative they were considering. Captures member-stated price comparison; not the bank's pricing decision.",
+  terms_uncompetitive:
+    "Member declined because the structural terms (covenants, collateral asks, amortization, prepayment) didn't fit their preferred deal shape. Captures member-side fit; not the bank's structuring decision.",
+  timing_misaligned:
+    "Member declined because the proposed financing didn't match their cashflow timing or business calendar. Captures member-side timing; resolution path is calendared revisit.",
+  chose_alternative_lender:
+    "Member proceeded with a different lender. Important to capture which competitor when offered, for portfolio-level pattern analysis. Distinct from `chose_alternative_funding` (non-debt) and `wants_to_revisit_later` (Member still interested).",
+  chose_alternative_funding:
+    "Member chose non-debt funding — retained earnings, owner injection, vendor financing, customer prepayment, equity raise, or other non-traditional alternative. Important for Insight Engine analytics tracking which alternatives erode bank-financing market share by Member Type.",
+  need_resolved_otherwise:
+    "The underlying business need that prompted the conversation was met without this financing. Member solved it through a different mechanism (cash, different bank product, business plan change). Distinct from `need_no_longer_present` (need disappeared) and `chose_alternative_funding` (different funding source for the same need).",
+  need_no_longer_present:
+    "The underlying business situation changed; financing is no longer needed. Examples: lost a major customer, paused expansion, sold the business, changed strategy. The decline is contextual rather than about the proposal itself; the Member may re-engage when circumstances stabilize.",
+  wants_to_revisit_later:
+    "Member is interested but not ready to act in this cycle. Captures member-side pacing without a specific blocker. Resolution is calendared follow-up at the Member's stated horizon.",
+  other_member_stated:
+    "Member stated a reason for declining that doesn't fit the canonical decline-context values. Free-text capture in Closing notes. Chronic use is a signal that a new canonical value should be proposed.",
+  // Shared across both contexts
+  service_or_capability_concern:
+    "Member's concern is the bank's ability to deliver — response time, expertise, product range, sophistication. Captures member-side service or capability assessment without the UDAAP-risky `doesn't trust the institution` framing. Replaces the prior `bank_capability` enum value. Appears in both engaged-context (open thread) and decline-context (member-stated decline reason).",
 } as const;
 
 /**
@@ -70,31 +80,37 @@ export function describePrimaryConcern(
  * for badges, list rows, and other compact surfaces. The full description (above)
  * is for tooltips, summaries, and analytical views.
  */
+// Sprint 4.6 Block A — compact labels for the post-refactor taxonomy.
+// Used by History timeline rows, Insight Engine list views, and any
+// non-form surface that surfaces a primary_concern value. The Resolve
+// form's contextual dropdown options live in `resolve-section.tsx` and
+// may use slightly different prose (e.g., "pricing" vs "Pricing
+// concern" vs "Pricing uncompetitive") — this map is the canonical
+// short label.
 export const RECOMMENDATION_PRIMARY_CONCERN_LABELS: Record<
   keyof typeof RECOMMENDATION_PRIMARY_CONCERN_DESCRIPTIONS,
   string
 > = {
-  none: "No concern",
-  rate: "Rate",
-  speed: "Speed",
-  commitment: "Commitment level",
-  spouse: "Needs spouse's input",
-  cpa: "Needs CPA review",
-  partner: "Needs business partner's input",
-  timing: "Timing",
-  bank_capability: "Bank capability",
-  other: "Other",
-  // Sprint 4 §4.2a refinement #3 — decline-context labels. The Resolve
-  // form maps these to friendlier per-context strings ("Rate too high"
-  // for declined; just "Rate" for open-thread). Compact labels here
-  // for use in History timeline / Insight Engine list views.
-  terms_unfavorable: "Terms unfavorable",
-  going_with_competitor: "Went with competitor",
-  no_longer_needed: "No longer needed",
-  does_not_qualify: "Doesn't qualify",
-  lost_interest: "Lost interest",
-  found_alternative: "Found alternative funding",
-  circumstances_changed: "Circumstances changed",
+  // Open-thread context
+  pricing_concern: "Pricing concern",
+  terms_concern: "Terms concern",
+  timing_concern: "Timing concern",
+  co_decision_maker_household: "Needs household co-decision-maker input",
+  external_advisor: "Needs external advisor review",
+  co_owner_or_board: "Needs co-owner / board input",
+  other_open_thread: "Other (open thread)",
+  // Decline-reason context
+  pricing_uncompetitive: "Pricing uncompetitive",
+  terms_uncompetitive: "Terms uncompetitive",
+  timing_misaligned: "Timing misaligned",
+  chose_alternative_lender: "Chose alternative lender",
+  chose_alternative_funding: "Chose alternative funding",
+  need_resolved_otherwise: "Need resolved otherwise",
+  need_no_longer_present: "Need no longer present",
+  wants_to_revisit_later: "Wants to revisit later",
+  other_member_stated: "Other (member-stated)",
+  // Shared
+  service_or_capability_concern: "Service or capability concern",
 };
 
 /**

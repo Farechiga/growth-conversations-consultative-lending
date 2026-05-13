@@ -40,7 +40,15 @@ import { fireRules, type RuleConditions } from "@/lib/rule-engine";
 // here so the function-vs-component split keeps presentation pure.
 // ============================================================
 
-export type TrackStageState = "completed" | "current" | "upcoming";
+// Sprint 4.6 patch — `withdrawn` is a fourth visual state used for the
+// terminal lifecycle dot of Resolve-ending Tracks when the Member
+// response is declined or dismissive. Renderers display this with a
+// muted grey-soft fill (distinct from `upcoming`'s lighter grey-rule
+// fill and `completed`'s orange fill). Withdrawn does not apply to
+// Connect-ending Tracks — the handoff happens regardless of whether
+// the Member proceeds with the specialist; that path keeps "Introduced"
+// in its existing state vocabulary.
+export type TrackStageState = "completed" | "current" | "upcoming" | "withdrawn";
 
 export type TrackStage = {
   label: string;
@@ -152,46 +160,46 @@ export function computeTrackStages(input: {
   const isConnectTrack = finalStepShape === "connect";
 
   // Stage N+1 — lifecycle pending.
+  // Sprint 4.6 patch — Connect-ending terminal renamed "Closed" →
+  // "Introduced". Past-tense framing matches the semantic work the
+  // label does (Blaze's banker-to-specialist handoff has completed).
+  // The label change is unconditional for Connect-ending Tracks; the
+  // declined/dismissive cases keep "Introduced" because the handoff
+  // happened regardless of whether the Member proceeded with the
+  // specialist (per Francisco's spec).
   let pendingLabel = "Decision pending";
   let terminalLabel = "Funded";
   if (isConnectTrack) {
     pendingLabel = "Specialist engagement";
-    terminalLabel = "Closed";
+    terminalLabel = "Introduced";
   }
 
-  // State of N+1 / N+2 derives from recommendation_response. Sprint 4
-  // §4.2a refinement (post-4.2a visual review fix #3) split `committed`
-  // out of the engaged-cluster bucket. Earlier mapping conflated the
-  // three "active engagement" responses (engaged | leaning_yes |
-  // committed) onto Decision pending = current; that lost the
-  // semantically important "the decision is now made" signal at
-  // commitment. Decision pending is the *deciding* stage — once a
-  // Member commits, the deciding is over and Funded becomes the
-  // current stage (awaiting disbursement). The four-bucket mapping:
+  // State of N+1 / N+2 derives from recommendation_response. Sprint 4.6
+  // patch added the `withdrawn` terminal state for declined/dismissive
+  // on Resolve-ending Tracks. Five-bucket mapping:
   //
   //   funded                          → N+1 completed, N+2 completed
   //   committed                       → N+1 completed, N+2 current
-  //                                     ("decision is made; awaiting fund")
+  //                                     (Resolve: terminal renders as "Closing")
   //   leaning_yes | engaged           → N+1 current,   N+2 upcoming
-  //                                     ("decision still pending")
+  //   declined | dismissive (Resolve) → N+1 completed, N+2 withdrawn
+  //                                     (terminal renders as "Withdrawn"
+  //                                     with muted-grey-soft fill)
+  //   declined | dismissive (Connect) → N+1 upcoming,  N+2 upcoming
+  //                                     (Withdrawn does not apply;
+  //                                     Connect terminal stays "Introduced")
   //   neutral | leaning_no | skeptical
-  //     | confused | dismissive
-  //     | declined | null             → N+1 upcoming,  N+2 upcoming
+  //     | confused | null             → N+1 upcoming,  N+2 upcoming
   //
-  // For Connect tracks the same mapping holds — the post-Track journey
-  // shape is the same shape (pending → terminal), even though the
-  // banker-facing labels differ ("Specialist engagement" / "Closed").
-  // A `committed` Connect-Track Member sees Specialist engagement
-  // completed and Closed current, with the same semantic.
+  // Withdrawn does not apply to Connect-ending Tracks per the user's
+  // spec: the handoff completes whether or not the Member ultimately
+  // proceeds with the specialist; "Introduced" describes the work
+  // Blaze did, not the Member's downstream decision.
   //
-  // Architectural note (per the visual review root-cause discussion):
-  // lifecycle states are derived from Recommendation.response — a
-  // state-machine-style read — rather than from a per-stage event log.
-  // Pilot phase may want explicit GrowthStepExecution rows for
-  // lifecycle stage transitions (decision_pending entered/exited,
-  // funded entered) to support richer audit + correlation analytics.
-  // For the demo, the state-machine derivation is sufficient and
-  // matches the existing Recommendation-as-source-of-truth pattern.
+  // Architectural note: lifecycle states are still derived from
+  // Recommendation.response (state-machine read) rather than from a
+  // per-stage event log. Pilot phase may upgrade this to event-sourced
+  // (Q-039 in OPEN_QUESTIONS).
   let pendingState: TrackStageState = "upcoming";
   let terminalState: TrackStageState = "upcoming";
 
@@ -213,6 +221,17 @@ export function computeTrackStages(input: {
     // this never triggers (all Track steps are completed).
     const trackStepCurrentExists = stages.some((s) => s.state === "current");
     pendingState = trackStepCurrentExists ? "upcoming" : "current";
+  } else if (
+    isResolveTrack &&
+    (recommendation_response === "declined" ||
+      recommendation_response === "dismissive")
+  ) {
+    // Sprint 4.6 patch — Withdrawn terminal state for Resolve-ending
+    // Tracks where the Member declined or dismissed. Decision was made
+    // (Member said no), so Decision pending is past; the terminal is
+    // "Withdrawn" with the new muted-grey-soft fill state.
+    pendingState = "completed";
+    terminalState = "withdrawn";
   }
 
   stages.push({
@@ -220,22 +239,23 @@ export function computeTrackStages(input: {
     state: pendingState,
     kind: "lifecycle_pending",
   });
-  // Sprint 4 §4.2a refinement #2 — when the Member has committed but
-  // the loan hasn't funded yet, the terminal stage represents the
-  // formalities-pending phase (underwriting, closing, disbursement).
-  // For Resolve-ending Tracks we relabel "Funded" → "Closing" via
-  // displayLabel so bankers visually distinguish "committed" (deal is
-  // happening but not active) from "funded" (money is in account).
-  // The canonical `label` stays "Funded" so anchor slugs (used by URL
-  // fragments like `#stage-funded`) remain stable. Connect-ending
-  // Tracks keep "Closed" — the dot's current/orange-ringed state
-  // already conveys "closure is in progress" for that path.
-  const terminalDisplayLabel =
-    isResolveTrack &&
-    recommendation_response === "committed" &&
-    terminalState === "current"
-      ? "Closing"
-      : undefined;
+  // Sprint 4 §4.2a refinement #2 + Sprint 4.6 patch — terminal display
+  // label override. Two contexts use displayLabel (canonical `label`
+  // stays stable for slug derivation, so `#stage-funded` keeps
+  // resolving):
+  //   - "Closing" for Resolve-ending Tracks where committed but not yet
+  //     funded (formalities-pending phase)
+  //   - "Withdrawn" for Resolve-ending Tracks where declined / dismissive
+  //
+  // Connect-ending Tracks use the canonical "Introduced" label
+  // unconditionally; no displayLabel override because the rename is
+  // permanent across response states (Withdrawn doesn't apply).
+  let terminalDisplayLabel: string | undefined = undefined;
+  if (isResolveTrack && recommendation_response === "committed" && terminalState === "current") {
+    terminalDisplayLabel = "Closing";
+  } else if (isResolveTrack && terminalState === "withdrawn") {
+    terminalDisplayLabel = "Withdrawn";
+  }
   stages.push({
     label: terminalLabel,
     displayLabel: terminalDisplayLabel,

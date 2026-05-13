@@ -1,0 +1,245 @@
+/*
+ * Sprint 5d Block A.3 / A.4 — ArtifactTemplate runtime helpers.
+ *
+ * Pure-function utilities for parsing template_id / parameter_schema /
+ * structural_content / output_summary_template, evaluating computed
+ * parameters, and rendering output strings with parameter substitution.
+ *
+ * Used by:
+ *   - app/v2/members/[id]/capture-forms/model-form.tsx (parameter input UI)
+ *   - app/v2/members/[id]/artifact-template-render.tsx (artifact view)
+ */
+
+export type TemplateParameter = {
+  key: string;
+  label: string;
+  type:
+    | "text"
+    | "long_text"
+    | "currency"
+    | "decimal"
+    | "integer"
+    | "percentage"
+    | "select"
+    | "static_text"; // value set in schema; renders read-only
+  options?: string[];
+  required?: boolean;
+  default?: string | number;
+  max?: number;
+  min?: number;
+  helper?: string;
+  /** Read-only fields with a fixed value (e.g., "No prepayment penalties"). */
+  value?: string;
+  /** When true, the field is auto-computed from `computation`. */
+  computed?: boolean;
+  /** Simple expression over other parameter keys, e.g. "loan_amount / acquisition_price". */
+  computation?: string;
+  /**
+   * Sprint 8 Block A — when set, the renderer attempts to auto-populate
+   * the parameter from the Member's most-recent FactorCapture for this
+   * factor. If no capture exists, the parameter renders as a missing-
+   * parameter CTA (Block E). Parameters without `source_factor_id` are
+   * banker-entered only (no CTA needed).
+   */
+  source_factor_id?: string;
+};
+
+export type ParameterSchema = {
+  parameters: TemplateParameter[];
+};
+
+export type StructuralSection = {
+  label: string;
+  fields: string[];
+};
+
+export type StructuralRoadmapStage = {
+  stage_number: number;
+  title: string;
+  roles: Array<{ name: string; role: string }>;
+  description: string;
+};
+
+export type StructuralContent =
+  | {
+      type: "financing_summary" | "cashflow_projection" | "roi_projection" | "use_plan";
+      sections: StructuralSection[];
+    }
+  | {
+      type: "roadmap";
+      stages: StructuralRoadmapStage[];
+      you_are_here_marker: boolean;
+      share_button: { label: string; helper_text: string };
+    }
+  // Sprint 9 — business-impact visualization types. Each renders a
+  // dedicated chart component (no `sections` field — parameters drive
+  // the visualization directly). Sprint 9 Patch F added
+  // `vehicle_capacity_uplift` — the Business Vehicle Loan
+  // before/after capacity comparison that replaces the legacy
+  // financing-summary section list.
+  | {
+      type:
+        | "lease_vs_own"
+        | "growth_trajectory"
+        | "cashflow_equity_dual"
+        | "cost_of_doing_nothing"
+        | "pace_monthly_savings"
+        | "cashback_opportunity"
+        | "unsecured_opportunity"
+        | "vehicle_capacity_uplift"
+        // Sprint 9 Patch G — Business Visa capability matrix. Replaces
+        // the cashback-chart framing for TRACK-010 with a four-card
+        // operational-infrastructure view.
+        | "business_visa_capability";
+    }
+  // Sprint 9 — paired roadmap + structure comparison for TRACK-008
+  // SBA 504. Renders the existing partnership-map roadmap above the
+  // new structure comparison chart.
+  | {
+      type: "sba_504_paired";
+      stages: StructuralRoadmapStage[];
+      you_are_here_marker: boolean;
+      share_button?: { label: string; helper_text: string };
+    };
+
+export function parseParameterSchema(json: string | null): ParameterSchema | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as ParameterSchema;
+    if (!parsed || !Array.isArray(parsed.parameters)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function parseStructuralContent(json: string | null): StructuralContent | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as StructuralContent;
+    if (!parsed || !parsed.type) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function parseTemplateParameters(
+  json: string | null,
+): Record<string, string> {
+  if (!json) return {};
+  try {
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      out[k] = v == null ? "" : String(v);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Resolve `{key}` placeholders in a template string against parameter
+ * values. Computed parameters (e.g., `ltv_ratio` derived from
+ * `loan_amount / acquisition_price`) are evaluated first; the resolved
+ * map is then passed through. Unmatched placeholders fall through as
+ * `[label]` so the output remains readable while the banker fills more
+ * fields in.
+ */
+export function resolveTemplateString(
+  template: string,
+  schema: ParameterSchema | null,
+  rawValues: Record<string, string>,
+): string {
+  const values = computeAllValues(schema, rawValues);
+  return template.replace(/\{(\w+)\}/g, (_, key) => {
+    const v = values[key];
+    if (v === undefined || v === "") {
+      const param = schema?.parameters.find((p) => p.key === key);
+      return param ? `[${param.label}]` : `[${key}]`;
+    }
+    return formatValueForString(v, schema?.parameters.find((p) => p.key === key));
+  });
+}
+
+/**
+ * Evaluate computed parameters using a tiny safe expression evaluator.
+ * Supports +, -, *, /, parentheses, decimal literals, and parameter
+ * keys. No function calls, no JS eval. Returns the raw values object
+ * extended with computed keys.
+ */
+export function computeAllValues(
+  schema: ParameterSchema | null,
+  rawValues: Record<string, string>,
+): Record<string, string> {
+  if (!schema) return rawValues;
+  const out: Record<string, string> = { ...rawValues };
+  // Static-text parameters carry a fixed value.
+  for (const p of schema.parameters) {
+    if (p.type === "static_text" && p.value !== undefined && (out[p.key] === undefined || out[p.key] === "")) {
+      out[p.key] = p.value;
+    }
+  }
+  for (const p of schema.parameters) {
+    if (p.computed && p.computation) {
+      const result = evalSimpleExpression(p.computation, out);
+      if (result !== null) {
+        out[p.key] = formatComputedNumber(result, p);
+      }
+    }
+  }
+  return out;
+}
+
+function evalSimpleExpression(
+  expr: string,
+  values: Record<string, string>,
+): number | null {
+  // Substitute parameter keys with their numeric values.
+  const tokens = expr.split(/(\b[a-zA-Z_][a-zA-Z0-9_]*\b)/g);
+  const substituted = tokens
+    .map((t) => {
+      if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(t)) {
+        const v = values[t];
+        if (v === undefined || v === "") return "NaN";
+        const num = Number(stripFormatting(v));
+        return Number.isFinite(num) ? String(num) : "NaN";
+      }
+      return t;
+    })
+    .join("");
+  // Allow only digits, operators, decimals, parens, whitespace.
+  if (!/^[0-9+\-*/().\s]+$/.test(substituted)) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    const fn = new Function(`return (${substituted});`);
+    const result = fn();
+    return typeof result === "number" && Number.isFinite(result) ? result : null;
+  } catch {
+    return null;
+  }
+}
+
+function stripFormatting(v: string): string {
+  return v.replace(/[$,%\s]/g, "");
+}
+
+function formatComputedNumber(n: number, p: TemplateParameter): string {
+  if (p.type === "percentage") return `${(n * 100).toFixed(1).replace(/\.0$/, "")}%`;
+  if (p.type === "currency") return `${Math.round(n).toLocaleString("en-US")}`;
+  if (p.type === "integer") return `${Math.round(n)}`;
+  if (p.type === "decimal") return n.toFixed(2).replace(/\.?0+$/, "");
+  return String(n);
+}
+
+function formatValueForString(v: string, p: TemplateParameter | undefined): string {
+  if (!p) return v;
+  if (p.type === "currency") {
+    const n = Number(stripFormatting(v));
+    if (Number.isFinite(n)) return n.toLocaleString("en-US");
+  }
+  return v;
+}

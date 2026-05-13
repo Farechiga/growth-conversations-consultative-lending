@@ -111,10 +111,18 @@ export function AnchorProgressBar({ stages }: { stages: AnchorStage[] }) {
                     />
                   </>
                 ) : (
+                  // Sprint 4.6 patch — `withdrawn` adds a fourth dot
+                  // state with muted grey-soft fill, distinct from
+                  // `upcoming`'s lighter grey-rule. Same vocabulary as
+                  // TrackProgressDots.
                   <span
                     aria-hidden
                     className={`h-1.5 w-1.5 rounded-full ${
-                      s.state === "completed" ? "bg-blaze-orange" : "bg-blaze-rule"
+                      s.state === "completed"
+                        ? "bg-blaze-orange"
+                        : s.state === "withdrawn"
+                        ? "bg-blaze-grey-soft"
+                        : "bg-blaze-rule"
                     }`}
                   />
                 )}

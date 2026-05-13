@@ -85,10 +85,24 @@ export function TrackProgressDots({
                 />
               </>
             ) : (
+              // Sprint 4.6 patch — `withdrawn` state added for the
+              // Resolve-ending terminal dot when Member declined /
+              // dismissed. Visual: muted grey-soft fill (distinct from
+              // `completed` orange-fill and `upcoming` lighter
+              // grey-rule fill). The three fills together produce a
+              // four-state visual vocabulary:
+              //   completed → orange-filled
+              //   current   → orange-ringed (above)
+              //   upcoming  → grey-rule-filled
+              //   withdrawn → grey-soft-filled (this branch)
               <span
                 aria-hidden
                 className={`h-1.5 w-1.5 rounded-full ${
-                  s.state === "completed" ? "bg-blaze-orange" : "bg-blaze-rule"
+                  s.state === "completed"
+                    ? "bg-blaze-orange"
+                    : s.state === "withdrawn"
+                    ? "bg-blaze-grey-soft"
+                    : "bg-blaze-rule"
                 }`}
               />
             )}

@@ -28,7 +28,7 @@ import { useState } from "react";
 export type MacroBannerData = {
   id: string;
   title: string;
-  authored_label: string; // e.g., "Marcus Wei (Chief Economist)" or "Sarah Chen (Sector Specialist)"
+  authored_label: string; // e.g., "Marcus Wei (Chief Economist)" or "Margot Desandre (Sector Specialist)"
   authored_at_iso: string;
   summary: string;
   recommended_response: string;

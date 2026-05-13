@@ -963,9 +963,64 @@ Some enum values appear in both sets with different banker-facing labels: `rate`
 
 Pilot phase may lift the option sets to a controlled-vocabulary table (parallel to `SizingDimension` for measurements) if banking-product-specific reason taxonomies are needed.
 
-**Visual distinction `committed` vs `funded`** (Sprint 4 §4.2a refinement #2) — when a Resolve-ending Track's Recommendation is `committed` (Member said yes, but loan is in underwriting / closing / disbursement), the terminal lifecycle dot reads "Closing" instead of "Funded". Once the loan funds, the label flips back to "Funded" with the dot in completed (orange-filled) state. The canonical underlying label stays "Funded" so URL anchors (`#stage-funded`) remain stable; the swap is purely a `displayLabel` override. Connect-ending Tracks keep their "Closed" label across states — for that path, the dot's current/orange-ringed treatment already conveys "closure is in progress."
+**Terminal label vocabulary** (Sprint 4 §4.2a refinement #2 + Sprint 4.6 patch) — the lifecycle terminal dot's display label and visual state both flex by Track shape and Member response. The canonical `label` (used for URL anchor slug derivation) stays stable across states; the `displayLabel` field on `TrackStage` carries the contextual override.
 
-Reference implementation: `app/growth-conversations/[memberId]/resolve-section.tsx` (client component) + `saveResolveCaptures` server action in `app/growth-conversations/[memberId]/actions.ts`.
+| Display label | When | Track shape | Dot state / visual |
+|---|---|---|---|
+| **Closing** | `committed` (decision made, formalities pending) | Resolve-ending | `current` (orange-ringed) |
+| **Funded** | `funded` (loan disbursed) | Resolve-ending | `completed` (orange-filled) |
+| **Funded** | engaged-spectrum (default unfilled state) | Resolve-ending | `upcoming` (grey-rule-filled) |
+| **Withdrawn** | `declined` / `dismissive` | Resolve-ending | `withdrawn` (grey-soft-filled) |
+| **Introduced** | all response states | Connect-ending | `current` / `completed` / `upcoming` per response |
+
+Why these specific labels:
+- **Closing** distinguishes "decision made; awaiting disbursement" from "loan active." The pre-Sprint-4.2a-refinement-#2 rendering treated `committed` and `funded` identically in the Funded dot; the relabel surfaces the formalities-pending phase.
+- **Withdrawn** marks a deal that the Member declined or dismissed. The new dot state (muted grey-soft, distinct from `upcoming`'s lighter grey-rule and `completed`'s orange-fill) reads as "this journey concluded without funding" without inventing a new visual primitive elsewhere in the system.
+- **Introduced** (renamed from "Closed") is past-tense framing of the work Blaze did — the banker-to-specialist handoff has been made. Applies to all Connect-ending Tracks regardless of response, because the introduction completes whether or not the Member ultimately proceeds with the specialist. Withdrawn does not apply to Connect-ending Tracks.
+
+URL anchor stability: the canonical `label` for Resolve-ending terminal is always `"Funded"` (slug `funded`), so `/growth-conversations/[slug]#stage-funded` resolves regardless of `displayLabel` (`Closing` / `Funded` / `Withdrawn`). Connect-ending terminal canonical label is `"Introduced"` (slug `introduced`), giving `#stage-introduced`. Sprint 4.6 patch is the moment that anchor URL changes; pre-patch links to `#stage-closed` won't resolve. No external bookmarks exist for the demo, so this is a clean rename.
+
+The four-state dot vocabulary that supports this:
+- `completed` → orange-filled (canonical "this stage is done")
+- `current` → orange-ringed (canonical "we are here")
+- `upcoming` → grey-rule-filled, lighter (canonical "not yet reached")
+- `withdrawn` → grey-soft-filled, muted (Sprint 4.6 patch — Resolve-ending terminal only when declined/dismissive)
+
+**Sprint 4.6 — Compliance posture floor refactor.** The Primary concern field's enum values, contextual label, and option sets were all updated per COMPLIANCE.md §6 / §8 to a strict business-factor-only taxonomy. The two contextual sets:
+
+| Context (Member response) | Field label | Option set |
+|---|---|---|
+| `engaged / leaning_yes / committed` | "Primary concern" | open-thread (8 values) |
+| `declined / dismissive` | "Member's stated reason for declining" | decline-reason (10 values) |
+| `committed / funded` (resolution-context) | "Primary concern" | open-thread (vestigial; Member has decided) |
+| (no response yet selected) | hidden | n/a |
+
+**Open-thread values** (engaged-spectrum responses): `pricing_concern · terms_concern · timing_concern · co_decision_maker_household · external_advisor · co_owner_or_board · service_or_capability_concern · other_open_thread`
+
+**Decline-reason values** (declined / dismissive): `pricing_uncompetitive · terms_uncompetitive · timing_misaligned · chose_alternative_lender · chose_alternative_funding · need_resolved_otherwise · need_no_longer_present · wants_to_revisit_later · service_or_capability_concern · other_member_stated`
+
+`service_or_capability_concern` appears in both sets with the same semantic. The label switch from "Decline reason" to "Member's stated reason for declining" matters for Reg B § 1002.9 hygiene — the prior framing read like an adverse-action-notice substitute; the new label is explicitly member-direction. Bank-side underwriting determinations (e.g., the retired `does_not_qualify` value) are excluded from this field; those cases route to Closing notes free text per COMPLIANCE.md §8.2 and are deferred to Q-042 governance.
+
+Auto-clear behavior: when banker switches Response across contexts (e.g., engaged → declined), the existing `primary_concern` value is checked against the new option set; if not present, the dropdown auto-resets to "Select…". This prevents stale-value carry-forward into the new dropdown.
+
+**Banker-prose discipline ([FL:BANKER-PROSE]) — helper text** (Sprint 4.6 Block B). Four free-text fields carry permanent (non-dismissible) italic helper text below the label:
+
+- **Customer response** (Resolve form) — *"Focus on what the Member said and the business factors driving their decision. Avoid notes about personal characteristics, household circumstances, or social context."*
+- **Closing notes** (Resolve form) — *"Focus on observable business and cashflow factors: financing structure, timing, terms, costs, alternatives, business situation, decision process."*
+- **Description** (ActionCard, Resolve form) — *"Describe the business action and timing. Avoid notes about the Member's personal characteristics."*
+- **Suggested opening** (Recommendation member-facing prompt; v2 only — no v1 capture form yet)
+
+Visual treatment: `text-[11px] italic text-blaze-grey-soft`, rendered as a `<span class="block">` between the label and the textarea. Permanent — no dismiss affordance. Verbatim copy from COMPLIANCE.md §10.2.
+
+**Submit-time keyword scan** (Sprint 4.6 Block C) — soft-advisory friction over [FL:BANKER-PROSE] fields. On form submit, each banker-prose field's text runs through `scanText()` from `lib/compliance-keywords.ts`. If any of the ~270 protected-class keywords match (case-insensitive, whole-word, NFKC-normalized + diacritic-stripped, multi-word contiguous), the `ComplianceScanModal` renders with three actions: Continue saving / Edit the note / Cancel. Every action records a `ComplianceScanEvent` row for Pilot calibration telemetry.
+
+The keyword list (8 groups: race/color/origin · religion/creed · disability/health · age · sex/gender/orientation · marital/familial · public assistance · reprisal) lives in `lib/compliance-keywords.ts` and is sourced from `PROTECTED_CLASS_KEYWORD_LIST_v1.md`. Editorial decisions E1–E6 are committed per Path A (defaults) — Pilot calibrates against real banker telemetry.
+
+**Compliance disclaimer banner** (Sprint 4.6 Block D) — `ComplianceDisclaimerBanner` component appears at the top of Growth Conversations pages on first session visit. Cream-tinted band (`bg-blaze-cream/60`) with hairline `border-y border-blaze-rule`; subtle, non-coral, non-orange. Verbatim copy per COMPLIANCE.md §10.1. Dismissible per session via `sessionStorage`. Component is reusable for v2's `/v2/members/[id]` (Sprint 4.7).
+
+**Capture discipline coach callout** (Sprint 4.6 Block E) — `CaptureDisciplineCallout` button (label: `Capture discipline ?`) in the page footer. Click opens a modal with the verbatim 100-word framing per COMPLIANCE.md §10.4: business-situation-focused captures are useful; personal-characteristic captures are problematic; the "would I want a regulator, my compliance officer, or the Member themselves to read this note?" heuristic. "Got it" dismisses. Component is reusable for v2's "show ?" coach surface (Sprint 4.7).
+
+Reference implementation: `app/growth-conversations/[memberId]/resolve-section.tsx` (client component) + `saveResolveCaptures` server action in `app/growth-conversations/[memberId]/actions.ts` + `lib/compliance-keywords.ts` (registry + scan) + `lib/compliance-scan-action.ts` (telemetry server action) + `app/_components/compliance-scan-modal.tsx` + `app/_components/compliance-disclaimer-banner.tsx` + `app/_components/capture-discipline-callout.tsx`.
 
 ---
 
@@ -1055,6 +1110,127 @@ When the EVP demo lands on an Ask section reading *"Establish the rhythm of cash
 ### Reference implementation
 
 `lib/stage-guidance.ts` (the lookup) + `app/growth-conversations/[memberId]/page.tsx` (calls `getStageGuidance(member.member_type.name, stepPhase, stage.label)` per stage section, renders the paragraph for Track-step stages and routes the text into `StagePlaceholder` for lifecycle stages).
+
+---
+
+## 14.9 v2 workstation pattern (Sprint 4.7 → Sprint 4.7.2)
+
+The v2 workstation at `/v2/members/[id]` introduces a single-page-per-Member surface that replaces the v1 split between Member Profile and Growth Conversations per ARCHITECTURE_V2.md. Sprint 4.7.2 refactored vocabulary and simplified the dialpad — this section reflects the post-4.7.2 state. v1 routes retain the prior treatment unchanged.
+
+### Layout
+
+Pattern A per ARCHITECTURE_V2 §6 — top-to-bottom:
+
+1. **Header** — Member name in display weight, tagline (Member Type · Stage · Primary banker), open-thread badge with coral accent. No breadcrumb above; the header is the page anchor.
+2. **Compliance disclaimer banner** — sessionStorage-gated; mounts below header, above key facts strip per Q-H1.
+3. **Key facts strip** — cream-tinted background; 3-5 hand-curated facts as glance-able key/value pairs separated by middots. ~48px tall.
+4. **Sticky activity dialpad** — horizontal row of seven pill-shaped buttons (~36px tight height); sticks at the top of the viewport when the captured feed scrolls below.
+5. **Sidebar (180px) + main panel** — sidebar holds objectives / artifact / macro / history / coach; main panel holds the captured feed.
+6. **Capture discipline footer** — reused from Sprint 4.6.
+
+### Dot vocabulary
+
+The objective dot is the v2 UI primitive for evidence representation. **Four states**, 8px diameter, 6px gap:
+
+| State | Visual | Click reveals |
+|---|---|---|
+| `filled` | Solid `--blaze-grey-darker` fill | Captured-evidence detail panel (in-place) |
+| `outlined` | Hollow circle, 0.5px stroke @ 40% opacity | Capture form pre-routed to that evidence type |
+| `faint` | Hollow circle, `--blaze-grey-soft` stroke @ 20% opacity | No-op (evidence not yet relevant) |
+| `accented` | Solid `--blaze-orange-burnt` fill | Detail panel for the open thread + affordances to address it |
+
+Coral accent reserved for the open thread; most blocks are all-grey with at most one accented dot. Solid-fill (not outlined-with-ring) chosen for visual weight against the grey rows; documented per BUILD_LOG.
+
+### Activity dialpad pill
+
+Persistent and always-visible — the five activities never change based on objective state. Sprint 4.7.2 retired + Show and + Resolve from the dialpad surface (see "Removed from dialpad" below):
+
+```
+[+ Ask] [+ Quantify] [+ Model] [+ Reaction] [+ Action]
+```
+
+- Text: `--blaze-orange-deep`
+- Background: `--blaze-white`
+- Border: 0.5px `--blaze-orange-deep`
+- Hover: `--blaze-orange-pale` fill
+- Pressed: `--blaze-orange-burnt` border
+- Pill rounding: full pill (`rounded-full`)
+- Inter-button gap: 8-12px
+
+Click opens a right-drawer with the corresponding capture form. Drawer chosen over modal so the workstation context stays partially visible for reference.
+
+### Removed from dialpad (Sprint 4.7.2)
+
+- **+ Show** — showing an existing artifact is rendering, not a new capture. ShowEvents fire two ways:
+  1. **Auto-creation** when the + Model form saves with "with Member" provenance (the model was constructed in front of the Member, which by definition includes showing it). Atomic with the Model create.
+  2. **Explicit "Record show" button** on the sidebar artifact preview dialog. Click creates a ShowEvent linked to the artifact and the current Conversation. Preview-without-record is the default state — opening the preview to rehearse does not pollute the audit trail.
+- **+ Resolve** — Member responses captured via + Reaction (which now subsumes response value, member quote, and primary concern via contextual taxonomy). v1 ResolveSection persists for v1 routes per ARCHITECTURE_V2.md §12.5.
+
+### + Reaction form contextual primary_concern
+
+The + Reaction form's primary_concern dropdown switches its option set based on response_value, matching the v1 Sprint 4.6 Resolve form pattern:
+
+- When response_value ∈ {engaged, leaning_yes, committed, skeptical, confused}: 8 open-thread options (per COMPLIANCE.md §6.3) — `pricing_concern`, `terms_concern`, `timing_concern`, `co_decision_maker_household`, `external_advisor`, `co_owner_or_board`, `service_or_capability_concern`, `other_open_thread`.
+- When response_value ∈ {declined, dismissive}: 10 decline-reason options — `pricing_uncompetitive`, `terms_uncompetitive`, `timing_misaligned`, `chose_alternative_lender`, `chose_alternative_funding`, `need_resolved_otherwise`, `need_no_longer_present`, `wants_to_revisit_later`, `service_or_capability_concern`, `other_member_stated`.
+
+**Field label switches** with the context:
+- "Primary concern" for engaged-spectrum + mid-conversation states.
+- "Member's stated reason for declining" for declined/dismissive.
+
+**Required when** response_value ∈ {skeptical, confused, leaning_yes, declined} (the v1 NUANCED pattern). **Optional otherwise** (engaged, committed, dismissive).
+
+**Auto-clear on context boundary**: switching response_value across context boundaries (e.g., leaning_yes → declined) clears the primary_concern dropdown to "Select…" since values valid in one context are invalid in the other.
+
+### Captured feed cards
+
+Six variants (Ask / Quantify / Model / Show / Reaction / Resolve), all sharing this discipline:
+
+- Type tag rendered as a Chip primitive (square-edged, ~2px radius, 0.5px border, cool-grey-blue default fill from `--blaze-data-cool`). Tag content is the substantive type (Goal/Blocker/Indecision/Trigger for Ask; Sized/Model/Shown/Reaction/Resolution for the others) — not the activity name.
+- Magnitude / label in 16px heading weight.
+- Detail in 14px body weight.
+- Member quote in italic, set apart with **3px `--blaze-orange` left-rule mark**.
+- **Open-thread captures**: 3px `--blaze-orange-burnt` left-border accent + Chip variant `accent`.
+- **Stale captures** (>90 days, or explicitly superseded): 70% opacity.
+
+Sort: recent-first across all activity types mixed. Click expands inline with augmenting summary detail.
+
+### Compliance-careful copy framings (Tracks-supported panel)
+
+The Tracks-supported-by-current-evidence panel inside the **Discover** objective uses verbatim language per ARCHITECTURE_V2 §10.2 / COMPLIANCE.md §10.2:
+
+**Required:**
+- ✓ "Tracks supported by current evidence"
+- ✓ "Strong support / moderate support / insufficient evidence yet"
+- ✓ "The banker considers and decides"
+
+**Banned (compliance-fraught):**
+- ❌ "Candidate tracks"
+- ❌ "Recommended for this Member"
+- ❌ "Eligible for"
+- ❌ "Bumped to candidate track"
+
+This framing is non-negotiable and applies anywhere the system surfaces ranked-by-evidence Track suggestions.
+
+### Coach affordance pattern
+
+Bottom-of-sidebar `show ?` link expands inline. Default state: collapsed. Junior bankers may keep it expanded; senior bankers ignore it (per ARCHITECTURE_V2 §9.2). Content delivered via `objectiveGuidance(objective, memberTypeName)` in `lib/stage-guidance.ts` — returns `{ headline, body }` per objective. Headline is the **question the banker is answering** (italicized in the sidebar); body is the Member-Type-specific substantive paragraph (or generic fallback). Sprint 4.7.2 re-authored content per the new evidence mapping (Goals/Blockers/Indecision under Discover; Model produced under Measure; Show + Reaction under Consult; lifecycle under Navigate).
+
+### Click-in-place navigation discipline
+
+**No clicks on the workstation should result in page navigation away from the workstation.** Every interaction opens an in-place panel, popover, or modal. The only navigation link is the explicit cross-link affordance (Classic view ↗ → /members/[id]).
+
+### Reference implementation
+
+- `app/v2/members/[id]/page.tsx` — server component fetching all dropdown data + prior captures + composing the feed
+- `app/v2/_components/objective-dot.tsx` — dot primitive
+- `app/_components/chip.tsx` — Chip primitive (default / accent / muted) used across the open-thread badge and feed-card type tags
+- `app/v2/members/[id]/dialpad.tsx` — sticky pill row (5 buttons) + drawer dispatch
+- `app/v2/members/[id]/sidebar.tsx` — five-section sidebar with Discover click → Tracks panel + show ? coach expansion + artifact preview dialog
+- `app/v2/members/[id]/main-panel.tsx` — six-variant captured feed
+- `app/v2/members/[id]/tracks-supported-panel.tsx` — Discover objective panel with verbatim compliance copy
+- `app/v2/members/[id]/artifact-preview-dialog.tsx` — preview + Record show button (Block H)
+- `app/v2/members/[id]/capture-forms/reaction-form.tsx` — Reaction form with contextual primary_concern dropdown (Block F)
+- `lib/stage-guidance.ts` — V2Objective union, OBJECTIVE_QUESTIONS, MEMBER_TYPE_GUIDANCE, `objectiveGuidance()` helper
 
 ---
 

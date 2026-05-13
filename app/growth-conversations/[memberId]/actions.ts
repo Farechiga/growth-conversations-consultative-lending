@@ -42,13 +42,12 @@
 import { revalidatePath } from "next/cache";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { getDbPath } from "@/lib/db-path";
 
 function getPrisma() {
-  const dbPath = (process.env.DATABASE_URL ?? "file:./dev.db").replace(
-    /^file:/,
-    "",
-  );
-  return new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: dbPath }) });
+  return new PrismaClient({
+    adapter: new PrismaBetterSqlite3({ url: getDbPath() }),
+  });
 }
 
 export type SignalDraft = {
@@ -75,6 +74,13 @@ export type SignalDraft = {
   magnitude: number | null;
   unit: string | null;
   frequency: string | null;
+  // Sprint 5a.1 Block G — matrix factor tag. Maps the signal to a
+  // BusinessFactor (FACTOR-021 / 022 / 023 / 024 per signal type) and
+  // creates a companion FactorCapture row at save time. Default "other"
+  // when banker doesn't select; FactorCapture is still created with
+  // qualitative_value = "other" so Sprint 5a.2 can show "captured but
+  // not classified" cues if useful.
+  factor_tag: string | null;
 };
 
 // Sprint 4 §4.1d Block C — per-type validation. Returns null when valid;
@@ -195,7 +201,19 @@ export async function saveAskCaptures(input: SaveAskInput): Promise<SaveResult> 
         });
       }
 
-      // 3. Create new Signals.
+      // 3. Create new Signals + companion FactorCaptures.
+      // Sprint 5a.1 Block G — each Signal gets a FactorCapture row
+      // anchored to the matrix factor for its signal type. Tag defaults
+      // to "other" when banker hasn't picked one.
+      const SIGNAL_TYPE_TO_FACTOR_ID: Record<
+        "goal" | "blocker" | "trigger" | "indecision",
+        string
+      > = {
+        goal: "FACTOR-021",
+        blocker: "FACTOR-022",
+        trigger: "FACTOR-024",
+        indecision: "FACTOR-023",
+      };
       const createdSignalIds: string[] = [];
       for (const draft of input.new_signals) {
         const sig = await tx.signal.create({
@@ -221,6 +239,17 @@ export async function saveAskCaptures(input: SaveAskInput): Promise<SaveResult> 
           select: { id: true },
         });
         createdSignalIds.push(sig.id);
+
+        // Companion FactorCapture (Sprint 5a.1 Block G).
+        await tx.factorCapture.create({
+          data: {
+            member_id: input.member_id,
+            factor_id: SIGNAL_TYPE_TO_FACTOR_ID[draft.type],
+            qualitative_value: draft.factor_tag ?? "other",
+            source_signal_id: sig.id,
+            banker_id: input.banker_id,
+          },
+        });
       }
 
       // 4. Apply edits — create new Signal records, set supersession.
@@ -269,6 +298,9 @@ export async function saveAskCaptures(input: SaveAskInput): Promise<SaveResult> 
     // slug at runtime, so blanket invalidation is the safe call.
     revalidatePath("/members/[id]", "page");
     revalidatePath("/growth-conversations/[memberId]", "page");
+    // Sprint 5a.2 Block G — also revalidate the v2 workstation so
+    // Track ranking + dot composition reflects the new FactorCapture(s).
+    revalidatePath("/v2/members/[id]", "page");
     return {
       ok: true,
       conversation_id: result.conversation_id,
@@ -498,6 +530,9 @@ export async function saveSizeCaptures(
 
     revalidatePath("/members/[id]", "page");
     revalidatePath("/growth-conversations/[memberId]", "page");
+    // Sprint 5a.2 Block G — also revalidate the v2 workstation so
+    // Track ranking + dot composition reflects the new FactorCapture(s).
+    revalidatePath("/v2/members/[id]", "page");
     return {
       ok: true,
       conversation_id: result.conversation_id,
@@ -597,29 +632,32 @@ export type SaveResolveInput = {
     | "leaning_yes"
     | "committed"
     | "funded";
-  // Sprint 4 §4.2a refinement #3 — extended with decline-reason values
-  // for the form's contextual option set when response is declined /
-  // dismissive. The schema enum (RecommendationPrimaryConcern) carries
-  // both open-thread and decline-reason values; the form picks the
-  // appropriate set based on the response.
+  // Sprint 4.6 Block A — Compliance posture floor refactor. The 17-value
+  // taxonomy per COMPLIANCE.md §6 is split into open-thread and
+  // decline-reason contexts. The form picks the appropriate set based
+  // on the Member response value. `service_or_capability_concern` is
+  // shared across both contexts.
   primary_concern:
-    | "none"
-    | "rate"
-    | "speed"
-    | "commitment"
-    | "spouse"
-    | "cpa"
-    | "partner"
-    | "timing"
-    | "bank_capability"
-    | "other"
-    | "terms_unfavorable"
-    | "going_with_competitor"
-    | "no_longer_needed"
-    | "does_not_qualify"
-    | "lost_interest"
-    | "found_alternative"
-    | "circumstances_changed"
+    // Open-thread context (engaged / leaning_yes / committed)
+    | "pricing_concern"
+    | "terms_concern"
+    | "timing_concern"
+    | "co_decision_maker_household"
+    | "external_advisor"
+    | "co_owner_or_board"
+    | "other_open_thread"
+    // Decline-reason context (declined / dismissive)
+    | "pricing_uncompetitive"
+    | "terms_uncompetitive"
+    | "timing_misaligned"
+    | "chose_alternative_lender"
+    | "chose_alternative_funding"
+    | "need_resolved_otherwise"
+    | "need_no_longer_present"
+    | "wants_to_revisit_later"
+    | "other_member_stated"
+    // Shared
+    | "service_or_capability_concern"
     | null;
   source: "member_stated" | "banker_observed";
   their_words: string | null;
@@ -829,6 +867,9 @@ export async function saveResolveCaptures(
     // not a DB write, so it doesn't participate in the rollback.
     revalidatePath("/members/[id]", "page");
     revalidatePath("/growth-conversations/[memberId]", "page");
+    // Sprint 5a.2 Block G — also revalidate the v2 workstation so
+    // Track ranking + dot composition reflects the new FactorCapture(s).
+    revalidatePath("/v2/members/[id]", "page");
     return {
       ok: true,
       conversation_id: result.conversation_id,

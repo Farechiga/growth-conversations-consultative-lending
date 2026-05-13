@@ -33,6 +33,11 @@ import {
   type SignalDraft,
   type SignalEdit,
 } from "./actions";
+import { scanText } from "@/lib/compliance-keywords";
+import {
+  ComplianceScanModal,
+  type ScanFieldResult,
+} from "@/app/_components/compliance-scan-modal";
 
 // ────────────────────────────────────────────────
 // Types — server passes prior signals + topic options + member/banker ids
@@ -74,6 +79,54 @@ export type AskPriorSignal = {
 };
 
 type SignalKind = "goal" | "blocker" | "trigger" | "indecision";
+
+// Sprint 5a.1 Block G — factor-tag dropdowns. Each signal type maps to a
+// BusinessFactor in the matrix; the tag value drives matrix-aware Track
+// ranking. Lists copied verbatim from BUSINESS_FACTOR_MATRIX_v1.md
+// Sections 1.5 / 2.x. Default "other" so banker omission doesn't block
+// submission.
+const FACTOR_TAG_OPTIONS: Record<SignalKind, Array<{ label: string; value: string }>> = {
+  goal: [
+    { label: "smooth seasonal revenue", value: "smooth_seasonal_revenue" },
+    { label: "expand capacity", value: "expand_capacity" },
+    { label: "acquire real estate", value: "acquire_real_estate" },
+    { label: "diversify revenue", value: "diversify_revenue" },
+    { label: "acquire equipment", value: "acquire_equipment" },
+    { label: "refinance existing", value: "refinance_existing" },
+    { label: "scale workforce", value: "scale_workforce" },
+    { label: "other", value: "other" },
+  ],
+  blocker: [
+    { label: "cashflow volatility", value: "cashflow_volatility" },
+    { label: "customer concentration", value: "customer_concentration" },
+    { label: "capacity limit", value: "capacity_limit" },
+    { label: "aging equipment", value: "aging_equipment" },
+    { label: "real estate", value: "real_estate" },
+    { label: "workforce gap", value: "workforce_gap" },
+    { label: "regulatory compliance", value: "regulatory_compliance" },
+    { label: "other", value: "other" },
+  ],
+  indecision: [
+    { label: "timing", value: "timing" },
+    { label: "pricing", value: "pricing" },
+    { label: "structure", value: "structure" },
+    { label: "co-decision-maker input", value: "co_decision_maker_input" },
+    { label: "external advisor input", value: "external_advisor_input" },
+    { label: "risk tolerance", value: "risk_tolerance" },
+    { label: "capacity to service debt", value: "capacity_to_service_debt" },
+    { label: "other", value: "other" },
+  ],
+  trigger: [
+    { label: "late-paying customer", value: "late_paying_customer" },
+    { label: "capacity evaluation", value: "capacity_evaluation" },
+    { label: "equipment breakdown", value: "equipment_breakdown" },
+    { label: "customer growth announcement", value: "customer_growth_announcement" },
+    { label: "regulatory change", value: "regulatory_change" },
+    { label: "refinancing window", value: "refinancing_window" },
+    { label: "acquisition opportunity", value: "acquisition_opportunity" },
+    { label: "other", value: "other" },
+  ],
+};
 
 // ────────────────────────────────────────────────
 // UI vocabulary → schema enum mappings
@@ -216,6 +269,7 @@ function emptyDraft(type: SignalKind): SignalDraft {
     magnitude: null,
     unit: null,
     frequency: null,
+    factor_tag: null,
   };
 }
 
@@ -231,6 +285,10 @@ function priorToDraft(p: AskPriorSignal): SignalDraft {
     magnitude: p.magnitude,
     unit: p.unit,
     frequency: p.frequency,
+    // Edits don't pre-populate the factor tag; banker re-classifies on
+    // each save. The companion FactorCapture chain is per-Signal, not
+    // per-edit.
+    factor_tag: null,
   };
 }
 
@@ -267,12 +325,19 @@ export function AskSection({
   conversationId,
   priorSignals,
   topicsByType,
+  onSaveSuccess,
 }: {
   memberId: string;
   bankerId: string;
   conversationId: string | null;
   priorSignals: AskPriorSignal[];
   topicsByType: Record<SignalKind, AskTopic[]>;
+  // Sprint 4.7 Block L — optional callback for v2 drawer wrapper to
+  // close the drawer after a successful save. v1 callers (Growth
+  // Conversations page) leave this undefined; AskSection's standard
+  // post-save behavior (router.refresh + clear pending state) runs in
+  // both cases.
+  onSaveSuccess?: () => void;
 }) {
   const router = useRouter();
   const [pendingNew, setPendingNew] = useState<PendingNew[]>([]);
@@ -281,6 +346,12 @@ export function AskSection({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Sprint 4.7 Block Q — submit-time keyword scan over [FL:BANKER-PROSE]
+  // their_words fields across pendingNew + pendingEdit. Pause save when
+  // any field has matches; resume via dispatchSave on continue.
+  const [pendingScan, setPendingScan] = useState<{
+    fieldsWithMatches: ScanFieldResult[];
+  } | null>(null);
 
   // Helpers for adding a new sub-form.
   function addNewSignal(type: SignalKind) {
@@ -332,6 +403,40 @@ export function AskSection({
       setError("No captures to save.");
       return;
     }
+
+    // Sprint 4.7 Block Q — scan their_words across all pending captures.
+    // Aggregate per-field matches; if any, pause and surface modal.
+    const scanFieldsWithMatches: ScanFieldResult[] = [];
+    pendingNew.forEach((p, i) => {
+      if (p.draft.their_words) {
+        const matches = scanText(p.draft.their_words);
+        if (matches.length > 0) {
+          scanFieldsWithMatches.push({
+            fieldName: `Ask.their_words[new #${i + 1}]`,
+            matches,
+          });
+        }
+      }
+    });
+    if (pendingEdit?.draft.their_words) {
+      const matches = scanText(pendingEdit.draft.their_words);
+      if (matches.length > 0) {
+        scanFieldsWithMatches.push({
+          fieldName: "Ask.their_words[edit]",
+          matches,
+        });
+      }
+    }
+    if (scanFieldsWithMatches.length > 0) {
+      setPendingScan({ fieldsWithMatches: scanFieldsWithMatches });
+      return;
+    }
+
+    dispatchSave();
+  }
+
+  function dispatchSave() {
+    setPendingScan(null);
     startTransition(async () => {
       const result = await saveAskCaptures({
         member_id: memberId,
@@ -357,6 +462,7 @@ export function AskSection({
         setPendingEdit(null);
         setExpandedSignalId(null);
         router.refresh();
+        onSaveSuccess?.();
       } else {
         setError(result.error);
       }
@@ -478,18 +584,22 @@ export function AskSection({
         </ul>
       )}
 
-      {/* ── Add buttons ── */}
-      <div className="mt-5 flex flex-wrap gap-2">
-        {(["goal", "blocker", "indecision", "trigger"] as const).map((k) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => addNewSignal(k)}
-            className="rounded border border-blaze-rule bg-white px-3 py-1.5 text-xs font-medium text-blaze-orange-deep transition-colors hover:bg-blaze-cream"
-          >
-            + Add {SIGNAL_KIND_LABEL[k]}
-          </button>
-        ))}
+      {/* ── Add buttons ── Sprint 5d Block D — Type-of-statement label
+          per CONTENT_REWRITE_v1 Section 3.1. */}
+      <div className="mt-5">
+        <p className="text-xs text-blaze-grey-body">What type of statement is this?</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(["goal", "blocker", "indecision", "trigger"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => addNewSignal(k)}
+              className="rounded border border-blaze-rule bg-white px-3 py-1.5 text-xs font-medium text-blaze-orange-deep transition-colors hover:bg-blaze-cream"
+            >
+              + Add {SIGNAL_KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Save / status ── */}
@@ -501,7 +611,7 @@ export function AskSection({
             disabled={isPending}
             className="rounded bg-blaze-orange px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blaze-orange-bright active:bg-blaze-orange-burnt disabled:opacity-60"
           >
-            {isPending ? "Saving…" : "Save Ask captures"}
+            {isPending ? "Saving…" : "Save"}
           </button>
           <button
             type="button"
@@ -530,6 +640,22 @@ export function AskSection({
         >
           {success}
         </p>
+      )}
+      {/* Sprint 4.7 Block Q — soft-advisory keyword scan modal. Renders
+          only when their_words on any pending capture flagged terms. */}
+      {pendingScan && (
+        <ComplianceScanModal
+          bankerId={bankerId}
+          memberId={memberId}
+          fieldsWithMatches={pendingScan.fieldsWithMatches}
+          onContinue={dispatchSave}
+          onEdit={() => setPendingScan(null)}
+          onCancel={() => {
+            setPendingScan(null);
+            setPendingNew([]);
+            setPendingEdit(null);
+          }}
+        />
       )}
     </div>
   );
@@ -678,7 +804,7 @@ function SignalSubForm({
         </button>
       </div>
       <div className="mt-3 space-y-3">
-        <Field label="Topic / subtype" required>
+        <Field label="Which kind specifically?" required>
           <select
             value={draft.topic_id}
             onChange={(e) => onChange({ ...draft, topic_id: e.target.value })}
@@ -692,7 +818,10 @@ function SignalSubForm({
             ))}
           </select>
         </Field>
-        <Field label="Direct quote (optional)">
+        <Field
+          label="The Member's own words"
+          helper="Capture what the Member actually said. Not your summary."
+        >
           <textarea
             value={draft.their_words ?? ""}
             onChange={(e) =>
@@ -703,8 +832,30 @@ function SignalSubForm({
             }
             rows={2}
             className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm italic text-blaze-grey-body focus:border-blaze-orange focus:outline-none"
-            placeholder='What the Member actually said, verbatim'
+            placeholder='What the Member actually said'
           />
+        </Field>
+        {/* Sprint 5a.1 Block G — factor-tag dropdown. Maps the signal
+            to the matrix's BusinessFactor for this signal type. Drives
+            Track ranking. Default "other" if not picked. */}
+        <Field label="Matrix tag">
+          <select
+            value={draft.factor_tag ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...draft,
+                factor_tag: e.target.value === "" ? null : e.target.value,
+              })
+            }
+            className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+          >
+            <option value="">(other)</option>
+            {FACTOR_TAG_OPTIONS[draft.type].map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </Field>
         {/* Sprint 4 §4.1d Block C — per-type required-field discipline.
             Goal / Blocker: Impact + Timeframe + Source all required.
@@ -891,10 +1042,12 @@ function SignalSubForm({
 function Field({
   label,
   required,
+  helper,
   children,
 }: {
   label: string;
   required?: boolean;
+  helper?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -903,6 +1056,11 @@ function Field({
         {label}
         {required && <span className="ml-1 text-blaze-orange-deep">*</span>}
       </span>
+      {helper && (
+        <span className="mt-0.5 block text-[11px] text-blaze-grey-soft">
+          {helper}
+        </span>
+      )}
       <div className="mt-1">{children}</div>
     </label>
   );

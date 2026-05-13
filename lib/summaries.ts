@@ -255,16 +255,20 @@ export function summarizeMember(
   if (input.active_proposal !== null) {
     const verb = PROPOSAL_RESPONSE_VERB[input.active_proposal.response];
     const sizeFragment = formatProposalSize(input.active_proposal.size_proposed);
+    // Sprint 4.6 Block A — concern phrasing updated for the post-refactor
+    // taxonomy. The `bank_capability` / `spouse` / `cpa` / `none` enum
+    // values were retired; equivalent semantics now flow through the
+    // 17-value compliance-posture-floor taxonomy. Bespoke phrasing for
+    // a few high-frequency open-thread concerns; otherwise falls back
+    // to the canonical compact label.
     const concernPhrase = input.active_proposal.primary_concern
-      ? input.active_proposal.primary_concern === "bank_capability"
-        ? "; concerned about whether the bank can handle a deal of this size"
-        : input.active_proposal.primary_concern === "spouse"
-          ? "; needs spousal input before committing"
-          : input.active_proposal.primary_concern === "cpa"
-            ? "; wants to verify with their CPA before committing"
-            : input.active_proposal.primary_concern === "none"
-              ? ""
-              : `; primary concern is ${RECOMMENDATION_PRIMARY_CONCERN_LABELS[input.active_proposal.primary_concern].toLowerCase()}`
+      ? input.active_proposal.primary_concern === "service_or_capability_concern"
+        ? "; concerned about whether the bank can deliver on a deal of this scope"
+        : input.active_proposal.primary_concern === "co_decision_maker_household"
+          ? "; needs household co-decision-maker input before committing"
+          : input.active_proposal.primary_concern === "external_advisor"
+            ? "; wants to verify with an external advisor before committing"
+            : `; primary concern is ${RECOMMENDATION_PRIMARY_CONCERN_LABELS[input.active_proposal.primary_concern].toLowerCase()}`
       : "";
     sentence4 = `Member ${verb} ${sizeFragment} for ${input.active_proposal.product_name}${concernPhrase}.`;
   }

@@ -124,7 +124,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
           <section>
             <ModalSectionLabel label="Share record" />
             <p className="mt-3 text-xs text-blaze-grey-body">
-              Shown in the conversation on{" "}
+              Shared with member on{" "}
               <span className="font-medium text-blaze-charcoal">
                 {new Date(artifact.conversation_date_iso).toLocaleDateString("en-US", {
                   year: "numeric",

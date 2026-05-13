@@ -1,0 +1,14 @@
+-- Sprint 4.7.2 Block A — Reaction expansion.
+--
+-- 1. ReactionValue enum: SQLite stores enums as TEXT, so the enum value
+--    expansion (engaged/leaning_yes/skeptical/confused/dismissive +
+--    committed/declined) is enforced at the Prisma client layer. No DDL
+--    needed for the enum itself; the existing TEXT column accepts the
+--    new values.
+--
+-- 2. Add primary_concern column on Reaction. Nullable; stored as TEXT.
+--    Reuses the existing RecommendationPrimaryConcern enum semantics
+--    (Sprint 4.6 contextual taxonomy) but enforced at the application
+--    layer because the column accepts values from two different context
+--    subsets depending on response_value.
+ALTER TABLE "Reaction" ADD COLUMN "primary_concern" TEXT;
