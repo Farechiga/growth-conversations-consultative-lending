@@ -95,7 +95,7 @@ export function CapitalEventPartnershipMap() {
       style={{ fontFamily: "Inter, system-ui, sans-serif" }}
     >
       <p className="mb-4 text-sm text-blaze-charcoal">
-        How Blaze coordinates a capital-event deal across the relationship
+        How we coordinate a capital-event deal across the relationship
         banker, CRE specialist, lending committee, and treasury team.
       </p>
       <svg

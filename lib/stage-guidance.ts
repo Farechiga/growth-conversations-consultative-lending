@@ -320,7 +320,7 @@ const MEMBER_TYPE_GUIDANCE: Record<string, Record<V2Objective, string>> = {
     measure:
       "Quantify capacity utilization (~85%), customer concentration (3 anchor customers ~62% of revenue), expansion scope ($4-7M). Size against the milestone calendar. The capital event partnership map is a Model produced jointly during the conversation — with-Member provenance auto-creates the ShowEvent.",
     consult:
-      "Show the capital event partnership map; the Member should see the pathway from conversation to closing, including specialist roles. Capture reaction and the open thread (board scenarios, RFP-vs-relationship preference). Decision posture matters here — Cygnus is leaning toward Blaze if the specialist depth is shown.",
+      "Show the capital event partnership map; the Member should see the pathway from conversation to closing, including specialist roles. Capture reaction and the open thread (board scenarios, RFP-vs-relationship preference). Decision posture matters here — Cygnus is leaning toward us if the specialist depth is shown.",
     navigate:
       "Specialist handoff to the CRE banker (e.g., Marcus Webb). Track the introduction follow-through; this Track is Connect-ending — Navigate is satisfied when the introduction lands and the specialist takes over the relationship.",
   },
@@ -680,7 +680,7 @@ const MEMBER_TYPE_COACH: Record<string, MemberTypeCoach> = {
         boldFragments: ["Ask about regulatory requirements that constrain the facility decision."],
       },
       {
-        text: "Find out about prior banking relationships. Specialty-manufacturer Members often have history with multiple institutions. Past lending events shape how to position Blaze's role.",
+        text: "Find out about prior banking relationships. Specialty-manufacturer Members often have history with multiple institutions. Past lending events shape how to position our role.",
         boldFragments: ["Find out about prior banking relationships."],
       },
     ],
@@ -737,7 +737,7 @@ const MEMBER_TYPE_COACH: Record<string, MemberTypeCoach> = {
         ctaEvidenceRef: "specialist_handoff_initiated",
       },
       {
-        text: "Surface the relationship preference if it's there. Specialty manufacturers with long Blaze relationships often state directly: “We'd like the next round to be with you.” Capture that statement when it comes.",
+        text: "Surface the relationship preference if it's there. Specialty manufacturers with long relationships often state directly: “We'd like the next round to be with you.” Capture that statement when it comes.",
         boldFragments: ["Surface the relationship preference if it's there."],
       },
     ],

@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Blaze Member Signals",
-  description: "Demo of the Blaze Member Signals system for Blaze Credit Union.",
+  title: "Member Signals",
+  description: "Demo of the Member Signals system.",
 };
 
 export default function RootLayout({

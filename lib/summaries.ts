@@ -186,7 +186,7 @@ function summarizeMemberInitialState(
   const sentence1 = `${dba}${
     input.industry_family_name ? `, a ${input.member_type_name} in ${input.industry_family_name}` : `, a ${input.member_type_name}`
   }.`;
-  const sentence2 = `Member since ${tenureYear} (${years} ${yearWord} with Blaze); primary banker is ${input.primary_banker_name}.`;
+  const sentence2 = `Member since ${tenureYear} (${years} ${yearWord} with us); primary banker is ${input.primary_banker_name}.`;
   const sentence3 = "No conversations on record yet.";
   return ok([sentence1, sentence2, sentence3].join(" "));
 }
@@ -245,7 +245,7 @@ export function summarizeMember(
   }.`;
 
   // Sentence 2 — relationship.
-  const sentence2 = `Member since ${tenureYear} (${years} ${yearWord} with Blaze); primary banker is ${input.primary_banker_name}.`;
+  const sentence2 = `Member since ${tenureYear} (${years} ${yearWord} with us); primary banker is ${input.primary_banker_name}.`;
 
   // Sentence 3 — current state.
   const sentence3 = `Last touch was ${lastTouch}; ${blockerLabel}, ${cardLabel}.`;

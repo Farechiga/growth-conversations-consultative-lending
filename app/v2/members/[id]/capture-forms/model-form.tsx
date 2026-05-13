@@ -269,7 +269,7 @@ export function ModelForm({
 
       <Field
         label="Attach a template? (optional)"
-        helper="If you used one of Blaze's pre-built templates, attach it here."
+        helper="If you used one of our pre-built templates, attach it here."
       >
         <select
           value={artifactId}

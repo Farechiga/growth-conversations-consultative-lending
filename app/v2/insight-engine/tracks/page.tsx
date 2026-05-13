@@ -63,7 +63,7 @@ export default async function TrackPerformancePage() {
       </div>
       <section>
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-body">
-          Lending products Blaze offers ({blazeOffers.length})
+          Lending products we offer ({blazeOffers.length})
         </h2>
         <div className="mt-3 space-y-5">
           {blazeOffers.map((row) => (
@@ -74,10 +74,10 @@ export default async function TrackPerformancePage() {
       {futureExpansion.length > 0 && (
         <section>
           <h2 className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-body">
-            Lending products Blaze doesn&rsquo;t offer today ({futureExpansion.length})
+            Lending products we don&rsquo;t offer today ({futureExpansion.length})
           </h2>
           <p className="mt-1 text-[11px] italic text-blaze-grey-soft">
-            Tracks retained for matrix coverage; not currently in the Blaze
+            Tracks retained for matrix coverage; not currently in our
             offering catalog.
           </p>
           <div className="mt-3 space-y-5 opacity-90">

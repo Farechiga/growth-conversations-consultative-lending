@@ -111,7 +111,7 @@ export function LendingProductMixView({
                 ${(hoverPayload.size / 1_000_000).toFixed(1)}M pipeline · {hoverPayload.members} Members
               </p>
               <p className="text-blaze-grey-soft">
-                {hoverPayload.isBlazeOffered ? "Active Blaze offering" : "Future-expansion product"}
+                {hoverPayload.isBlazeOffered ? "Active offering" : "Future-expansion product"}
               </p>
               <p className="mt-1 text-blaze-grey-soft">Click to see Members on this Track.</p>
             </div>
