@@ -111,6 +111,14 @@ export type V2DialpadProps = {
   // when a template is selected. Free-form Artifact entries pass
   // template: null and behave like the pre-Sprint-5d attachment.
   artifacts: ModelArtifactOption[];
+  // BUILD 2c — Member evidence + recommended product so the +Model
+  // builder pre-fills essentials via the shared resolve engine.
+  factorCapturesById?: Record<
+    string,
+    { display_value: string; capture_mode: "member_confirmed" | "banker_estimate" }
+  >;
+  recommendedProduct?: { amount: string; label: string } | null;
+  activeTrackIds?: string[];
   // Reaction — needs ShowEvent list to optionally link the reaction
   // back to which artifact rendering it responds to
   showEvents: ReactionShowEventOption[];
@@ -255,6 +263,9 @@ export function V2Dialpad(props: V2DialpadProps) {
                   bankerId={props.bankerId}
                   conversationId={null}
                   artifacts={props.artifacts}
+                  factorCapturesById={props.factorCapturesById}
+                  recommendedProduct={props.recommendedProduct}
+                  activeTrackIds={props.activeTrackIds}
                   onSuccess={handleClose}
                   onCancel={handleClose}
                 />

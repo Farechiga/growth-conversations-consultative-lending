@@ -153,6 +153,9 @@ export type WorkstationShellProps = {
     | "preselectedSignalId"
     | "preselectedInsightType"
     | "onActivityChange"
+    // BUILD 2c — factorCapturesById is computed in the shell, supplied
+    // directly to the dialpad (not via page.tsx dialpadProps).
+    | "factorCapturesById"
   >;
   // Captured feed
   feedItems: FeedItem[];
@@ -670,6 +673,7 @@ export function WorkstationShell(props: WorkstationShellProps) {
         preselectedCaptureMode={preselectedCaptureMode}
         preselectedSignalId={preselectedSignalId}
         preselectedInsightType={preselectedInsightType}
+        factorCapturesById={factorCapturesById}
         {...props.dialpadProps}
       />
       <div className="mx-auto flex max-w-6xl">
