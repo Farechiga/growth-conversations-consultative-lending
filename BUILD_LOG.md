@@ -4547,4 +4547,56 @@ Tree was NOT clean at start — the prior Artifact→Model/Reframe rename + inve
 
 ---
 
+## Diagnosis (read-only) — Source inventory for resolve-then-prompt · branch `diagnosis/required-field-audit`
+
+Investigation only; no code/schema/seed changes. Continues the §1 required-field audit.
+
+### What was produced
+- Per-template **source inventory**: for each model's genuinely-needed (no-fallback) essential values, the tier {member-fact · captured-evidence · product/Rec · forward-estimate · un-captured-measure}, the exact resolving source, whether it is wired today, and whether it is populated for Jenny/Northland/Cygnus. Demo-critical templates done in full first (010 Vehicle, 004 Equipment, 002 SBA 7(a), 008 SBA 504, 005 PACE), remainder tagged non-critical (001/003/006/007/009).
+
+### Key findings
+- **No discrete quantitative Member columns exist** — every "member-fact" lives in a `FactorCapture` row; `Member.key_facts` is hand-curated display JSON only.
+- **Only wired resolution today** = `source_factor_id` overlay (`artifact-template-render.tsx:123-133`) + `computed` params. `Recommendation` is never read; cross-key derivation never runs. All non-source values resolve only from the **hand-seeded literal**, i.e. PROMPT in a real flow.
+- Genuinely resolvable-today across all 10 templates is small: FACTOR-019 (revenue, all 3), FACTOR-006 (utilization, Northland/Cygnus), FACTOR-001 (variance, Jenny), FACTOR-035 (property, Cygnus only). The "sized" dollar factors 033/034/036/037 are captured for **no demo member**.
+- A per-product **evidence tab is a wiring job** for the captured/sized + Recommendation tiers (the template `source_factor_id` set already declares the join); but forward estimates + recurring monthly operating measures have **no ledger home** and will remain PROMPT rows.
+
+### Flagged for Francisco (logged to OPEN_QUESTIONS)
+- **Q-054** `current_monthly_revenue` precedence/semantics (derived FACTOR-019÷12 vs seeded literal; conflict).
+- **Q-055** loan-amount source precedence: "sized" factor (036/037) vs `Recommendation.size_proposed`.
+- **Q-056** one factor → many template keys, incl. `annual_operational_spend` mis-wired to FACTOR-019 (revenue ≠ spend).
+- **Q-057** schema gap: recurring monthly operating measures + loan term/rate + roadmap position have no home.
+
+### Files changed
+None (read-only). Append-only notes to BUILD_LOG + OPEN_QUESTIONS.
+
+---
+
+## BUILD 2a — Curate + trim + un-mis-wire (demo-presentable floor) · branch `build/2a-curate-trim`
+
+Branched off `diagnosis/required-field-audit`. Preview-verified on localhost; build green. NOT main.
+
+### What changed (all in `prisma/seed-artifact-templates.ts` unless noted)
+1. **Seed curation (§3 / §5).** Replaced `FIXTURE_TEMPLATES = ALL_TEMPLATE_IDS` per member with an evidence-backed set (confirmed w/ Francisco): Northland → {010 Vehicle, 004 Equipment}; Cygnus → {008 SBA 504, 001 CRE}; Jenny → {009 Seasonal, 006 Visa, 007 Unsecured}; Riverside unchanged. Models dropped **32 → 9**. Removed the SBA/PACE/CRE scattershot from Northland's surface.
+2. **Fleet title (§5b).** Re-added `name: "Fleet expansion ROI projection"` to the legacy-retag param patch (`LEGACY_MODEL_PARAMS.northland["ARTIFACT-TEMPLATE-004"]`). Surfacing it required a read fix (below) because `Model.parameters` is double-encoded.
+3. **Trim spurious-required (§1).** Set `required:false` on chart-irrelevant fields for every demoed template; `interest_rate` un-required everywhere. Required counts now: 010→5, 004→4, 008→2, 001→2, 006→3, 007→2 (009 section-list unchanged at 6). Did NOT delete params (would break template-010's computed `loan_amount` and output-summary prose); un-require only.
+4. **Un-mis-wire (Q-056).** Removed `source_factor_id:"FACTOR-019"` from `annual_operational_spend` (006) — FACTOR-019 is annual revenue, not spend.
+5. **Q-054 guard.** Documented that `current_monthly_revenue` (010) intentionally has no `source_factor_id`; keeps its fleet-line value (no resolve added).
+
+### Code fix required for §5b
+`app/v2/members/[id]/page.tsx` — added `parseModelParameters()` helper and used it at the three model-`.parameters` display reads. `Model.parameters` is a Prisma `Json` column the seed writes as a JSON-encoded **string** (double-encoded); `actions.ts` already guarded this, but the page reads cast `as {name?}` and silently got `undefined`, which is why the fleet name never surfaced. No schema change; mirrors the existing `actions.ts` idiom.
+
+### Verification (preview + build)
+- Northland feed/sidebar: only **Fleet expansion ROI projection** + **Business Vehicle Loan** cards; 0 SBA/PACE/CRE model cards (residual SBA/PACE strings are the `+Model` template-catalog dropdown in the RSC payload, not cards).
+- Jenny: Seasonal + Visa + Unsecured. Cygnus: SBA 504 + CRE. Riverside unchanged.
+- `npx tsc --noEmit` clean; `pnpm build` green (all routes).
+
+### Flagged for Francisco (OPEN_QUESTIONS)
+- **Q-058** Cygnus SBA model dual-naming: feed shows "SBA 504 transaction roadmap" (template) but sidebar shows "Capital event partnership map" (stale legacy Artifact.title). Mirror of the fleet issue, out of the 5-step scope — left for confirmation.
+- **Q-059** Builder field-count: the `+Model` form still renders ALL template params (010 = 15 inputs) with only ~5 required/asterisked. Reducing rendered count needs a form-render filter (out of 2a scope).
+
+### Not done (intentional)
+- `prisma/seed.db` snapshot NOT refreshed (Vercel deploy artifact; do `pnpm db:snapshot` before any preview deploy). Nothing committed.
+
+---
+
 *Next session entry will be appended below.*

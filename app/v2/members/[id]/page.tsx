@@ -83,6 +83,27 @@ function isStaleDate(d: Date): boolean {
   return Date.now() - d.getTime() > STALE_DAYS * 24 * 60 * 60 * 1000;
 }
 
+// BUILD 2a §5b — `Model.parameters` is a Prisma `Json` column, but the
+// fixture seed writes a JSON-encoded *string* into it (double-encoded),
+// so Prisma returns a string for seeded Models and an object for any
+// stored object. `actions.ts` already guards this with the same
+// typeof-string check; the display reads below did not, which left
+// `params.name` permanently undefined and forced the feed card to fall
+// back to the template title (the §5b "fleet model shows the generic
+// 'Equipment financing ROI projection' name" symptom). Normalize here.
+type ModelParams = { name?: string; rows?: Array<{ key: string; value: string }> };
+function parseModelParameters(raw: unknown): ModelParams | null {
+  if (raw == null) return null;
+  if (typeof raw === "string") {
+    try {
+      return JSON.parse(raw) as ModelParams;
+    } catch {
+      return null;
+    }
+  }
+  return raw as ModelParams;
+}
+
 export default async function V2MemberWorkstationPage({
   params,
   searchParams,
@@ -894,7 +915,7 @@ export default async function V2MemberWorkstationPage({
   // Symbolic refs.
   if (member.models.length > 0) {
     const mod = member.models[0];
-    const params = mod.parameters as { name?: string } | null;
+    const params = parseModelParameters(mod.parameters);
     capturedRowsByEvidenceRef["model_produced"] = {
       evidence_ref: "model_produced",
       type_chip: "Model",
@@ -1038,9 +1059,7 @@ export default async function V2MemberWorkstationPage({
   }
 
   for (const mod of member.models) {
-    const params = mod.parameters as
-      | { name?: string; rows?: Array<{ key: string; value: string }> }
-      | null;
+    const params = parseModelParameters(mod.parameters);
     const rows = params?.rows ?? [];
     const parametersSummary = rows
       .slice(0, 3)
@@ -1110,7 +1129,7 @@ export default async function V2MemberWorkstationPage({
   }
 
   for (const s of member.show_events) {
-    const modelParams = s.model?.parameters as { name?: string } | null;
+    const modelParams = parseModelParameters(s.model?.parameters);
     feedItems.push({
       kind: "show",
       id: s.id,

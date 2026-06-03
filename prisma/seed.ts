@@ -1337,7 +1337,13 @@ async function seedArtifacts(reviewedByBankerId: string) {
 
   const capitalEventMap = await prisma.artifact.create({
     data: {
-      title: "Capital event partnership map",
+      // BUILD 2a (Q-058) — the legacy Artifact title surfaces in Cygnus's
+      // sidebar tile (m.artifact?.title), while the migrated model's feed
+      // card uses the ArtifactTemplate title "SBA 504 transaction roadmap".
+      // Renamed so feed + sidebar match on Cygnus (a headline demo member).
+      // The variable name + `template: "capital_event_map_v1"` dispatch key
+      // are unchanged (surface-vs-schema separation).
+      title: "SBA 504 transaction roadmap",
       description:
         "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the key understanding is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty manufacturer and adjacent established Member-Types.",
       type: "comparison",

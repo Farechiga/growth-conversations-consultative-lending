@@ -45,10 +45,10 @@ const TEMPLATES: TemplateSeed[] = [
           label: "Property type",
           type: "select",
           options: ["Retail", "Warehouse", "Industrial", "Office", "Mixed-use"],
-          required: true,
+          // BUILD 2a §3 — chart never reads property_type; not required.
         },
         { key: "acquisition_price", label: "Acquisition price", type: "currency", required: true, source_factor_id: "FACTOR-035" },
-        { key: "loan_amount", label: "Loan amount", type: "currency", required: true },
+        { key: "loan_amount", label: "Loan amount", type: "currency" },
         {
           key: "ltv_ratio",
           label: "LTV ratio",
@@ -62,7 +62,7 @@ const TEMPLATES: TemplateSeed[] = [
           type: "integer",
           default: 25,
         },
-        { key: "interest_rate", label: "Interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "current_monthly_rent", label: "Current monthly rent", type: "currency", required: true },
         { key: "annual_rent_escalation", label: "Annual rent escalation %", type: "percentage", default: 3 },
         { key: "annual_appreciation", label: "Property appreciation %", type: "percentage", default: 3 },
@@ -108,7 +108,7 @@ const TEMPLATES: TemplateSeed[] = [
         { key: "loan_amount", label: "Loan amount", type: "currency", required: true, source_factor_id: "FACTOR-037" },
         { key: "current_annual_revenue", label: "Current annual revenue", type: "currency", required: true, source_factor_id: "FACTOR-019" },
         { key: "term_years", label: "Term (years)", type: "integer", default: 10 },
-        { key: "interest_rate", label: "Interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "expected_year_1_revenue_uplift", label: "Year 1 revenue uplift", type: "currency", required: true },
         { key: "expected_annual_growth_rate_with_loan", label: "Annual growth rate with loan", type: "percentage", default: 12 },
         { key: "organic_growth_rate", label: "Organic growth rate (no loan)", type: "percentage", default: 6 },
@@ -150,7 +150,7 @@ const TEMPLATES: TemplateSeed[] = [
         { key: "loan_amount", label: "Loan amount", type: "currency", required: true },
         { key: "monthly_rent", label: "Monthly rental income", type: "currency", required: true },
         { key: "monthly_operating_expenses", label: "Monthly operating expenses", type: "currency", required: true },
-        { key: "interest_rate", label: "Interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "term_years", label: "Term (years)", type: "integer", default: 30 },
         { key: "annual_appreciation", label: "Annual appreciation %", type: "percentage", default: 4 },
       ],
@@ -190,11 +190,11 @@ const TEMPLATES: TemplateSeed[] = [
             "Commercial kitchen",
             "Specialty equipment",
           ],
-          required: true,
+          // BUILD 2a §3 — label only; not required.
         },
         { key: "loan_amount", label: "Loan amount", type: "currency", required: true },
         { key: "term_months", label: "Term (months)", type: "integer", default: 60 },
-        { key: "interest_rate", label: "Interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "current_monthly_maintenance", label: "Current monthly maintenance on aging equipment", type: "currency", required: true },
         { key: "monthly_downtime_cost", label: "Monthly downtime / lost productivity", type: "currency", required: true },
         { key: "monthly_declined_revenue", label: "Monthly declined-job revenue (capacity loss)", type: "currency", required: true },
@@ -240,7 +240,7 @@ const TEMPLATES: TemplateSeed[] = [
         },
         { key: "improvement_cost", label: "Improvement cost", type: "currency", required: true, source_factor_id: "FACTOR-034" },
         { key: "pace_term_years", label: "PACE term (years)", type: "integer", default: 20 },
-        { key: "interest_rate", label: "PACE interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "PACE interest rate", type: "percentage" },
         { key: "current_monthly_energy_cost", label: "Current monthly energy cost", type: "currency", required: true },
         { key: "monthly_energy_savings", label: "Monthly energy savings after improvements", type: "currency", required: true },
       ],
@@ -272,7 +272,11 @@ const TEMPLATES: TemplateSeed[] = [
     member_type_applicability: "broad",
     parameter_schema: {
       parameters: [
-        { key: "annual_operational_spend", label: "Annual operational spend (current)", type: "currency", required: true, source_factor_id: "FACTOR-019" },
+        // BUILD 2a §4 (Q-056 un-mis-wire) — removed source_factor_id:"FACTOR-019".
+        // FACTOR-019 is ANNUAL REVENUE, not operational spend; auto-resolving it
+        // here silently populated the Visa headroom math with the wrong number.
+        // Banker-entered until a real spend factor exists.
+        { key: "annual_operational_spend", label: "Annual operational spend (current)", type: "currency", required: true },
         { key: "proposed_limit", label: "Proposed credit limit", type: "currency", required: true, source_factor_id: "FACTOR-036" },
         { key: "expected_monthly_spend", label: "Expected monthly card spend", type: "currency", required: true },
         {
@@ -286,7 +290,7 @@ const TEMPLATES: TemplateSeed[] = [
             "Fuel and vehicles",
             "Mixed",
           ],
-          required: true,
+          // BUILD 2a §3 — chart falls back to "Operational spend"; not required.
         },
         { key: "estimated_cashback_rate", label: "Estimated cashback rate", type: "percentage", default: 2 },
         // Sprint 9 Patch G Block 8 — capability-matrix content.
@@ -345,12 +349,13 @@ const TEMPLATES: TemplateSeed[] = [
             "Repair or emergency",
             "Other",
           ],
-          required: true,
+          // BUILD 2a §3 — opportunity_type/description are output-summary labels
+          // the chart never reads; not required.
         },
-        { key: "opportunity_description", label: "Brief opportunity description", type: "text", required: true },
+        { key: "opportunity_description", label: "Brief opportunity description", type: "text" },
         { key: "loan_amount", label: "Loan amount", type: "currency", required: true, source_factor_id: "FACTOR-037", max: 25000 },
         { key: "term_months", label: "Term (months)", type: "integer", default: 24 },
-        { key: "interest_rate", label: "Interest rate", type: "percentage", required: true },
+        { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "opportunity_value", label: "Estimated opportunity value", type: "currency", required: true, helper: "Central or single-point estimate. When uncertain, capture low/high below and set this to the midpoint." },
         // Sprint 9 Patch D — optional range parameters. When both are
         // captured, the chart renders opportunity + net benefit as
@@ -401,9 +406,10 @@ const TEMPLATES: TemplateSeed[] = [
         // Sprint 9 Block F — structure-comparison parameters paired
         // with the roadmap. Drive the conventional-vs-SBA-504 chart.
         { key: "property_value", label: "Property value", type: "currency", required: true, source_factor_id: "FACTOR-035" },
-        { key: "bank_first_lien_rate", label: "Bank first lien rate", type: "percentage", required: true },
-        { key: "cdc_second_lien_rate", label: "CDC second lien rate", type: "percentage", required: true },
-        { key: "conventional_rate", label: "Conventional CRE rate", type: "percentage", required: true },
+        // BUILD 2a §3 — all three rates have chart fallbacks (7.5/5.5/8); not required.
+        { key: "bank_first_lien_rate", label: "Bank first lien rate", type: "percentage" },
+        { key: "cdc_second_lien_rate", label: "CDC second lien rate", type: "percentage" },
+        { key: "conventional_rate", label: "Conventional CRE rate", type: "percentage" },
         { key: "amortization_years", label: "Amortization (years)", type: "integer", default: 25 },
       ],
     },
@@ -603,25 +609,26 @@ const TEMPLATES: TemplateSeed[] = [
             "Multiple vehicles (fleet)",
             "Specialty equipment vehicle",
           ],
-          required: true,
+          // BUILD 2a §3 — chart uses vehicle_type only as a label; not required.
         },
         {
           key: "vehicle_count",
           label: "Vehicles in transaction",
           type: "integer",
           default: 1,
-          required: true,
+          // BUILD 2a §3 — defaulted; not required.
         },
         {
           key: "purchase_price",
           label: "Total purchase price",
           type: "currency",
-          required: true,
+          // BUILD 2a §3 — chart never reads purchase_price (only output-summary
+          // prose + the computed loan_amount do); kept but not required.
           source_factor_id: "FACTOR-033",
           helper:
             "Total acquisition cost across the vehicles in this transaction.",
         },
-        { key: "down_payment", label: "Down payment", type: "currency", required: true },
+        { key: "down_payment", label: "Down payment", type: "currency" },
         {
           key: "loan_amount",
           label: "Loan amount",
@@ -641,7 +648,7 @@ const TEMPLATES: TemplateSeed[] = [
           label: "Rate type",
           type: "select",
           options: ["Fixed", "Variable"],
-          required: true,
+          // BUILD 2a §3 — chart never reads rate_type; not required.
         },
         {
           key: "monthly_debt_service",
@@ -661,14 +668,15 @@ const TEMPLATES: TemplateSeed[] = [
           label: "Demand exceeding capacity?",
           type: "select",
           options: ["Yes", "No"],
-          required: true,
+          // BUILD 2a §3 — chart never reads demand_exceeding_capacity; not
+          // required (source linkage to FACTOR-007 retained for later use).
           source_factor_id: "FACTOR-007",
         },
         {
           key: "expected_capacity_uplift",
           label: "Expected capacity uplift with new vehicle(s)",
           type: "percentage",
-          required: true,
+          // BUILD 2a §3 — chart defaults to 0 when absent; not required.
         },
         // Sprint 9 Patch F Block 3 — drives the "declined demand"
         // annotation on the today row.
@@ -689,6 +697,10 @@ const TEMPLATES: TemplateSeed[] = [
           label: "Current monthly revenue",
           type: "currency",
           required: true,
+          // BUILD 2a §5 (Q-054 guard) — intentionally NO source_factor_id.
+          // This is the fleet-line monthly baseline, NOT total business
+          // revenue; it must not auto-resolve from FACTOR-019 (annual
+          // revenue ÷ 12 would overstate it ~4×). Keep the seeded value.
           helper:
             "Today's monthly revenue baseline — anchors the bar lengths in the three-row temporal visualization.",
         },
@@ -984,7 +996,14 @@ const LEGACY_MODEL_PARAMS: Partial<Record<Slug, Record<string, Record<string, st
     // Northland existing fleet ROI Model → ARTIFACT-TEMPLATE-004
     // (cost-of-doing-nothing viz). Parameters reflect an aging fleet
     // of service vehicles with rising maintenance + capacity strain.
+    // BUILD 2a §5b — the retag overwrites the legacy Model's `parameters`
+    // JSON, which carried its display name; without `name` the feed card
+    // falls back to template-004's generic "Equipment financing ROI
+    // projection" title. Re-assert the real name so the card reads
+    // "Fleet expansion ROI projection" (the sidebar tile already does,
+    // via the linked Artifact.title).
     "ARTIFACT-TEMPLATE-004": {
+      name: "Fleet expansion ROI projection",
       equipment_type: "Vehicles (commercial)",
       loan_amount: "180000",
       term_months: 60,
@@ -999,31 +1018,25 @@ const LEGACY_MODEL_PARAMS: Partial<Record<Slug, Record<string, Record<string, st
   riverside: {},
 };
 
-// Sprint 9 follow-up — every demoable fixture (jenny/northland/cygnus)
-// gets a Model for every ArtifactTemplate so the Track Context Switcher
-// can surface any Lending Product's visualization. Riverside is kept as
-// the single-Track stage-skip fixture and is intentionally excluded
-// from the per-template expansion to preserve its narrative.
-const ALL_TEMPLATE_IDS = [
-  "ARTIFACT-TEMPLATE-001",
-  "ARTIFACT-TEMPLATE-002",
-  "ARTIFACT-TEMPLATE-003",
-  "ARTIFACT-TEMPLATE-004",
-  "ARTIFACT-TEMPLATE-005",
-  "ARTIFACT-TEMPLATE-006",
-  "ARTIFACT-TEMPLATE-007",
-  "ARTIFACT-TEMPLATE-008",
-  "ARTIFACT-TEMPLATE-009",
-  "ARTIFACT-TEMPLATE-010",
-] as const;
-
+// BUILD 2a (curation) — each demoable fixture surfaces ONLY the models
+// that match its captured evidence + its actual Recommendation product,
+// replacing the prior every-template fan-out (ALL_TEMPLATE_IDS) that
+// over-generated SBA/PACE/CRE scattershot onto unrelated members (see
+// diagnosis §3 over-generation + §5 SBA-prose-on-fleet). Per-member set
+// confirmed with Francisco 2026-06-03:
+//   Northland (HVAC/fleet) → 010 Vehicle (primary) + 004 Equipment
+//                            (retagged legacy fleet model)
+//   Cygnus    (manufacturer) → 008 SBA 504 (migrated legacy map) +
+//                              001 CRE acquisition
+//   Jenny     (caterer)    → 009 Seasonal (retagged legacy) + 006 Visa
+//                            + 007 Unsecured
+// Each list intentionally includes the member's legacy-retagged template
+// so the per-template loop below patches its params in place. Riverside
+// stays single-Track (stage-skip narrative).
 const FIXTURE_TEMPLATES: Record<Slug, readonly string[]> = {
-  jenny: ALL_TEMPLATE_IDS,
-  northland: ALL_TEMPLATE_IDS,
-  cygnus: ALL_TEMPLATE_IDS,
-  // Riverside ships only the seasonal-smoothing artifact — the stage-skip
-  // narrative is the whole point of that fixture; adding 9 more Tracks
-  // would dilute the demo.
+  jenny: ["ARTIFACT-TEMPLATE-009", "ARTIFACT-TEMPLATE-006", "ARTIFACT-TEMPLATE-007"],
+  northland: ["ARTIFACT-TEMPLATE-010", "ARTIFACT-TEMPLATE-004"],
+  cygnus: ["ARTIFACT-TEMPLATE-008", "ARTIFACT-TEMPLATE-001"],
   riverside: ["ARTIFACT-TEMPLATE-009"],
 };
 
