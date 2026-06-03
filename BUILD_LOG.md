@@ -4599,4 +4599,36 @@ Branched off `diagnosis/required-field-audit`. Preview-verified on localhost; bu
 
 ---
 
+## BUILD 2b — Resolve-then-prompt engine + model popup provenance · branch `build/2b-resolve-engine`
+
+Branched off `build/2a-curate-trim`. Code-only (no seed/schema/snapshot change). Preview-verified via Playwright; build green. NOT main. Did not touch the +Model builder (that's 2c).
+
+### What changed (3 files)
+- **`artifact-template-render.tsx`** — new resolve-then-prompt engine. For each ESSENTIAL value (the required set = §1 genuinely-needed after 2a's trim), `resolveEssentials()` resolves in precedence order: ① captured evidence (source FactorCapture / banker-upgraded) → ② product (gated, tier-2) → ③ existing template_parameter literal = banker estimate → ④ prompt. New `EssentialsPanel` renders ONLY the essential set, each value tagged with a `ProvenanceChip` (captured ✓ · from the Member / from product / banker estimate · confirm with Member / needs capture). Replaces the old missing-only banner. `CaptureWithMemberButton` upgrades an estimate to member_confirmed. Reserved control keys (`__confirmed`, `__recommended_product`) are read then stripped before anything reaches the chart/output-summary.
+- **`actions.ts`** — `updateModelParameter` gains `mark_confirmed`: writes the value back to `template_parameters` and records the key in the reserved `__confirmed` JSON-string array (provenance). No schema change.
+- **`page.tsx`** — `injectRecommendedProduct()` injects the tier-2 `__recommended_product` hint (Recommendation amount + product label) into the preview's `template_parameters`, gated to the member's PRIMARY recommended model (Q-055). Read-time only; never persisted.
+
+### Provenance persistence (no schema change, per constraint)
+Both provenance signals ride inside `template_parameters` as reserved `__`-prefixed keys, stored as JSON *strings* (a raw array breaks under the downstream `String(v)` in `parseTemplateParameters`). The renderer strips `__` keys from chart values.
+
+### Verify (Playwright, localhost)
+- **Northland Vehicle (010):** panel renders; `capacity_utilization_now` "captured ✓ · from the Member" (88%); the other 4 essentials "banker estimate" each with a working "Capture with Member" button; **"Capture with Member" upgrade confirmed: captured ✓ 1 → 2** on reload. 0 needs-capture.
+- **Cygnus SBA 504 (008):** `property_value` "captured ✓" ($5,500,000); `current_stage` "banker estimate". 1 capture button.
+- Only the essential set appears; no scattershot (2a's 9-model curation intact); `tsc` + `pnpm build` green.
+
+### Truly-blank essentials across demoed models: NONE
+Every essential on every demoed model resolves via capture or literal — 0 tier-4 prompts. 2a's literals-as-estimates is the linchpin (as expected).
+
+### Tier-2 is correct but DORMANT for current fixtures
+Product-amount keys (`loan_amount`/`proposed_limit`/`requested_credit_limit`) only resolve "from product" on the member's PRIMARY model. For the three demo members the primary models are 010 (no product-amount essential), 008 (none), and Jenny's 009 — but Jenny's seasonal popup is the *preserved legacy v1 chart* (not the template-render path), so it has no panel. So "from product" never visibly fires today. The logic + gating are in place and verified by construction. See Q-062.
+
+### Deferred (noted, not built)
+- **Cross-model FactorCapture writeback** — "Capture with Member" writes only to this Model's `template_parameters` (member_confirmed); it does NOT create/update a shared FactorCapture that would resolve the same factor across the member's other models. Durable follow-up (Q-061).
+
+### Flagged (OPEN_QUESTIONS)
+- **Q-061** cross-model FactorCapture writeback (durable provenance).
+- **Q-062** tier-2 "from product" dormant — surface it on a demoed model, or accept dormant.
+
+---
+
 *Next session entry will be appended below.*
