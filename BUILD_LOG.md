@@ -4631,4 +4631,24 @@ Product-amount keys (`loan_amount`/`proposed_limit`/`requested_credit_limit`) on
 
 ---
 
+## BUILD 2b.1 — Write-failure bug-fix pass · branch `build/2b1-write-fixes`
+
+Branched off `build/2b-resolve-engine`. Localhost debug + Playwright verify (Vercel preview is SSO-blocked and its `/tmp` serverless DB confounds write debugging). Code-only, no schema change. NOT main. No builder rework (deferred to 2c).
+
+### Bug #1 — FK violation on every +Model save (blocker)
+- **Repro (Playwright + direct Prisma):** attaching any template and saving threw *"Foreign key constraint violated on the foreign key."*
+- **Culprit FK: `Model.artifact_id` → `Artifact.id`.** The +Model form (`model-form.tsx`) passes the selected dropdown id as BOTH `template_id` and `artifact_id`. For a template option that id is an **ArtifactTemplate** id (e.g. `ARTIFACT-TEMPLATE-010`), which is not a valid `Artifact.id` → the `artifact_id` FK fails. (Legacy free-form Artifact options worked; templates failed — hence "all templates".)
+- **Fix (`actions.ts` `saveModel`):** resolve `artifact_id` to a real Artifact only — null it when it equals `template_id` (template attach) or doesn't reference an existing `Artifact` row; the auto-ShowEvent (which needs a real artifact) is correctly skipped. Fixed in the action so it's robust for any caller and avoids builder rework. No schema change.
+- **Verify:** +Model saves cleanly with a template attached for **Northland (2→3), Cygnus (2→3), Jenny (3→4)**; no error.
+- **Left for 2c:** the form still mis-maps `artifact_id = template_id` at source; the action defends against it now, but 2c's builder cleanup should stop sending it.
+
+### Bug #2 — Capture-with-Member: no input, never resolved
+- The 2b control auto-confirmed the estimate with no input. Rewrote `CaptureWithMemberButton` → **`CaptureWithMemberControl`**: clicking reveals an input **pre-filled with the current estimate** (override allowed); **Confirm** writes value + `__confirmed` (member_confirmed) to `template_parameters` via `updateModelParameter`.
+- **Verify (Northland Vehicle):** input pre-filled with the estimate (`3650`); overrode to `99999` → chip flips **captured ✓ (1→2)**, **`99,999` renders in the panel AND the chart**, `__confirmed`+value persisted in DB across reload. (The 2b "never resolves" was the SSO/`/tmp` env; the write completes on localhost.)
+
+### Verify summary
+`tsc` clean; `pnpm build` green. Files: `app/v2/members/[id]/actions.ts`, `app/v2/members/[id]/artifact-template-render.tsx`.
+
+---
+
 *Next session entry will be appended below.*
