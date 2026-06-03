@@ -124,8 +124,38 @@ export async function saveModel(
       // a dedicated `name` field. The model_name surfaces in the feed
       // via the `name` parameter key, which is how the captured-feed
       // card reads it back.
+      // BUILD 2c req 1 — the Model is auto-named from the lending product.
+      // On collision (a second model for the same product) append a
+      // MM.DD.YY datestamp suffix so the feed cards stay distinguishable.
+      const nameOf = (raw: unknown): string | undefined => {
+        try {
+          let p = typeof raw === "string" ? JSON.parse(raw) : raw;
+          if (typeof p === "string") p = JSON.parse(p); // double-encoded
+          return p && typeof p === "object"
+            ? (p as { name?: string }).name
+            : undefined;
+        } catch {
+          return undefined;
+        }
+      };
+      const existingModels = await tx.model.findMany({
+        where: { member_id: input.member_id, active: true },
+        select: { parameters: true },
+      });
+      const existingNames = new Set(
+        existingModels.map((m) => nameOf(m.parameters)).filter(Boolean),
+      );
+      let finalName = input.model_name;
+      if (existingNames.has(finalName)) {
+        const d = new Date();
+        const stamp = `${String(d.getMonth() + 1).padStart(2, "0")}.${String(
+          d.getDate(),
+        ).padStart(2, "0")}.${String(d.getFullYear() % 100).padStart(2, "0")}`;
+        finalName = `${input.model_name} ${stamp}`;
+      }
+
       const parametersWithName = {
-        name: input.model_name,
+        name: finalName,
         rows: input.parameters,
       };
 

@@ -133,21 +133,11 @@ export function ArtifactTemplateRender({
     if (!k.startsWith("__")) cleanValues[k] = v;
   }
 
-  const resolvedValues: Record<string, string> = { ...cleanValues };
-  const captureModeByKey: Record<string, "member_confirmed" | "banker_estimate"> = {};
-  const missingByKey: Record<string, true> = {};
-  if (schema) {
-    for (const p of schema.parameters) {
-      if (!p.source_factor_id) continue;
-      const cap = captures[p.source_factor_id];
-      if (cap) {
-        resolvedValues[p.key] = cap.display_value;
-        captureModeByKey[p.key] = cap.capture_mode;
-      } else if (!resolvedValues[p.key] || resolvedValues[p.key] === "") {
-        missingByKey[p.key] = true;
-      }
-    }
-  }
+  const { resolvedValues, captureModeByKey, missingByKey } = overlayCaptures(
+    schema,
+    cleanValues,
+    captures,
+  );
 
   const computedValues = computeAllValues(schema, resolvedValues);
   const resolvedSummary = resolveTemplateString(
@@ -369,9 +359,9 @@ const PRODUCT_AMOUNT_KEYS = new Set([
   "requested_credit_limit",
 ]);
 
-type EssentialTier = "captured" | "product" | "estimate" | "prompt";
+export type EssentialTier = "captured" | "product" | "estimate" | "prompt";
 
-type EssentialResolution = {
+export type EssentialResolution = {
   param: TemplateParameter;
   tier: EssentialTier;
   value: string;
@@ -411,11 +401,46 @@ function numbersClose(a: string, b: string): boolean {
   return Math.abs(na - nb) / Math.abs(nb) < 0.001;
 }
 
+// Overlay FactorCapture values onto banker-entered/base values for
+// source-linked params (Sprint 8 Block D). Shared by the render popup
+// (BUILD 2b) and the +Model builder (BUILD 2c) so both resolve evidence
+// identically. A param stays "missing" when its source_factor_id has no
+// capture and no base value.
+export function overlayCaptures(
+  schema: ParameterSchema | null,
+  baseValues: Record<string, string>,
+  capturesByFactorId: Record<string, FactorCaptureValue>,
+): {
+  resolvedValues: Record<string, string>;
+  captureModeByKey: Record<string, "member_confirmed" | "banker_estimate">;
+  missingByKey: Record<string, true>;
+} {
+  const resolvedValues: Record<string, string> = { ...baseValues };
+  const captureModeByKey: Record<
+    string,
+    "member_confirmed" | "banker_estimate"
+  > = {};
+  const missingByKey: Record<string, true> = {};
+  if (schema) {
+    for (const p of schema.parameters) {
+      if (!p.source_factor_id) continue;
+      const cap = capturesByFactorId[p.source_factor_id];
+      if (cap) {
+        resolvedValues[p.key] = cap.display_value;
+        captureModeByKey[p.key] = cap.capture_mode;
+      } else if (!resolvedValues[p.key] || resolvedValues[p.key] === "") {
+        missingByKey[p.key] = true;
+      }
+    }
+  }
+  return { resolvedValues, captureModeByKey, missingByKey };
+}
+
 // Resolve each essential (required, non-computed, non-static) value in
 // precedence order. Guards (Q-054/056) are structural: current_monthly_revenue
 // and annual_operational_spend carry no source_factor_id (2a), so tier-1
 // never fires for them — they fall to the literal/estimate tier.
-function resolveEssentials(args: {
+export function resolveEssentials(args: {
   schema: ParameterSchema | null;
   resolvedValues: Record<string, string>;
   captureModeByKey: Record<string, "member_confirmed" | "banker_estimate">;
@@ -467,7 +492,7 @@ function resolveEssentials(args: {
   return out;
 }
 
-function ProvenanceChip({ res }: { res: EssentialResolution }) {
+export function ProvenanceChip({ res }: { res: EssentialResolution }) {
   if (res.tier === "captured" && res.mode === "member_confirmed") {
     return (
       <span className="rounded-sm bg-blaze-orange/10 px-1.5 py-0.5 text-[10px] font-semibold text-blaze-orange-deep">

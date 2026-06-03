@@ -104,17 +104,19 @@ function parseModelParameters(raw: unknown): ModelParams | null {
   return raw as ModelParams;
 }
 
-// BUILD 2b — inject the tier-2 "from product" hint into the preview's
-// template_parameters JSON, gated to the member's PRIMARY recommended
-// model only (Q-055: a secondary model must not claim the recommended
-// product's amount). The renderer reads + strips the reserved
-// `__recommended_product` key. Read-time only — never persisted.
+// BUILD 2b / 2c — inject the tier-2 "from product" hint into the preview's
+// template_parameters JSON, gated (Q-055) to models whose Track is one of
+// the member's active recommended Tracks so a secondary model can claim the
+// recommended product's amount only when it genuinely matches (the renderer
+// still cross-checks the literal via numbersClose). The renderer reads +
+// strips the reserved `__recommended_product` key. Read-time only — never
+// persisted.
 function injectRecommendedProduct(
   parametersJson: string | null,
-  isPrimaryModel: boolean,
+  gateOpen: boolean,
   hint: { amount: string; label: string } | null,
 ): string | null {
-  if (!isPrimaryModel || !hint || !hint.amount) return parametersJson;
+  if (!gateOpen || !hint || !hint.amount) return parametersJson;
   let obj: Record<string, unknown> = {};
   if (parametersJson) {
     try {
@@ -325,7 +327,6 @@ export default async function V2MemberWorkstationPage({
   const activeTrackIdsList = Array.isArray(member.active_track_ids)
     ? (member.active_track_ids as string[])
     : [];
-  const primaryTrackId = activeTrackIdsList[0] ?? null;
   const recommendedProductHint =
     activeRec && (activeRec.size_proposed != null || activeRec.size_low != null)
       ? {
@@ -419,7 +420,7 @@ export default async function V2MemberWorkstationPage({
               output_summary_template: m.template.output_summary_template ?? "",
               parameters_json: injectRecommendedProduct(
                 m.template_parameters ?? null,
-                !!trackId && trackId === primaryTrackId,
+                !!trackId && activeTrackIdsList.includes(trackId),
                 recommendedProductHint,
               ),
             }
@@ -1146,7 +1147,7 @@ export default async function V2MemberWorkstationPage({
                     parameters_json: injectRecommendedProduct(
                       mod.template_parameters ?? null,
                       !!mod.template?.track_id &&
-                        mod.template.track_id === primaryTrackId,
+                        activeTrackIdsList.includes(mod.template.track_id),
                       recommendedProductHint,
                     ),
                   }
@@ -1299,6 +1300,10 @@ export default async function V2MemberWorkstationPage({
           sizePriorMeasurements,
           factors,
           artifacts: allArtifacts,
+          // BUILD 2c — recommended product + active tracks gate the +Model
+          // builder's tier-2 "from product" pre-fill.
+          recommendedProduct: recommendedProductHint,
+          activeTrackIds: activeTrackIdsList,
           showEvents: showEventOptions,
           defaultShowEventId,
           bankers: allBankers,

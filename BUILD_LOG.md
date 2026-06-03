@@ -4651,4 +4651,30 @@ Branched off `build/2b-resolve-engine`. Localhost debug + Playwright verify (Ver
 
 ---
 
+## BUILD 2c — +Model builder rework · branch `build/2c-builder-rework`
+
+Branched off `build/2b1-write-fixes`. Localhost (Playwright) verify; build green. No schema change. Reuses 2b's resolve engine (extracted + exported, not forked). NOT main.
+
+### What changed
+1. **Root FK fix (§1).** The form no longer sends `artifact_id = template_id`; with a template selected it sends `template_id` only (`artifact_id: null`). The 2b.1 action-level defense stays as backstop.
+2. **Field reduction (Q-059, now resolved).** With a template attached, the form renders ONLY the essential set (required, non-computed, non-static) as primary fields; the rest collapse into a closed **"Advanced / optional"** `<details>`. The freeform key/value "Inputs" grid renders only on the no-template path.
+3. **Evidence pre-population.** Essentials pre-fill from the Member's evidence via the **shared** engine — extracted `overlayCaptures` + `resolveEssentials` + `ProvenanceChip` are now exported from `artifact-template-render.tsx` and imported by the builder. Captured → product → estimate; absent essentials start blank. Each field carries the same provenance chip.
+4. **Auto-name (req 1).** Removed "What's the model called?"; the Model is named from the lending product (`track_name`). `saveModel` appends an `MM.DD.YY` datestamp on collision (second model, same product).
+5. **Sticky Save (req 2).** Save anchored to a sticky footer (negative margins span the drawer padding) — always visible.
+6. **Placeholder cleanup (§6).** `resolveTemplateString` now omits unfilled fields and drops their clause/sentence (no literal `[Label]` leaks). Verified: clean when filled, drops unfilled clauses, no bracket leak.
+7. **Q-062 (from-product, optional — done).** Relaxed the render's tier-2 gate from primary-only to **active-Track membership**; the `numbersClose` literal-match guard keeps it honest. Northland Equipment (004) `loan_amount=$180K` now tags **"from product · Vehicle/Fleet Loan"**, so all three provenance tiers appear in the demo.
+
+### Wiring
+`factorCapturesById` (shell-computed) → `V2Dialpad` directly; `recommendedProduct` + `activeTrackIds` (page.tsx) → dialpad via `dialpadProps` → `ModelForm`.
+
+### Verify (Playwright, localhost)
+- +Model on Northland with the Vehicle template: **no name field**; **5 essentials** (provenance chips), `capacity_utilization_now` pre-filled `88` tagged **captured ✓**, blanks tagged **needs capture**; **Advanced/optional collapsed** (6 fields hidden); **Save visible**; **no `[bracket]` leak**; **save works (2→3), auto-named "Business Vehicle Loan"**.
+- `__recommended_product` injected for active-Track models on Northland (`Vehicle/Fleet Loan` $180K) and Cygnus (`CRE Term Loan`) — no false positives.
+- `tsc` + `pnpm build` green.
+
+### Files
+`capture-forms/model-form.tsx` (rewrite), `artifact-template-render.tsx` (export `overlayCaptures`/`resolveEssentials`/`ProvenanceChip` + types), `lib/artifact-template.ts` (`resolveTemplateString` cleanup), `actions.ts` (auto-name collision), `dialpad.tsx` / `workstation-shell.tsx` / `page.tsx` (wiring).
+
+---
+
 *Next session entry will be appended below.*

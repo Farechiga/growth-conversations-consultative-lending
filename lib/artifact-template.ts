@@ -155,14 +155,45 @@ export function resolveTemplateString(
   rawValues: Record<string, string>,
 ): string {
   const values = computeAllValues(schema, rawValues);
-  return template.replace(/\{(\w+)\}/g, (_, key) => {
+  // BUILD 2c (§6) — unfilled fields are OMITTED (not printed as literal
+  // "[Label]" text). Mark each empty slot with a sentinel (and absorb a
+  // preceding "$"), then drop any clause/sentence that still references an
+  // unfilled field so the summary never shows half-finished prose.
+  const SENT = "@@EMPTY@@";
+  const filled = template.replace(/(\$?)\{(\w+)\}/g, (_, dollar, key) => {
     const v = values[key];
-    if (v === undefined || v === "") {
-      const param = schema?.parameters.find((p) => p.key === key);
-      return param ? `[${param.label}]` : `[${key}]`;
-    }
-    return formatValueForString(v, schema?.parameters.find((p) => p.key === key));
+    if (v === undefined || v === "") return SENT;
+    const formatted = formatValueForString(
+      v,
+      schema?.parameters.find((p) => p.key === key),
+    );
+    return `${dollar}${formatted}`;
   });
+  return tidyResolvedString(filled, SENT);
+}
+
+// Drop clauses that reference an unfilled field, then clean up stray
+// punctuation/whitespace so the omission is invisible.
+function tidyResolvedString(s: string, sentinel: string): string {
+  // Split into sentences; drop whole sentences that contain a sentinel.
+  const sentences = s.match(/[^.]*\.\s*|[^.]+$/g) ?? [s];
+  let out = sentences.filter((seg) => !seg.includes(sentinel)).join("");
+  // Any residual sentinel (clause without a sentence boundary) → drop that
+  // comma-separated clause.
+  if (out.includes(sentinel)) {
+    out = out
+      .split(/,\s*/)
+      .filter((c) => !c.includes(sentinel))
+      .join(", ");
+  }
+  return out
+    .replace(new RegExp(sentinel, "g"), "")
+    .replace(/\$(?=[\s.,;:)]|$)/g, "") // dangling currency symbol
+    .replace(/\(\s*\)/g, "") // empty parens
+    .replace(/\s+([.,;:)])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
 }
 
 /**

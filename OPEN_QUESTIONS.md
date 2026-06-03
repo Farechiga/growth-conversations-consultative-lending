@@ -38,7 +38,7 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Date logged:** 2026-06-03 (BUILD 2b)
 - **Question:** The tier-2 resolution (product-amount key ← `Recommendation.size_proposed`, gated to the member's primary model) is implemented + gated, but never visibly fires: Northland 010 / Cygnus 008 have no product-amount essential, and Jenny's primary (009) renders via the preserved legacy v1 chart (no provenance panel). Do we want to surface a "from product" tag on a demoed model (e.g. add a product-amount essential, or route a model through the template path), or accept it as dormant-but-correct?
 - **Why it matters:** The "from product" provenance is a nice EVP beat that currently can't be shown.
-- **Status:** OPEN — awaiting Francisco (likely a 2c/fixture follow-up).
+- **Status:** **RESOLVED in BUILD 2c** — relaxed the tier-2 gate to active-Track membership (numbersClose-guarded); Northland Equipment 004 loan_amount now tags "from product · Vehicle/Fleet Loan".
 
 ### Q-058 · Cygnus SBA model dual-naming (feed vs sidebar)
 
@@ -56,7 +56,7 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Question:** BUILD 2a trimmed `required` to the genuinely-needed set (010 → 5 required), but the `+Model` builder still renders every template param as an input (010 → 15 rows, 5 asterisked). Un-requiring only relabels the 15-field form — it does not fix the "this 12-step questionnaire can't be demoed" problem the banker actually hits.
 - **Why it matters:** **Demo-critical, NOT optional.** The real fix is field *reduction* — show the essentials, collapse the rest into an "advanced" disclosure — which lives in the builder work.
 - **Resolution path:** **BUILD 2c (builder reconciliation).** Real field reduction + advanced-disclosure, single template-driven flow. Removing params from the schema is rejected (breaks template-010's computed `loan_amount` + output-summary prose), so this is a form-render change, not a schema change.
-- **Status:** **OPEN — sequenced into BUILD 2c.** Do not close.
+- **Status:** **RESOLVED in BUILD 2c** — the builder now renders only the essential set as primary fields with the rest in a closed "Advanced / optional" disclosure; essentials pre-fill from evidence.
 
 ### Q-060 · `Model.parameters` double-encoding (root of the silent `.name` bug)
 

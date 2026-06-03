@@ -1,22 +1,21 @@
 "use client";
 
 /*
- * + Model capture form — Sprint 4.7 Block I; Sprint 5d Block A.3 + D.
+ * + Model capture form — Sprint 4.7 Block I; Sprint 5d Block A.3 + D;
+ * BUILD 2c rework.
  *
- * Captures a banker-built Model with structured parameters,
- * assumptions, and an output summary. "With the Member" / "Banker draft"
- * radio drives the built_with_member boolean — the critical evidentiary
- * distinction per ARCHITECTURE_V2 §4.
+ * Essentials-only builder. When the banker picks a lending product
+ * (template), the form renders ONLY that template's essential set (the
+ * §1 genuinely-needed = required params after 2a's trim) as primary
+ * fields, PRE-FILLED from the Member's evidence via 2b's shared resolve
+ * engine (captured → product → estimate), each tagged with the same
+ * provenance chip. The remaining template params collapse into an
+ * "Advanced / optional" disclosure. The legacy freeform key/value
+ * "Inputs" grid is shown only on the no-template path.
  *
- * Sprint 5d Block A.3 — when the banker attaches an ArtifactTemplate
- * via the dropdown, the form expands to render parameter input fields
- * driven by the template's parameter_schema. The output_summary
- * auto-generates from output_summary_template + parameters; banker can
- * edit the result before save. On save, template_id and
- * template_parameters persist so artifact rendering can re-render the
- * structural content + summary later.
- *
- * Copy follows CONTENT_REWRITE_v1.md Section 3.3.
+ * The model is auto-named from the lending product (no "what's it
+ * called?" field); a datestamp suffix is added in saveModel on
+ * collision. Save is anchored to a sticky footer.
  *
  * Compliance scan integration: output_summary is [FL:BANKER-PROSE] and
  * fires the Sprint 4.6 keyword scan on submit.
@@ -36,6 +35,14 @@ import {
   type ParameterSchema,
   type TemplateParameter,
 } from "@/lib/artifact-template";
+// BUILD 2c — reuse 2b's resolve engine (do not fork it).
+import {
+  overlayCaptures,
+  resolveEssentials,
+  ProvenanceChip,
+  type EssentialResolution,
+  type FactorCaptureValue,
+} from "../artifact-template-render";
 
 export type ModelArtifactOption = {
   id: string;
@@ -64,6 +71,9 @@ export function ModelForm({
   artifacts,
   onSuccess,
   onCancel,
+  factorCapturesById,
+  recommendedProduct,
+  activeTrackIds,
 }: {
   memberId: string;
   bankerId: string;
@@ -71,9 +81,13 @@ export function ModelForm({
   artifacts: ModelArtifactOption[];
   onSuccess: () => void;
   onCancel: () => void;
+  // BUILD 2c — Member evidence + recommended product, so essentials
+  // pre-fill via the shared resolve engine instead of being re-entered.
+  factorCapturesById?: Record<string, FactorCaptureValue>;
+  recommendedProduct?: { amount: string; label: string } | null;
+  activeTrackIds?: string[];
 }) {
   const router = useRouter();
-  const [name, setName] = useState("");
   const [builtWithMember, setBuiltWithMember] = useState<boolean | null>(null);
   const [artifactId, setArtifactId] = useState<string>("");
   const [parameters, setParameters] = useState<ParameterRow[]>([
@@ -88,13 +102,15 @@ export function ModelForm({
     fieldsWithMatches: ScanFieldResult[];
   } | null>(null);
 
-  // Sprint 5d Block A.3 — template parameter values keyed by
-  // parameter_schema.key. When a template is selected, the form expands
-  // to render inputs for each parameter; values flow into the output
-  // summary template via resolveTemplateString().
+  // Template parameter values keyed by parameter_schema.key.
   const [templateParamValues, setTemplateParamValues] = useState<
     Record<string, string>
   >({});
+
+  const captures = useMemo(
+    () => factorCapturesById ?? {},
+    [factorCapturesById],
+  );
 
   const selectedArtifact = useMemo(
     () => artifacts.find((a) => a.id === artifactId) ?? null,
@@ -105,24 +121,101 @@ export function ModelForm({
     [selectedArtifact],
   );
 
-  // Reset template parameter values when the selected artifact changes.
+  // The banker-facing product name (used for auto-naming + the header).
+  const productName =
+    selectedArtifact?.template?.track_name ?? selectedArtifact?.title ?? "Model";
+
+  // Tier-2 hint applies only when the selected product is one of the
+  // Member's active recommended Tracks (Q-055 gating).
+  const recommendedForSelected = useMemo(() => {
+    const tid = selectedArtifact?.template?.track_id;
+    if (tid && (activeTrackIds ?? []).includes(tid)) {
+      return recommendedProduct ?? null;
+    }
+    return null;
+  }, [selectedArtifact, activeTrackIds, recommendedProduct]);
+
+  // Essential params (the §1 set = required, non-computed, non-static).
+  const essentialParams = useMemo(
+    () =>
+      templateSchema?.parameters.filter(
+        (p) => p.required === true && !p.computed && p.type !== "static_text",
+      ) ?? [],
+    [templateSchema],
+  );
+  const advancedParams = useMemo(() => {
+    const ess = new Set(essentialParams.map((p) => p.key));
+    return templateSchema?.parameters.filter((p) => !ess.has(p.key)) ?? [];
+  }, [templateSchema, essentialParams]);
+
+  // Reactive resolution of essentials (current values + Member evidence)
+  // for the per-field provenance chips. Reuses 2b's engine.
+  const resByKey = useMemo(() => {
+    const m = new Map<string, EssentialResolution>();
+    if (!selectedArtifact?.template || !templateSchema) return m;
+    const { resolvedValues, captureModeByKey } = overlayCaptures(
+      templateSchema,
+      templateParamValues,
+      captures,
+    );
+    for (const r of resolveEssentials({
+      schema: templateSchema,
+      resolvedValues,
+      captureModeByKey,
+      confirmedKeys: new Set<string>(),
+      recommendedProduct: recommendedForSelected,
+    })) {
+      m.set(r.param.key, r);
+    }
+    return m;
+  }, [
+    selectedArtifact,
+    templateSchema,
+    templateParamValues,
+    captures,
+    recommendedForSelected,
+  ]);
+
+  // Pre-fill essentials from evidence when the selected template changes:
+  // captured value / product amount; absent essentials start blank.
   useEffect(() => {
-    setTemplateParamValues({});
     setOutputSummaryTouched(false);
+    if (selectedArtifact?.template && templateSchema) {
+      const { resolvedValues, captureModeByKey } = overlayCaptures(
+        templateSchema,
+        {},
+        captures,
+      );
+      const prefill: Record<string, string> = {};
+      for (const r of resolveEssentials({
+        schema: templateSchema,
+        resolvedValues,
+        captureModeByKey,
+        confirmedKeys: new Set<string>(),
+        recommendedProduct: recommendedForSelected,
+      })) {
+        if (r.value) prefill[r.param.key] = r.value;
+      }
+      setTemplateParamValues(prefill);
+    } else {
+      setTemplateParamValues({});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artifactId]);
 
-  // Auto-generate output summary from template + parameters until banker
-  // edits the field manually. Once edited, leave their text alone.
+  // Auto-generate the output summary until the banker edits it. The
+  // template now OMITS unfilled fields (no "[Label]" leaks — BUILD 2c §6).
   useEffect(() => {
     const tmpl = selectedArtifact?.template?.output_summary_template ?? null;
     if (!tmpl) return;
     if (outputSummaryTouched) return;
-    const resolved = resolveTemplateString(tmpl, templateSchema, templateParamValues);
-    setOutputSummary(resolved);
+    setOutputSummary(
+      resolveTemplateString(tmpl, templateSchema, templateParamValues),
+    );
   }, [selectedArtifact, templateSchema, templateParamValues, outputSummaryTouched]);
 
-  // Group artifact options for the dropdown: templates by Track, then
-  // any non-template (legacy Artifact) options last.
+  // Group artifact options for the dropdown: templates by Track, then any
+  // non-template (legacy Artifact) options last.
   const groupedArtifacts = useMemo(() => {
     const byTrack = new Map<string, ModelArtifactOption[]>();
     const noTemplate: ModelArtifactOption[] = [];
@@ -171,10 +264,6 @@ export function ModelForm({
 
   function commitSave() {
     setError(null);
-    if (!name.trim()) {
-      setError("The model needs a name.");
-      return;
-    }
     if (builtWithMember === null) {
       setError("Pick how the model was built.");
       return;
@@ -201,17 +290,29 @@ export function ModelForm({
   function dispatchSave() {
     setPendingScan(null);
     const usingTemplate = !!selectedArtifact?.template;
+    // BUILD 2c req 1 — auto-name from the selected lending product;
+    // saveModel adds a datestamp suffix on collision.
+    const modelName = usingTemplate ? productName : "Banker model";
     startTransition(async () => {
       const result = await saveModel({
         member_id: memberId,
         banker_id: bankerId,
         conversation_id: conversationId,
-        model_name: name,
+        model_name: modelName,
         built_with_member: builtWithMember!,
-        artifact_id: artifactId === "" ? null : artifactId,
-        parameters: parameters
-          .filter((p) => p.key.trim() !== "" || p.value.trim() !== "")
-          .map((p) => ({ key: p.key, value: p.value })),
+        // BUILD 2c §1 fix — never send a template id as artifact_id (the
+        // root FK mis-mapping). Templates link via template_id only; the
+        // freeform path may still attach a legacy Artifact.
+        artifact_id: usingTemplate
+          ? null
+          : artifactId === ""
+          ? null
+          : artifactId,
+        parameters: usingTemplate
+          ? []
+          : parameters
+              .filter((p) => p.key.trim() !== "" || p.value.trim() !== "")
+              .map((p) => ({ key: p.key, value: p.value })),
         assumptions: assumptions.filter((a) => a.trim() !== ""),
         output_summary: outputSummary,
         template_id: usingTemplate ? artifactId : null,
@@ -227,196 +328,226 @@ export function ModelForm({
   }
 
   return (
-    <div className="space-y-4">
-      <Field label="What's the model called?" required>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g., Seasonal cashflow projection"
-          className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
-        />
-      </Field>
-
-      <Field
-        label="How was it built?"
-        required
-        helper="A model built with the Member is stronger evidence than a draft you brought in."
-      >
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 text-sm text-blaze-charcoal">
-            <input
-              type="radio"
-              name="built_with_member"
-              checked={builtWithMember === true}
-              onChange={() => setBuiltWithMember(true)}
-              className="accent-blaze-orange"
-            />
-            With the Member, in the conversation
-          </label>
-          <label className="flex items-center gap-2 text-sm text-blaze-charcoal">
-            <input
-              type="radio"
-              name="built_with_member"
-              checked={builtWithMember === false}
-              onChange={() => setBuiltWithMember(false)}
-              className="accent-blaze-orange"
-            />
-            Banker draft, before the meeting
-          </label>
-        </div>
-      </Field>
-
-      <Field
-        label="Attach a template? (optional)"
-        helper="If you used one of our pre-built templates, attach it here."
-      >
-        <select
-          value={artifactId}
-          onChange={(e) => setArtifactId(e.target.value)}
-          className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+    <div>
+      <div className="space-y-4 pb-2">
+        <Field
+          label="How was it built?"
+          required
+          helper="A model built with the Member is stronger evidence than a draft you brought in."
         >
-          <option value="">— None —</option>
-          {Array.from(groupedArtifacts.byTrack.entries()).map(([trackName, list]) => (
-            <optgroup key={trackName} label={trackName}>
-              {list.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.title}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-          {groupedArtifacts.noTemplate.length > 0 && (
-            <optgroup label="Other models">
-              {groupedArtifacts.noTemplate.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.title}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-      </Field>
-
-      {selectedArtifact?.template && templateSchema && (
-        <div className="rounded border border-blaze-rule bg-blaze-cream/30 p-3">
-          <p className="text-xs font-medium text-blaze-charcoal">
-            {selectedArtifact.title}
-          </p>
-          <p className="mt-1 text-[11px] leading-snug text-blaze-grey-body">
-            {selectedArtifact.template.description}
-          </p>
-          <div className="mt-3 space-y-3">
-            {templateSchema.parameters.map((p) => (
-              <TemplateParameterField
-                key={p.key}
-                param={p}
-                value={templateParamValues[p.key] ?? ""}
-                onChange={(v) => setTemplateParam(p.key, v)}
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm text-blaze-charcoal">
+              <input
+                type="radio"
+                name="built_with_member"
+                checked={builtWithMember === true}
+                onChange={() => setBuiltWithMember(true)}
+                className="accent-blaze-orange"
               />
+              With the Member, in the conversation
+            </label>
+            <label className="flex items-center gap-2 text-sm text-blaze-charcoal">
+              <input
+                type="radio"
+                name="built_with_member"
+                checked={builtWithMember === false}
+                onChange={() => setBuiltWithMember(false)}
+                className="accent-blaze-orange"
+              />
+              Banker draft, before the meeting
+            </label>
+          </div>
+        </Field>
+
+        <Field
+          label="Which lending product?"
+          helper="Pick a product to model — we pre-fill what we already know about the Member, so you only fill the gaps."
+        >
+          <select
+            value={artifactId}
+            onChange={(e) => setArtifactId(e.target.value)}
+            className="w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+          >
+            <option value="">— None (freeform) —</option>
+            {Array.from(groupedArtifacts.byTrack.entries()).map(([trackName, list]) => (
+              <optgroup key={trackName} label={trackName}>
+                {list.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            {groupedArtifacts.noTemplate.length > 0 && (
+              <optgroup label="Other models">
+                {groupedArtifacts.noTemplate.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.title}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </Field>
+
+        {selectedArtifact?.template && templateSchema && (
+          <div className="rounded border border-blaze-rule bg-blaze-cream/30 p-3">
+            <p className="text-xs font-medium text-blaze-charcoal">
+              {selectedArtifact.title}
+            </p>
+            <p className="mt-0.5 text-[11px] text-blaze-grey-soft">
+              Auto-named &ldquo;{productName}&rdquo; · pre-filled from the
+              Member&rsquo;s evidence — edit or confirm each value.
+            </p>
+            {selectedArtifact.template.description && (
+              <p className="mt-1 text-[11px] leading-snug text-blaze-grey-body">
+                {selectedArtifact.template.description}
+              </p>
+            )}
+
+            <div className="mt-3 space-y-3">
+              {essentialParams.map((p) => {
+                const res = resByKey.get(p.key);
+                return (
+                  <div key={p.key}>
+                    <TemplateParameterField
+                      param={p}
+                      value={templateParamValues[p.key] ?? ""}
+                      onChange={(v) => setTemplateParam(p.key, v)}
+                    />
+                    {res && (
+                      <div className="mt-1">
+                        <ProvenanceChip res={res} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {advancedParams.length > 0 && (
+              <details className="mt-3 border-t border-blaze-rule pt-2">
+                <summary className="cursor-pointer text-[11px] font-medium text-blaze-grey-body hover:text-blaze-charcoal">
+                  Advanced / optional ({advancedParams.length})
+                </summary>
+                <div className="mt-2 space-y-3">
+                  {advancedParams.map((p) => (
+                    <TemplateParameterField
+                      key={p.key}
+                      param={p}
+                      value={templateParamValues[p.key] ?? ""}
+                      onChange={(v) => setTemplateParam(p.key, v)}
+                    />
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* Freeform key/value Inputs — only on the no-template path. */}
+        {!selectedArtifact?.template && (
+          <div>
+            <p className="text-xs text-blaze-grey-body">Inputs</p>
+            <div className="mt-1 space-y-2">
+              {parameters.map((row) => (
+                <div key={row.temp_id} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={row.key}
+                    onChange={(e) =>
+                      updateParameterRow(row.temp_id, "key", e.target.value)
+                    }
+                    placeholder="key, e.g., rate"
+                    className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+                  />
+                  <input
+                    type="text"
+                    value={row.value}
+                    onChange={(e) =>
+                      updateParameterRow(row.temp_id, "value", e.target.value)
+                    }
+                    placeholder="value, e.g., 0.075"
+                    className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeParameterRow(row.temp_id)}
+                    className="text-xs text-blaze-grey-body hover:text-blaze-danger"
+                    aria-label="Remove input row"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addParameterRow}
+              className="mt-2 text-xs font-medium text-blaze-orange-deep hover:underline"
+            >
+              + Add another input
+            </button>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs text-blaze-grey-body">What you assumed</p>
+          <div className="mt-1 space-y-2">
+            {assumptions.map((a, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={a}
+                  onChange={(e) => updateAssumption(i, e.target.value)}
+                  placeholder="e.g., Customer payments stay at 60-day average"
+                  className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeAssumption(i)}
+                  className="text-xs text-blaze-grey-body hover:text-blaze-danger"
+                  aria-label="Remove assumption"
+                >
+                  ×
+                </button>
+              </div>
             ))}
           </div>
+          <button
+            type="button"
+            onClick={addAssumption}
+            className="mt-2 text-xs font-medium text-blaze-orange-deep hover:underline"
+          >
+            + Add another assumption
+          </button>
         </div>
-      )}
 
-      <div>
-        <p className="text-xs text-blaze-grey-body">Inputs</p>
-        <div className="mt-1 space-y-2">
-          {parameters.map((row) => (
-            <div key={row.temp_id} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={row.key}
-                onChange={(e) =>
-                  updateParameterRow(row.temp_id, "key", e.target.value)
-                }
-                placeholder="key, e.g., rate"
-                className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
-              />
-              <input
-                type="text"
-                value={row.value}
-                onChange={(e) =>
-                  updateParameterRow(row.temp_id, "value", e.target.value)
-                }
-                placeholder="value, e.g., 0.075"
-                className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => removeParameterRow(row.temp_id)}
-                className="text-xs text-blaze-grey-body hover:text-blaze-danger"
-                aria-label="Remove input row"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={addParameterRow}
-          className="mt-2 text-xs font-medium text-blaze-orange-deep hover:underline"
-        >
-          + Add another input
-        </button>
+        <label className="block">
+          <span className="text-xs text-blaze-grey-body">
+            What the model shows <span className="text-blaze-orange-deep">*</span>
+          </span>
+          <span className="block text-[11px] italic text-blaze-grey-soft">
+            Describe what the numbers tell you about the business. Don&rsquo;t
+            write about the Member personally.
+          </span>
+          <textarea
+            value={outputSummary}
+            onChange={(e) => {
+              setOutputSummary(e.target.value);
+              setOutputSummaryTouched(true);
+            }}
+            rows={3}
+            placeholder="e.g., A $75K line of credit covers the slow months with room to spare."
+            className="mt-1 w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
+          />
+        </label>
       </div>
 
-      <div>
-        <p className="text-xs text-blaze-grey-body">What you assumed</p>
-        <div className="mt-1 space-y-2">
-          {assumptions.map((a, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={a}
-                onChange={(e) => updateAssumption(i, e.target.value)}
-                placeholder="e.g., Customer payments stay at 60-day average"
-                className="flex-1 border border-blaze-rule bg-white px-2 py-1.5 text-xs text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => removeAssumption(i)}
-                className="text-xs text-blaze-grey-body hover:text-blaze-danger"
-                aria-label="Remove assumption"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={addAssumption}
-          className="mt-2 text-xs font-medium text-blaze-orange-deep hover:underline"
-        >
-          + Add another assumption
-        </button>
-      </div>
-
-      <label className="block">
-        <span className="text-xs text-blaze-grey-body">
-          What the model shows <span className="text-blaze-orange-deep">*</span>
-        </span>
-        {/* Block Q — banker-prose helper text per COMPLIANCE.md §10.2.
-            Sprint 5d Block D — copy per Section 3.3. */}
-        <span className="block text-[11px] italic text-blaze-grey-soft">
-          Describe what the numbers tell you about the business. Don&rsquo;t
-          write about the Member personally.
-        </span>
-        <textarea
-          value={outputSummary}
-          onChange={(e) => {
-            setOutputSummary(e.target.value);
-            setOutputSummaryTouched(true);
-          }}
-          rows={3}
-          placeholder="e.g., A $75K line of credit covers the slow months with room to spare."
-          className="mt-1 w-full border border-blaze-rule bg-white px-2 py-1.5 text-sm text-blaze-charcoal focus:border-blaze-orange focus:outline-none"
-        />
-      </label>
-
-      <div className="flex items-center gap-3 pt-2">
+      {/* BUILD 2c req 2 — sticky Save footer, always visible. The negative
+          margins extend it across the drawer's px-6/py-6 padding so it
+          pins flush to the drawer bottom while content scrolls beneath. */}
+      <div className="sticky bottom-0 -mx-6 -mb-6 mt-2 flex items-center gap-3 border-t border-blaze-rule bg-white px-6 py-3">
         <button
           type="button"
           onClick={commitSave}
@@ -433,12 +564,12 @@ export function ModelForm({
         >
           Cancel
         </button>
+        {error && (
+          <p className="text-sm text-blaze-danger" role="alert">
+            {error}
+          </p>
+        )}
       </div>
-      {error && (
-        <p className="text-sm text-blaze-danger" role="alert">
-          {error}
-        </p>
-      )}
 
       {pendingScan && (
         <ComplianceScanModal
@@ -498,7 +629,11 @@ function TemplateParameterField({
         {labelNode}
         {helperNode}
         <p className="mt-1 rounded bg-white px-2 py-1.5 text-sm text-blaze-grey-body">
-          {value || <span className="italic text-blaze-grey-soft">computed once inputs are filled</span>}
+          {value || (
+            <span className="italic text-blaze-grey-soft">
+              computed once inputs are filled
+            </span>
+          )}
         </p>
       </div>
     );
@@ -541,13 +676,6 @@ function TemplateParameterField({
   }
 
   // currency / decimal / integer / percentage / text — single-line input.
-  const inputType =
-    param.type === "currency" ||
-    param.type === "decimal" ||
-    param.type === "integer" ||
-    param.type === "percentage"
-      ? "text"
-      : "text";
   const prefix = param.type === "currency" ? "$" : null;
   const suffix = param.type === "percentage" ? "%" : null;
   return (
@@ -557,7 +685,7 @@ function TemplateParameterField({
       <div className="mt-1 flex items-center gap-1">
         {prefix && <span className="text-sm text-blaze-grey-body">{prefix}</span>}
         <input
-          type={inputType}
+          type="text"
           inputMode={
             param.type === "currency" ||
             param.type === "decimal" ||
