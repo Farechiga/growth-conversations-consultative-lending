@@ -117,7 +117,23 @@ export function ArtifactTemplateRender({
   // values for source-linked parameters. Parameter remains undefined
   // (missing-state) when source_factor_id is set but no capture exists.
   const captures = factorCapturesById ?? {};
-  const resolvedValues: Record<string, string> = { ...parameterValues };
+  // BUILD 2b — reserved control keys ride inside template_parameters:
+  //   __confirmed            persisted array of keys a banker has upgraded
+  //                          to member_confirmed via "Capture with Member"
+  //   __recommended_product  read-time hint (injected in page.tsx, gated to
+  //                          the member's primary recommended model) used
+  //                          for the tier-2 "from product" provenance tag
+  // Strip both before anything reaches the chart / output summary.
+  const confirmedKeys = parseConfirmedKeys(parameterValues["__confirmed"]);
+  const recommendedProduct = parseRecommendedProduct(
+    parameterValues["__recommended_product"],
+  );
+  const cleanValues: Record<string, string> = {};
+  for (const [k, v] of Object.entries(parameterValues)) {
+    if (!k.startsWith("__")) cleanValues[k] = v;
+  }
+
+  const resolvedValues: Record<string, string> = { ...cleanValues };
   const captureModeByKey: Record<string, "member_confirmed" | "banker_estimate"> = {};
   const missingByKey: Record<string, true> = {};
   if (schema) {
@@ -140,34 +156,19 @@ export function ArtifactTemplateRender({
     resolvedValues,
   );
 
-  // Top-of-artifact missing-parameter banner — surfaces source-linked
-  // (Block E) and banker-entered (Sprint 8 follow-up) required params
-  // that have no value. Banker-entered params get an inline editor that
-  // writes back to the Model's parameters JSON.
-  const missingSourceParams: TemplateParameter[] = [];
-  const missingBankerParams: TemplateParameter[] = [];
-  if (schema) {
-    for (const p of schema.parameters) {
-      if (p.source_factor_id) {
-        if (missingByKey[p.key]) missingSourceParams.push(p);
-        continue;
-      }
-      // Banker-entered required params with no current value are also
-      // "missing" — surface a CTA so the artifact isn't a dead end.
-      if (
-        p.required &&
-        !p.computed &&
-        p.type !== "static_text" &&
-        (resolvedValues[p.key] === undefined || resolvedValues[p.key] === "")
-      ) {
-        missingBankerParams.push(p);
-      }
-    }
-  }
   const canEditBankerParams = Boolean(modelId && memberId);
-  const totalMissing =
-    missingSourceParams.length +
-    (canEditBankerParams ? missingBankerParams.length : 0);
+  // BUILD 2b — resolve each ESSENTIAL value (the §1 genuinely-needed set =
+  // required, non-computed, non-static params after 2a's trim) in
+  // precedence order: captured evidence → product → existing literal
+  // (banker estimate) → prompt. The panel renders ONLY this essential set
+  // with a provenance tag per value and prompts only the residual gaps.
+  const essentials = resolveEssentials({
+    schema,
+    resolvedValues,
+    captureModeByKey,
+    confirmedKeys,
+    recommendedProduct,
+  });
 
   // Title + description intentionally omitted here — the parent dialog
   // (artifact-preview-dialog.tsx) already renders both in its header.
@@ -180,13 +181,12 @@ export function ArtifactTemplateRender({
 
   return (
     <div className="space-y-4">
-      {totalMissing > 0 && (
-        <MissingParametersBanner
-          sourceParams={missingSourceParams}
-          bankerParams={canEditBankerParams ? missingBankerParams : []}
-          onCapture={onMissingParameterCapture}
-          modelId={modelId ?? null}
-          memberId={memberId ?? null}
+      {essentials.length > 0 && (
+        <EssentialsPanel
+          essentials={essentials}
+          onMissingParameterCapture={onMissingParameterCapture}
+          modelId={canEditBankerParams ? modelId ?? null : null}
+          memberId={canEditBankerParams ? memberId ?? null : null}
         />
       )}
 
@@ -355,16 +355,165 @@ function renderStructuralVisualization(args: {
   return null;
 }
 
-function MissingParametersBanner({
-  sourceParams,
-  bankerParams,
-  onCapture,
+// ============================================================
+// BUILD 2b — resolve-then-prompt engine + provenance panel
+// ============================================================
+
+// Product-amount keys eligible for tier-2 "from product" resolution
+// (Recommendation.size_proposed). The hint is gated upstream (page.tsx)
+// to the member's PRIMARY recommended model, so a secondary model's
+// loan_amount never claims an unrelated product's number (Q-055).
+const PRODUCT_AMOUNT_KEYS = new Set([
+  "loan_amount",
+  "proposed_limit",
+  "requested_credit_limit",
+]);
+
+type EssentialTier = "captured" | "product" | "estimate" | "prompt";
+
+type EssentialResolution = {
+  param: TemplateParameter;
+  tier: EssentialTier;
+  value: string;
+  mode?: "member_confirmed" | "banker_estimate";
+  productLabel?: string;
+};
+
+function parseConfirmedKeys(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr.map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function parseRecommendedProduct(
+  raw: string | undefined,
+): { amount: string; label: string } | null {
+  if (!raw) return null;
+  try {
+    const o = JSON.parse(raw);
+    if (o && typeof o.amount === "string" && typeof o.label === "string") {
+      return { amount: o.amount, label: o.label };
+    }
+  } catch {
+    // ignore malformed hint
+  }
+  return null;
+}
+
+function numbersClose(a: string, b: string): boolean {
+  const na = Number(String(a).replace(/[$,%\s]/g, ""));
+  const nb = Number(String(b).replace(/[$,%\s]/g, ""));
+  if (!Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return false;
+  return Math.abs(na - nb) / Math.abs(nb) < 0.001;
+}
+
+// Resolve each essential (required, non-computed, non-static) value in
+// precedence order. Guards (Q-054/056) are structural: current_monthly_revenue
+// and annual_operational_spend carry no source_factor_id (2a), so tier-1
+// never fires for them — they fall to the literal/estimate tier.
+function resolveEssentials(args: {
+  schema: ParameterSchema | null;
+  resolvedValues: Record<string, string>;
+  captureModeByKey: Record<string, "member_confirmed" | "banker_estimate">;
+  confirmedKeys: Set<string>;
+  recommendedProduct: { amount: string; label: string } | null;
+}): EssentialResolution[] {
+  const {
+    schema,
+    resolvedValues,
+    captureModeByKey,
+    confirmedKeys,
+    recommendedProduct,
+  } = args;
+  if (!schema) return [];
+  const out: EssentialResolution[] = [];
+  for (const p of schema.parameters) {
+    if (p.required !== true || p.computed || p.type === "static_text") continue;
+    const value = resolvedValues[p.key] ?? "";
+    const has = value !== "";
+    // 1. captured evidence — banker-upgraded (member_confirmed) or a
+    //    source FactorCapture overlaid this param.
+    if (has && confirmedKeys.has(p.key)) {
+      out.push({ param: p, tier: "captured", value, mode: "member_confirmed" });
+      continue;
+    }
+    if (has && captureModeByKey[p.key]) {
+      out.push({ param: p, tier: "captured", value, mode: captureModeByKey[p.key] });
+      continue;
+    }
+    // 2. product — recommended amount (gated to primary model), only when
+    //    the literal matches it (honest tag, no value override).
+    if (
+      has &&
+      PRODUCT_AMOUNT_KEYS.has(p.key) &&
+      recommendedProduct &&
+      numbersClose(value, recommendedProduct.amount)
+    ) {
+      out.push({ param: p, tier: "product", value, productLabel: recommendedProduct.label });
+      continue;
+    }
+    // 3. existing template_parameter literal → banker estimate.
+    if (has) {
+      out.push({ param: p, tier: "estimate", value, mode: "banker_estimate" });
+      continue;
+    }
+    // 4. nothing resolves → prompt the residual gap.
+    out.push({ param: p, tier: "prompt", value: "" });
+  }
+  return out;
+}
+
+function ProvenanceChip({ res }: { res: EssentialResolution }) {
+  if (res.tier === "captured" && res.mode === "member_confirmed") {
+    return (
+      <span className="rounded-sm bg-blaze-orange/10 px-1.5 py-0.5 text-[10px] font-semibold text-blaze-orange-deep">
+        captured ✓ · from the Member
+      </span>
+    );
+  }
+  if (res.tier === "captured") {
+    return (
+      <span className="rounded-sm bg-blaze-cream px-1.5 py-0.5 text-[10px] font-medium text-blaze-grey-body">
+        banker estimate · pending confirmation
+      </span>
+    );
+  }
+  if (res.tier === "product") {
+    return (
+      <span className="rounded-sm bg-blaze-cream px-1.5 py-0.5 text-[10px] font-medium text-blaze-charcoal">
+        from product · {res.productLabel}
+      </span>
+    );
+  }
+  if (res.tier === "estimate") {
+    return (
+      <span className="rounded-sm bg-blaze-cream px-1.5 py-0.5 text-[10px] font-medium text-blaze-grey-body">
+        banker estimate · confirm with Member
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-sm bg-blaze-danger/10 px-1.5 py-0.5 text-[10px] font-semibold text-blaze-danger">
+      needs capture
+    </span>
+  );
+}
+
+// The single provenance surface for the model popup: renders ONLY the
+// essential set, each value tagged with how it resolved, prompting only
+// the tier-4 residual gaps. Replaces the prior missing-only banner.
+function EssentialsPanel({
+  essentials,
+  onMissingParameterCapture,
   modelId,
   memberId,
 }: {
-  sourceParams: TemplateParameter[];
-  bankerParams: TemplateParameter[];
-  onCapture?: (args: {
+  essentials: EssentialResolution[];
+  onMissingParameterCapture?: (args: {
     factor_id: string;
     parameter_label: string;
     mode: ArtifactCaptureMode;
@@ -372,40 +521,116 @@ function MissingParametersBanner({
   modelId: string | null;
   memberId: string | null;
 }) {
-  const total = sourceParams.length + bankerParams.length;
+  const promptCount = essentials.filter((e) => e.tier === "prompt").length;
   return (
-    <div className="rounded border border-blaze-danger/30 bg-blaze-danger/5 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-blaze-danger">
-        ⚠ Missing — {total} parameter{total === 1 ? "" : "s"} not yet captured
+    <div className="rounded border border-blaze-rule bg-blaze-cream/30 p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-soft">
+        Evidence &amp; assumptions behind these numbers
+        {promptCount > 0 && (
+          <span className="ml-1.5 font-medium text-blaze-danger">
+            · {promptCount} still to capture
+          </span>
+        )}
       </p>
       <ul className="mt-2 space-y-2">
-        {sourceParams.map((p) => (
+        {essentials.map((res) => (
           <li
-            key={p.key}
+            key={res.param.key}
             className="rounded border border-blaze-rule bg-white px-3 py-2"
           >
-            <SourceParamFillInRow
-              param={p}
-              onCapture={onCapture}
-              modelId={modelId}
-              memberId={memberId}
-            />
-          </li>
-        ))}
-        {bankerParams.map((p) => (
-          <li
-            key={p.key}
-            className="rounded border border-blaze-rule bg-white px-3 py-2"
-          >
-            <BankerParamFillInRow
-              param={p}
-              modelId={modelId!}
-              memberId={memberId!}
-            />
+            {res.tier === "prompt" ? (
+              res.param.source_factor_id ? (
+                <SourceParamFillInRow
+                  param={res.param}
+                  onCapture={onMissingParameterCapture}
+                  modelId={modelId}
+                  memberId={memberId}
+                />
+              ) : modelId && memberId ? (
+                <BankerParamFillInRow
+                  param={res.param}
+                  modelId={modelId}
+                  memberId={memberId}
+                />
+              ) : (
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <span className="text-sm text-blaze-charcoal">
+                    {res.param.label}
+                  </span>
+                  <ProvenanceChip res={res} />
+                </div>
+              )
+            ) : (
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-sm text-blaze-charcoal">
+                  {res.param.label}
+                  <span className="ml-2 font-medium text-blaze-charcoal">
+                    {formatDisplayValue(res.value, res.param)}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <ProvenanceChip res={res} />
+                  {res.tier === "estimate" && modelId && memberId && (
+                    <CaptureWithMemberButton
+                      modelId={modelId}
+                      memberId={memberId}
+                      paramKey={res.param.key}
+                      value={res.value}
+                    />
+                  )}
+                </span>
+              </div>
+            )}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+// "Capture with Member" upgrades a banker_estimate essential to
+// member_confirmed: writes the (unchanged) value back to
+// template_parameters and records the key in __confirmed (provenance),
+// via the same updateModelParameter action used for inline fill-ins.
+function CaptureWithMemberButton({
+  modelId,
+  memberId,
+  paramKey,
+  value,
+}: {
+  modelId: string;
+  memberId: string;
+  paramKey: string;
+  value: string;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <button
+        type="button"
+        disabled={isPending}
+        onClick={() =>
+          startTransition(async () => {
+            setError(null);
+            const result = await updateModelParameter({
+              member_id: memberId,
+              model_id: modelId,
+              parameter_key: paramKey,
+              parameter_value: value,
+              mark_confirmed: true,
+            });
+            if (result.ok) router.refresh();
+            else setError(result.error);
+          })
+        }
+        className="rounded border border-blaze-orange-deep bg-white px-2 py-0.5 text-[10px] font-medium text-blaze-orange-deep transition-colors hover:bg-blaze-orange-deep hover:text-white disabled:opacity-60"
+      >
+        {isPending ? "Capturing…" : "Capture with Member"}
+      </button>
+      {error && <span className="text-[10px] text-blaze-danger">{error}</span>}
+    </span>
   );
 }
 

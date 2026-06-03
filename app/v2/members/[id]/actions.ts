@@ -213,6 +213,11 @@ export type UpdateModelParameterInput = {
   model_id: string;
   parameter_key: string;
   parameter_value: string;
+  // BUILD 2b — when true, "Capture with Member" upgraded this value to
+  // member_confirmed: record the key in the reserved `__confirmed` array
+  // so the renderer tags it "captured ✓" on next load. No schema change;
+  // provenance rides inside template_parameters.
+  mark_confirmed?: boolean;
 };
 
 export type UpdateModelParameterResult =
@@ -247,6 +252,26 @@ export async function updateModelParameter(
           ? { ...(existing as Record<string, unknown>) }
           : {};
       base[input.parameter_key] = input.parameter_value;
+      if (input.mark_confirmed) {
+        // Store __confirmed as a JSON *string* value (not a raw array):
+        // template_parameters is parsed downstream with String(v), which
+        // would turn an array into a comma-joined string the renderer
+        // can't JSON.parse. Read it back tolerantly (string or array).
+        const raw = base.__confirmed;
+        let prior: string[] = [];
+        if (typeof raw === "string") {
+          try {
+            const p = JSON.parse(raw);
+            if (Array.isArray(p)) prior = p.map(String);
+          } catch {
+            // ignore malformed prior
+          }
+        } else if (Array.isArray(raw)) {
+          prior = (raw as unknown[]).map(String);
+        }
+        if (!prior.includes(input.parameter_key)) prior.push(input.parameter_key);
+        base.__confirmed = JSON.stringify(prior);
+      }
       return JSON.stringify(base);
     }
 

@@ -25,6 +25,21 @@ Resolved entries are **never deleted** — they form the institutional memory of
 
 ## Open
 
+### Q-061 · Cross-model FactorCapture writeback (durable provenance)
+
+- **Date logged:** 2026-06-03 (BUILD 2b)
+- **Question:** BUILD 2b's "Capture with Member" upgrades a banker_estimate to member_confirmed by writing the value + `__confirmed` into THAT Model's `template_parameters`. It does not create/update a shared `FactorCapture`, so confirming a value on one model does not resolve the same factor on the member's other models (or feed the evidence ledger). Should "Capture with Member" also upsert a FactorCapture when the param has a `source_factor_id`?
+- **Why it matters:** Durable, cross-model provenance (the "running tab per product" from the source inventory) — a demo-scope shortcut today.
+- **Resolution path:** durable follow-up; upsert FactorCapture on confirm for source-linked params.
+- **Status:** OPEN — deferred (demo scope).
+
+### Q-062 · Tier-2 "from product" is dormant for current fixtures
+
+- **Date logged:** 2026-06-03 (BUILD 2b)
+- **Question:** The tier-2 resolution (product-amount key ← `Recommendation.size_proposed`, gated to the member's primary model) is implemented + gated, but never visibly fires: Northland 010 / Cygnus 008 have no product-amount essential, and Jenny's primary (009) renders via the preserved legacy v1 chart (no provenance panel). Do we want to surface a "from product" tag on a demoed model (e.g. add a product-amount essential, or route a model through the template path), or accept it as dormant-but-correct?
+- **Why it matters:** The "from product" provenance is a nice EVP beat that currently can't be shown.
+- **Status:** OPEN — awaiting Francisco (likely a 2c/fixture follow-up).
+
 ### Q-058 · Cygnus SBA model dual-naming (feed vs sidebar)
 
 - **Date logged:** 2026-06-03 (BUILD 2a, branch `build/2a-curate-trim`)
@@ -57,7 +72,7 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Question:** The `vehicle_capacity_uplift` chart's `current_monthly_revenue` has two candidate sources: derive from `FACTOR-019` annual revenue ÷ 12 (Northland → ~$200K/mo) **or** the hand-seeded literal ($50K/mo). They disagree ~4×, and "current monthly revenue" for a capacity-baseline chart may not mean *total* business revenue. Which wins, and what does the value actually denote?
 - **Why it matters:** Sets the resolve-loop precedence (derivation vs literal) and whether this is a member-fact (shared) or a per-product banker input.
 - **Conservative default:** treat as a PROMPT (`member_confirmed`) until precedence is decided; do not silently derive.
-- **Status:** Awaiting Francisco.
+- **Status:** ADDRESSED in BUILD 2b — `current_monthly_revenue` carries no `source_factor_id` (structural guard); it resolves to the seeded fleet-line literal tagged "banker estimate", never derived from FACTOR-019.
 
 ### Q-055 · Loan-amount source: "sized" factor vs `Recommendation.size_proposed`
 
@@ -65,7 +80,7 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Question:** `loan_amount` / `proposed_limit` / `requested_credit_limit` (templates 002/004/006/007/009) can resolve from a "sized" FactorCapture (FACTOR-036/037 — captured for no demo member) **or** from `Recommendation.size_proposed` (populated, but unread today, and the member's Rec product may differ from the template's product). Which is the canonical source, and how is product-mismatch handled?
 - **Why it matters:** Decides whether the resolve loop reads Recommendation (mechanical wiring) and how to handle a model whose product ≠ the member's active Recommendation.
 - **Conservative default:** prefer the Recommendation when its product matches the template; else PROMPT.
-- **Status:** Awaiting Francisco.
+- **Status:** ADDRESSED in BUILD 2b — tier-2 resolves product-amount keys from `Recommendation.size_proposed`, gated to the member's primary recommended model. (Dormant for current fixtures — see Q-062.)
 
 ### Q-056 · One factor → many template keys (incl. `annual_operational_spend` mis-wire)
 

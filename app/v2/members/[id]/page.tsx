@@ -104,6 +104,30 @@ function parseModelParameters(raw: unknown): ModelParams | null {
   return raw as ModelParams;
 }
 
+// BUILD 2b — inject the tier-2 "from product" hint into the preview's
+// template_parameters JSON, gated to the member's PRIMARY recommended
+// model only (Q-055: a secondary model must not claim the recommended
+// product's amount). The renderer reads + strips the reserved
+// `__recommended_product` key. Read-time only — never persisted.
+function injectRecommendedProduct(
+  parametersJson: string | null,
+  isPrimaryModel: boolean,
+  hint: { amount: string; label: string } | null,
+): string | null {
+  if (!isPrimaryModel || !hint || !hint.amount) return parametersJson;
+  let obj: Record<string, unknown> = {};
+  if (parametersJson) {
+    try {
+      const parsed = JSON.parse(parametersJson);
+      if (parsed && typeof parsed === "object") obj = parsed as Record<string, unknown>;
+    } catch {
+      obj = {};
+    }
+  }
+  obj.__recommended_product = JSON.stringify(hint);
+  return JSON.stringify(obj);
+}
+
 export default async function V2MemberWorkstationPage({
   params,
   searchParams,
@@ -294,6 +318,22 @@ export default async function V2MemberWorkstationPage({
     if (ac) openThreadActionCardId = ac.id;
   }
 
+  // BUILD 2b — member-level "from product" hint (Recommendation amount +
+  // product label) and the primary recommended track. Injected per-model
+  // (gated to the primary model) into the preview's template_parameters so
+  // the popup can tag the primary product-amount value "from product".
+  const activeTrackIdsList = Array.isArray(member.active_track_ids)
+    ? (member.active_track_ids as string[])
+    : [];
+  const primaryTrackId = activeTrackIdsList[0] ?? null;
+  const recommendedProductHint =
+    activeRec && (activeRec.size_proposed != null || activeRec.size_low != null)
+      ? {
+          amount: String(activeRec.size_proposed ?? activeRec.size_low),
+          label: activeRec.product?.name ?? "",
+        }
+      : null;
+
   const keyFactsRaw: KeyFact[] = (member.key_facts as KeyFact[] | null) ?? [];
   // Sprint 6 Block C — `last touch` value in Member.key_facts is
   // hand-curated JSON authored when the demo's NOW was 2026-04-25. After
@@ -377,7 +417,11 @@ export default async function V2MemberWorkstationPage({
               parameter_schema_json: m.template.parameter_schema ?? null,
               structural_content_json: m.template.structural_content ?? null,
               output_summary_template: m.template.output_summary_template ?? "",
-              parameters_json: m.template_parameters ?? null,
+              parameters_json: injectRecommendedProduct(
+                m.template_parameters ?? null,
+                !!trackId && trackId === primaryTrackId,
+                recommendedProductHint,
+              ),
             }
           : null;
       return {
@@ -1099,7 +1143,12 @@ export default async function V2MemberWorkstationPage({
                       mod.template.structural_content ?? null,
                     output_summary_template:
                       mod.template.output_summary_template ?? "",
-                    parameters_json: mod.template_parameters ?? null,
+                    parameters_json: injectRecommendedProduct(
+                      mod.template_parameters ?? null,
+                      !!mod.template?.track_id &&
+                        mod.template.track_id === primaryTrackId,
+                      recommendedProductHint,
+                    ),
                   }
                 : null,
           }
