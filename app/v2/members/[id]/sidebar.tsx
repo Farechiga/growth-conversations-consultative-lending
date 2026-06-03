@@ -38,6 +38,10 @@ import {
   ArtifactPreviewDialog,
   type ArtifactPreviewSubject,
 } from "./artifact-preview-dialog";
+import type {
+  ArtifactCaptureMode,
+  FactorCaptureValue,
+} from "./artifact-template-render";
 import { Chip } from "@/app/_components/chip";
 
 export type ObjectiveBlock = {
@@ -130,6 +134,8 @@ export function V2Sidebar({
   onTracksComparisonOpen,
   onObjectiveClick,
   onCtaAction,
+  factorCapturesById,
+  onMissingParameterCapture,
 }: {
   objectives: ObjectiveBlock[];
   artifacts: SidebarArtifact[];
@@ -148,6 +154,17 @@ export function V2Sidebar({
   // affordance (passes top CTA's action), popup CTA clicks, and coach
   // bullet CTAs. The action descriptor determines next surface.
   onCtaAction: (action: CTAAction) => void;
+  // Sprint 4/9 reconciliation (RC1) — forwarded to the sidebar's own
+  // ArtifactPreviewDialog so source-linked Model params auto-populate
+  // from FactorCaptures, matching the shell's already-wired popup dialog
+  // instance. Without these, the sidebar "MODELS" click flagged captured
+  // params as missing and rendered chart defaults instead of captures.
+  factorCapturesById?: Record<string, FactorCaptureValue>;
+  onMissingParameterCapture?: (args: {
+    factor_id: string;
+    parameter_label: string;
+    mode: ArtifactCaptureMode;
+  }) => void;
 }) {
   const [coachExpanded, setCoachExpanded] = useState(false);
   const [previewArtifact, setPreviewArtifact] =
@@ -195,9 +212,11 @@ export function V2Sidebar({
           </div>
         </SidebarSection>
 
-        {/* §6.4.2 — Artifact slot. Sprint 5d Block F — label pluralized. */}
+        {/* §6.4.2 — Artifact slot. Sprint 5d Block F — label pluralized.
+            Sprint 4 interstitial — banker-facing label "ARTIFACTS" → "MODELS"
+            (Artifact entity surfaced to bankers as "Model"). */}
         {artifacts.length > 0 && (
-          <SidebarSection label="artifacts">
+          <SidebarSection label="models">
             <div className="space-y-2">
               {artifacts.map((a) => (
                 <button
@@ -243,10 +262,11 @@ export function V2Sidebar({
         )}
 
         {/* §6.4.3 — Macro slot. Sprint 5d Block F — banker-facing label
-            "MACRO" → "OTHER ARTIFACTS" (Macro is a code-internal noun;
-            bankers see them as the same kind of thing as artifacts). */}
+            "MACRO" → "OTHER MODELS" (Macro is a code-internal noun;
+            bankers see them as the same kind of thing as Models). Sprint 4
+            interstitial renamed "ARTIFACTS" → "MODELS". */}
         {macro && (
-          <SidebarSection label="other artifacts">
+          <SidebarSection label="other models">
             <button
               type="button"
               onClick={() => {
@@ -345,6 +365,8 @@ export function V2Sidebar({
           bankerId={bankerId}
           conversationId={null}
           onClose={() => setPreviewArtifact(null)}
+          factorCapturesById={factorCapturesById}
+          onMissingParameterCapture={onMissingParameterCapture}
         />
       )}
     </aside>
@@ -718,7 +740,7 @@ function formHintForRef(ref: string): string | null {
     case "decision_maker_mapping":
       return "+ Ask";
     case "model_shown":
-      return "Record from artifact preview";
+      return "Record from model preview";
     default:
       return null;
   }

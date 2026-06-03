@@ -310,7 +310,7 @@ export type SaveShowEventResult =
 export async function saveShowEvent(
   input: SaveShowEventInput,
 ): Promise<SaveShowEventResult> {
-  if (!input.artifact_id) return { ok: false, error: "Artifact is required." };
+  if (!input.artifact_id) return { ok: false, error: "Model is required." };
 
   const prisma = getPrisma();
   try {

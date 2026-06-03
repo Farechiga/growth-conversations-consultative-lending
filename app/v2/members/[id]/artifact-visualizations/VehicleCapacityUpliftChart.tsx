@@ -78,7 +78,14 @@ export function VehicleCapacityUpliftChart({
     "induced_demand_realization_months",
     12,
   );
-  const utilization = num(parameterValues, "capacity_utilization_now", 80);
+  // Sprint 4/9 — capacity_utilization_now is source-linked to FACTOR-006.
+  // No literal fallback: an absent value renders as "not captured" in the
+  // narrative below, never as a fabricated percentage (the prior `80`
+  // silently masked Northland's captured 88%).
+  const utilizationRaw = parameterValues.capacity_utilization_now;
+  const utilizationKnown =
+    utilizationRaw !== undefined && String(utilizationRaw).trim() !== "";
+  const utilization = num(parameterValues, "capacity_utilization_now");
   const uplift = Math.max(
     0,
     num(parameterValues, "expected_capacity_uplift", 0),
@@ -303,7 +310,10 @@ export function VehicleCapacityUpliftChart({
         <strong>{fmtUSDLong(currentRevenue)}/month</strong>, with another{" "}
         <strong>{fmtUSDLong(declined)}/month</strong> declined because
         the fleet is at capacity (utilization:{" "}
-        <strong>{Math.round(utilization)}%</strong>). Adding{" "}
+        <strong>
+          {utilizationKnown ? `${Math.round(utilization)}%` : "not captured"}
+        </strong>
+        ). Adding{" "}
         <strong>{vehicleCount}</strong> new {vehicleLabel} expands
         capacity by <strong>{Math.round(uplift)}%</strong>. Immediate
         effect (month 1): the{" "}

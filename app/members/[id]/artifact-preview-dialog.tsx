@@ -80,7 +80,7 @@ export function ArtifactPreviewDialog({ artifact }: { artifact: ArtifactPreviewD
         <div className="flex items-start justify-between border-b border-blaze-rule px-6 py-4">
           <div>
             <p className="text-xs font-medium text-blaze-grey-body">
-              Artifact preview · {artifact.type}
+              Model preview · {artifact.type}
             </p>
             <h2 className="mt-1 text-lg font-semibold text-black">{artifact.title}</h2>
           </div>

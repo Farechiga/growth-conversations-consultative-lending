@@ -287,7 +287,7 @@ export function ModelForm({
             </optgroup>
           ))}
           {groupedArtifacts.noTemplate.length > 0 && (
-            <optgroup label="Other artifacts">
+            <optgroup label="Other models">
               {groupedArtifacts.noTemplate.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.title}

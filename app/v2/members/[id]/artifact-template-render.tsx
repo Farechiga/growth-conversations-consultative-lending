@@ -197,7 +197,18 @@ export function ArtifactTemplateRender({
       {structuralContent && renderStructuralVisualization({
         structuralContent,
         schema,
-        parameterValues,
+        // Sprint 4/9 reconciliation — visualizations now consume the
+        // RESOLVED map (params JSON base + FactorCapture overlay +
+        // computed/static), honoring the merge invariant
+        // (capture > JSON value > schema default). Previously they
+        // received raw `parameterValues`, which bypassed FactorCaptures
+        // and let chart-local literals fabricate captured facts (an 80%
+        // utilization default masking a captured 88%). A param present in
+        // the JSON with no competing capture passes through unchanged —
+        // which keeps Cygnus's SBA 504 view byte-for-byte stable. Fed
+        // under the existing `parameterValues` key so the per-chart prop
+        // contract is unchanged this sprint (richer treatment = Prompt 3).
+        parameterValues: computedValues,
         computedValues,
         captureModeByKey,
         missingByKey,

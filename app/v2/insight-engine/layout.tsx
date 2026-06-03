@@ -24,8 +24,8 @@ export default function InsightEngineLayout({
           <Link href="/" className="text-base font-semibold text-blaze-charcoal hover:opacity-80">
             <span className="text-blaze-orange">Member</span> Signals
           </Link>
-          <p className="text-[10px] uppercase tracking-[0.08em] text-blaze-grey-soft">
-            Insight Engine
+          <p className="text-[10px] uppercase tracking-[0.08em] text-blaze-charcoal">
+            <span className="text-blaze-orange-deep">Growth</span> Opportunities
           </p>
         </div>
         <nav className="border-t border-blaze-rule">

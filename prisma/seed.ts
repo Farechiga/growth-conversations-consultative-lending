@@ -1280,7 +1280,7 @@ async function seedArtifacts(reviewedByBankerId: string) {
     data: {
       title: "Seasonal cash flow smoothing chart",
       description:
-        "Compares twelve months of business cash flow with and without a working capital line of credit, parameterized by the member's own revenue band and seasonal pattern. Designed to make the seasonal smoothing benefit visually obvious without claiming any specific outcome. The reframe: a properly-sized LOC turns lumpy revenue into smooth cash flow, at a cost typically far below the cost of declined opportunities or stress-driven decisions during slow months.",
+        "Compares twelve months of business cash flow with and without a working capital line of credit, parameterized by the member's own revenue band and seasonal pattern. Designed to make the seasonal smoothing benefit visually obvious without claiming any specific outcome. Key understanding: a properly-sized LOC turns lumpy revenue into smooth cash flow, at a cost typically far below the cost of declined opportunities or stress-driven decisions during slow months.",
       type: "chart",
       parameter_schema: {
         $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1305,7 +1305,7 @@ async function seedArtifacts(reviewedByBankerId: string) {
     data: {
       title: "Fleet expansion ROI projection",
       description:
-        "Compares 3 years of projected cash position under two paths: continuing to buy used vehicles with cash, versus financing two new vehicles to expand dispatch capacity. Shows captured-vs-declined revenue as a stacked overlay. The reframe is that revenue captured from previously-declined service calls outweighs the debt service cost of the financing — typically by year 2.",
+        "Compares 3 years of projected cash position under two paths: continuing to buy used vehicles with cash, versus financing two new vehicles to expand dispatch capacity. Shows captured-vs-declined revenue as a stacked overlay. The key understanding is that revenue captured from previously-declined service calls outweighs the debt service cost of the financing — typically by year 2.",
       type: "chart",
       parameter_schema: {
         $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1339,7 +1339,7 @@ async function seedArtifacts(reviewedByBankerId: string) {
     data: {
       title: "Capital event partnership map",
       description:
-        "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the reframe is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty manufacturer and adjacent established Member-Types.",
+        "A relationship map showing the banking products and specialist roles involved in a capital expansion event for an established commercial customer. Used in the moment to demonstrate Blaze's coordinated commercial banking capability — the key understanding is that the capital event is not a single loan request but a coordinated multi-product engagement, and Blaze has the specialists to handle it. Designed for use with Specialty manufacturer and adjacent established Member-Types.",
       type: "comparison",
       parameter_schema: {
         $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1505,7 +1505,7 @@ async function seedGrowthSteps(
     data: {
       title: "Render seasonal smoothing chart",
       description:
-        "Render the Seasonal cash flow smoothing chart Artifact parameterized to the member's revenue band and seasonal pattern. The visual makes the smoothing benefit of a properly-sized LOC obvious. Captures member reaction and any follow-up questions for downstream pattern matching.",
+        "Render the Seasonal cash flow smoothing chart Model parameterized to the member's revenue band and seasonal pattern. The visual makes the smoothing benefit of a properly-sized LOC obvious. Captures member reaction and any follow-up questions for downstream pattern matching.",
       step_shape: "show",
       content:
         "I want to show you what your year would look like with a working capital line of credit sized for your business — let's walk through it together.",
@@ -1576,7 +1576,7 @@ async function seedGrowthSteps(
     data: {
       title: "Render fleet expansion ROI",
       description:
-        "Render the Fleet expansion ROI projection Artifact parameterized to the member's current fleet, average call value, and proposed addition. The composed chart shows captured-vs-declined revenue against debt service, demonstrating that fleet financing typically pays for itself by year 2 in growing trades.",
+        "Render the Fleet expansion ROI projection Model parameterized to the member's current fleet, average call value, and proposed addition. The composed chart shows captured-vs-declined revenue against debt service, demonstrating that fleet financing typically pays for itself by year 2 in growing trades.",
       step_shape: "show",
       content:
         "Let me show you what financing two more trucks would look like against the work you've been turning down. This isn't a pitch; it's the math.",
@@ -1648,7 +1648,7 @@ async function seedGrowthSteps(
     data: {
       title: "Render the capital event partnership map",
       description:
-        "Render the Capital event partnership map Artifact, showing the products and specialist roles that come together in a coordinated capital event. The reframe is that the capital event is a multi-product engagement Blaze can deliver, not a single CRE loan request — earning the right to be at the table before any RFP starts.",
+        "Render the Capital event partnership map Model, showing the products and specialist roles that come together in a coordinated capital event. The key understanding is that the capital event is a multi-product engagement Blaze can deliver, not a single CRE loan request — earning the right to be at the table before any RFP starts.",
       step_shape: "show",
       content:
         "Let me show you how a deal like this typically comes together at Blaze, so you can see what we'd actually bring to the table — products, specialists, timing.",
@@ -2972,7 +2972,7 @@ async function seedMacros(
       affected_industry_families: [industryFamilies.tradesConstruction.id],
       affected_member_types: [memberTypes.maintenanceServices.id],
       recommended_response:
-        "Surface capacity-vs-demand tension during Ask phase. Quantify declined-call value in Size phase. Vehicle/Fleet Loan Track demonstrates payback within the ROI window. Use the fleet ROI projection chart Artifact during Show phase.",
+        "Surface capacity-vs-demand tension during Ask phase. Quantify declined-call value in Size phase. Vehicle/Fleet Loan Track demonstrates payback within the ROI window. Use the fleet ROI projection chart Model during Show phase.",
       evidence_links: [
         "https://blaze-internal.example.com/research/2026-04-10-fleet-roi-window",
         "https://www.federalreserve.gov/data/h15/current/h15.htm",
@@ -2994,7 +2994,7 @@ async function seedMacros(
       affected_industry_families: [industryFamilies.specialtyManufacturing.id],
       affected_member_types: [memberTypes.specialtyManufacturer.id],
       recommended_response:
-        "Probe capital event evaluation during Ask phase. Discover the timing driver. CRE specialist introduction (Connect step) is likely the right path. Capital event partnership map Artifact demonstrates Blaze's coordinated commercial banking capability.",
+        "Probe capital event evaluation during Ask phase. Discover the timing driver. CRE specialist introduction (Connect step) is likely the right path. Capital event partnership map Model demonstrates Blaze's coordinated commercial banking capability.",
       evidence_links: [
         "https://blaze-internal.example.com/research/2026-04-05-specialty-mfg-capital-events",
       ],

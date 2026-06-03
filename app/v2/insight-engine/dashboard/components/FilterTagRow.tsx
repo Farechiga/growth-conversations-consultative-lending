@@ -49,7 +49,7 @@ export function FilterTagRow({
   } = useFilterState();
 
   return (
-    <div className="border-b border-blaze-rule bg-white px-8 py-3">
+    <div className="border-b border-blaze-rule bg-blaze-charcoal px-8 py-3">
       <div className="flex flex-wrap items-center gap-2">
         {VIEWS.map((v) => {
           const active = state.view === v || (state.view === DEFAULT_VIEW && v === DEFAULT_VIEW);

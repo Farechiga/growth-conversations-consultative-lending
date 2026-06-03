@@ -334,7 +334,7 @@ export default async function V2MemberWorkstationPage({
   const artifacts: SidebarArtifact[] = member.models
     .filter((m) => m.active && (m.template_id || m.artifact_id))
     .map((m) => {
-      const title = m.artifact?.title ?? m.template?.title ?? "(untitled artifact)";
+      const title = m.artifact?.title ?? m.template?.title ?? "(untitled model)";
       const description = m.artifact?.description ?? m.template?.description ?? null;
       // Prefer legacy artifact.template (e.g. "seasonal_smoothing_chart_v1")
       // for the preview dialog's chart-renderer dispatch. Fall back to

@@ -31,7 +31,7 @@ export default function InsightEngineDashboard() {
     <div className="min-h-screen bg-white">
       <div className="border-b border-blaze-rule px-8 py-5">
         <h1 className="text-2xl font-semibold text-blaze-charcoal">
-          <span className="text-blaze-orange-deep">Insight</span> Engine
+          <span className="text-blaze-orange-deep">Growth</span> Opportunities
         </h1>
       </div>
       <Suspense fallback={<div className="px-8 py-6 text-sm text-blaze-grey-body">Loading dashboard…</div>}>

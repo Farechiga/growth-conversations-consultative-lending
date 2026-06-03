@@ -37,8 +37,8 @@ export function HeroMetricsStrip({
         onClick={togglePipelineWeighted}
         title={
           showWeighted
-            ? "Phase-progression weighted (Discover 10% · Measure 35% · Consult 60% · Navigate 85%). Click to show face value."
-            : "Sum of all sized opportunities. Click to show phase-weighted view."
+            ? "A probability-adjusted view with an opportunity in Discover valued at 10%, and one in Navigate at 85%. Click to show face value."
+            : "The total face value of every sized opportunity in the portfolio. Click to show phase-weighted view."
         }
       />
       <MetricCard

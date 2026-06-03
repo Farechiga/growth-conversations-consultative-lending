@@ -697,6 +697,11 @@ export function WorkstationShell(props: WorkstationShellProps) {
           onTracksComparisonOpen={() => setTracksOpen(true)}
           onObjectiveClick={handleObjectiveClick}
           onCtaAction={handleCtaAction}
+          // Sprint 4/9 reconciliation (RC1) — same capture map + missing-
+          // param handler the shell's popup dialog uses, so the sidebar's
+          // own Model preview dialog resolves source-linked params too.
+          factorCapturesById={factorCapturesById}
+          onMissingParameterCapture={handleMissingParameterCapture}
         />
         <V2MainPanel
           items={props.feedItems}

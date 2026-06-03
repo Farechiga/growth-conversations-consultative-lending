@@ -88,7 +88,9 @@ Always use:
 - **Follow up** — not nurture, follow-up card, future contact
 - **Growth Conversations** — not Meeting Recap (renamed Sprint 2 Prompt 2 §F per DEMO_BUILD_PLAN.md v2), not Onboarding & Routing, not Debrief, not Capture
 - **Member profile** — not Member Dashboard, Account view, Member page
-- **Insight Engine** — not Patterns, Trends, Analytics
+- **Growth Opportunities** — the EVP-facing portfolio surface (renamed from "Insight Engine" per human direction, this session). Not Patterns, Trends, Analytics, Insight Engine. Note: the URL route (`/v2/insight-engine/...`), code identifiers, and function names retain the `insight-engine` slug per surface-vs-schema separation; only banker-facing display strings use "Growth Opportunities".
+- **Model** — `Artifact` (entity/schema name) is surfaced to bankers as "Model" (Sprint 4 interstitial rename). Keep the entity name in code; use "Model" in all banker-facing copy. The Prisma models `Artifact`, `ArtifactParameterCapture`, `ArtifactShareRecord`, `ArtifactTemplate`, all enums, fields, types, variables, functions, routes, and file names stay as-is per surface-vs-schema separation. Note: the "+ Model" dialpad button and the "Model" step/phase verb are a separate, intentional usage and predate this rename — the verb/noun overlap ("a Model step shows a Model") is by design.
+- **Key Understanding** — the Artifact/Model editorial concept formerly written as "the reframe" (the reinterpretation a Model supports) is surfaced to bankers as "Key Understanding" (Sprint 4 interstitial rename). Distinct from the `insight_type` enum value `reframe` and its banker-facing chip/dropdown label "Reframe" (paired with "Implication"), which is a *separate* concept and is **unchanged** — see [[OPEN_QUESTIONS]] for the pending decision on whether that label should also move.
 
 ### v2 workstation banker-facing terms (Sprint 4.7 → 4.7.2)
 

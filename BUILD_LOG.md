@@ -4393,4 +4393,158 @@ After Sprint 9 review, Sprint 6 deployment to Vercel ships next (single deploy w
 
 ---
 
+## 2026-06-03 — Cosmetic polish: dashboard tooltips, filter-strip styling, "Insight Engine" → "Growth Opportunities" rename
+
+**Session type:** Ad-hoc cosmetic polish on the EVP-facing dashboard (no sprint prompt). Three small changes plus contract bookkeeping for a locked-vocabulary deviation.
+
+### What was built
+
+- **Pipeline tooltips (`HeroMetricsStrip.tsx`).** Rewrote the pipeline-card `title` tooltip copy at Francisco's dictation. Face view: "The total face value of every sized opportunity in the portfolio." Weighted view: "A probability-adjusted view with an opportunity in Discover valued at 10%, and one in Navigate at 85%." Kept the trailing "Click to show…" hint on each since the single card toggles between the two views (face ↔ phase-weighted) and the toggle is otherwise undiscoverable.
+- **Filter-strip background (`FilterTagRow.tsx`).** Changed the wrapper from `bg-white` to `bg-blaze-charcoal` (#1a1a1a) for visual pop. View-tab buttons and the orange selected-pill highlight left untouched per request. (Open: the small "Track:/Member-Type:/Phase:" labels and the native `<select>` boxes in the dropdown row may now read poorly on dark — flagged to Francisco, not yet adjusted.)
+- **"Insight Engine" → "Growth Opportunities" rename (banker-facing display strings only).** Two display locations: dashboard `<h1>` (`app/v2/insight-engine/page.tsx:34`) and the header eyebrow label (`app/v2/insight-engine/layout.tsx:28`). Styling: "Growth" in `text-blaze-orange-deep`, "Opportunities" in `text-blaze-charcoal` (black). URL routes (`/v2/insight-engine/...`), `revalidatePath`/`redirect`/`href` references, function names (`InsightEngineDashboard`, `InsightEngineLayout`), code comments, and docs deliberately left on the `insight-engine` slug — surface-vs-schema separation, and renaming the route is a risky pre-demo refactor.
+
+### Contract bookkeeping (Two-File Rule)
+
+- **CLAUDE.md §5 updated.** "Insight Engine" was a locked banker-facing term ("not Patterns, Trends, Analytics"). Replaced with "Growth Opportunities" as canonical, noting the human-directed rename this session and that the route/code slug intentionally stays `insight-engine`. Flagged the locked-vocabulary deviation to Francisco before making it.
+
+### What was learned / what's open
+
+- **iCloud rename mid-session.** The working tree's parent folder was silently renamed from `Blaze Credit Union/` (with spaces) to `BlazeCreditUnion/` (no spaces) partway through — the old spaces-path threw "working directory was deleted." Same git history, all uncommitted edits survived. Recorded the new path in project memory. This is the recurring iCloud-Drive instability; moving the repo out of iCloud Drive post-demo remains the standing follow-up.
+- **Open (cosmetic):** verify contrast of the dropdown-row labels + native selects against the new charcoal filter strip; lighten if needed.
+
+### Files changed
+
+- `app/v2/insight-engine/dashboard/components/HeroMetricsStrip.tsx` — tooltip copy
+- `app/v2/insight-engine/dashboard/components/FilterTagRow.tsx` — strip background → charcoal
+- `app/v2/insight-engine/page.tsx` — title rename + styling
+- `app/v2/insight-engine/layout.tsx` — eyebrow label rename + styling
+- `CLAUDE.md` — §5 vocabulary update
+
+---
+
+## 2026-06-03 — Sprint 4 interstitial: banker-facing terminology rename (Artifact → Model; reframe → Key Understanding)
+
+**Session type:** Single-checkpoint interstitial direct build. Two presentation-layer renames, banker-facing copy only. No schema/type/identifier/route/file-name changes.
+
+### What was built
+
+**Task 1 — "Artifact(s)" → "Model(s)" (banker-facing display strings).** Renamed only strings a banker reads. The Prisma model `Artifact`, `ArtifactParameterCapture`, `ArtifactShareRecord`, `ArtifactTemplate`, all enums/fields/types/variables/functions/routes/file names are **unchanged**. The "+ Model" dialpad button and the "Model" step/phase verb were left as-is (intentional, predates this rename — the verb/noun overlap is by design).
+- v2 sidebar (`sidebar.tsx`): `SidebarSection label="artifacts"` → `"models"` (renders **MODELS** via the section's CSS uppercase); `"other artifacts"` → `"other models"` (**OTHER MODELS**); `"Record from artifact preview"` CTA → `"Record from model preview"`.
+- v2 capture form (`model-form.tsx`): `<optgroup label="Other artifacts">` → `"Other models"`.
+- v2 server action (`actions.ts`): validation error `"Artifact is required."` → `"Model is required."`.
+- v2 workstation page (`v2/.../page.tsx`): fallback title `"(untitled artifact)"` → `"(untitled model)"`.
+- v1 surfaces (still in the demo): preview-dialog heading `"Artifact preview · …"` → `"Model preview · …"`; History band `meta="conversations and Artifact share record"` → `"… Model share record"`; band heading `"Artifact share record"` → `"Model share record"`; empty-state `"No Artifacts shown to this member yet."` → `"No Models shown …"`.
+- Seed prose (`prisma/seed.ts`): GrowthStep descriptions ("Render the … chart **Artifact** …") and Macro `recommended_response` strings ("… chart **Artifact** during Show phase", "… map **Artifact** demonstrates …") → "Model". Console.log labels and `ArtifactTemplate` identifiers left untouched.
+
+**Task 2 — "reframe" → "Key Understanding" (banker-facing).** The Artifact/Model editorial concept "the reframe (it supports)" → "Key Understanding". Seed Artifact `description` lead-ins (these render in the preview/Show modal): `"The reframe:"` → `"Key understanding:"` (seasonal LOC); `"The reframe is that …"` → `"The key understanding is that …"` (fleet ROI); `"… the reframe is that …"` → `"… the key understanding is that …"` (capital-event map, ×2 — Artifact desc + Connect-step desc).
+
+**Critically NOT changed (separate concept, flagged for review):** the `insight_type` enum value `"reframe"` (schema identifier) and its banker-facing chip/dropdown label **"Reframe"** (paired with "Implication") in `objective-popup.tsx` / `insight-form.tsx`. That is a distinct concept from the Artifact-supports-a-reframe usage; renaming only it would leave an incoherent "Key Understanding / Implication" pairing. Logged as **Q-050** for Francisco's decision.
+
+### Governance bookkeeping
+
+- **CLAUDE.md §5** — added two canonical-term lines: **Model** (Artifact surfaced to bankers as "Model"; entity name stays in code) and **Key Understanding** (the Artifact/Model "reframe" concept; explicitly distinguished from the unchanged insight-type "Reframe" label).
+- **OPEN_QUESTIONS.md** — **Q-049** (doc-sync: Semantic Discipline §3.1 + Data Framework §3.6 "…the reframe it supports…" → "…the key understanding it supports…", and Artifact→Model in the `.docx` design docs — deferred, binary human-owned files not edited by Claude) and **Q-050** (whether the insight-type "Reframe" label should also move).
+
+### Un-auto-changed "reframe" editorial occurrences (for human review)
+
+Per the brief, mid-sentence editorial uses of "reframe" were **not** auto-rewritten. The notable code occurrences (all internal/non-banker-facing, left as-is):
+- `lib/synthetic-data/generator.ts` — Pattern `label` strings on the EVP dashboard (e.g. "Capacity-as-lost-revenue reframe", "Board engagement reframe", + the `topPatterns` table labels). These ARE shown on the Growth Opportunities dashboard but name *Insight Patterns* (the insight-type "reframe" concept, Q-050 territory), not the Artifact concept — left pending Q-050.
+- `app/v2/insight-engine/dashboard/components/FeaturedDealTile.tsx` (comment) — REFRAME/IMPLICATION chip rendering (Q-050 territory).
+- `app/.../capital-event-partnership-map.tsx`, `UnsecuredOpportunityChart.tsx`, `fleet-roi-projection-chart.tsx` — code comments only.
+- `lib/stage-guidance.ts:309`, `lib/enum-descriptions.ts:195` — guidance/description prose using "reframe" as a verb ("the Member reframes …", "a credible reframe"); editorial, not the Artifact concept.
+- Docs (`DEMO_RUNBOOK.md`, `INSIGHT_PATTERN_LIBRARY*.md`, `CONTENT_REWRITE_v1.md`, sprint prompts) — extensive; out of scope for this code rename.
+
+### Verification
+
+- `pnpm db:reset` reseeded cleanly (4 members, 3 artifacts, 32 models, no errors) → seed-text changes live; `pnpm db:snapshot` refreshed `prisma/seed.db` for Vercel.
+- `pnpm build` — compiled successfully, TypeScript passed, all 11 routes intact. Confirms no entity/identifier rename slipped in (would have failed the build).
+- Dev-server smoke test of `/v2/members/northland` (the Northland Show-step path): HTTP 200; sidebar renders **MODELS** / **OTHER MODELS**; the fleet Model ("Fleet expansion ROI projection") and its renamed description ("…the key understanding is that revenue captured…") are present in the payload that drives the Show-step modal; zero visible text nodes contain "artifact"/"reframe" (remaining matches are the RSC prop-key `"artifacts"` and template-id `ARTIFACT-TEMPLATE-010` — code-internal, correctly unchanged).
+
+### Confirmation: no entity/schema/identifier names changed
+
+Prisma models, enums (`insight_type` retains `reframe`/`implication`; 44 enum occurrences in `seed-insights.ts` intact), fields, types, variables, functions, server actions, routes, and file names are all unchanged. The build passing is the proof.
+
+### Files changed
+
+- `app/v2/members/[id]/sidebar.tsx`, `app/v2/members/[id]/capture-forms/model-form.tsx`, `app/v2/members/[id]/actions.ts`, `app/v2/members/[id]/page.tsx`
+- `app/members/[id]/artifact-preview-dialog.tsx`, `app/members/[id]/page.tsx`
+- `prisma/seed.ts`, `prisma/seed.db` (snapshot refresh)
+- `CLAUDE.md` (§5), `OPEN_QUESTIONS.md` (Q-049, Q-050)
+
+---
+
+## 2026-06-03 — Sprint 4 scoped discovery: Model render/capture reconciliation (investigation only, no code changes)
+
+**Session type:** Read-only diagnosis of the Northland "Business Vehicle Loan financing summary" Model defect (confident chart numbers sitting under a red "2 PARAMETERS NOT YET CAPTURED" banner). No code/schema/seed/doc edits except BUILD_LOG + OPEN_QUESTIONS.
+
+### Verdict: working hypothesis CONFIRMED + extended — there are **two independent root causes**, not one.
+
+**Root cause 1 — the Sidebar's preview dialog never feeds capture state.** The sidebar renders its **own** `ArtifactPreviewDialog` instance (`app/v2/members/[id]/sidebar.tsx:344–352`) and passes **neither `factorCapturesById` nor `onMissingParameterCapture`**. The dialog forwards `factorCapturesById` to the renderer (`artifact-preview-dialog.tsx:188`), and `ArtifactTemplateRender` defaults missing input to `{}` (`artifact-template-render.tsx:119`), so **every** source-linked param (FACTOR-006, FACTOR-007) is flagged missing — even though both ARE seeded for Northland (`seed-matrix.ts:1684` FACTOR-006 = 88% member_confirmed; `:1694` FACTOR-007 = Yes, marked banker_estimate at `:1289`). The **workstation-shell** dialog instances (`workstation-shell.tsx:704, 804`) DO pass the map (built at `:402` from page props `businessFactors`+`factorCaptures`, wired at `page.tsx:1218–1219`). Two dialog instances, inconsistent wiring; the sidebar "MODELS" click — the reported scenario — hits the un-wired one.
+
+**Root cause 2 — the Sprint 9 charts read raw `parameterValues`, never the reconciled values.** `renderStructuralVisualization` passes the **raw** `parameterValues` prop to every Sprint 9 visualization (`artifact-template-render.tsx:197–208, 336`), while the legacy `SectionListRender` gets `computedValues` + `captureModeByKey` + `missingByKey` (`:264–275`). So the charts bypass the FactorCapture overlay (`resolvedValues`) entirely. `VehicleCapacityUpliftChart.tsx:81` then does `num(parameterValues, "capacity_utilization_now", 80)` — and `num()` (`shared.ts:15–25`) silently returns the **hardcoded literal 80** when the key is absent. The Northland params JSON deliberately omits that key (`seed-artifact-templates.ts:863` — "→ FACTOR-006"), so the visible **"80%" is a component literal masking the real captured 88%.** "$4,200/mo" and "2.8× coverage" ARE param-derived (`current_declined_revenue_monthly` JSON + in-component `month12Coverage = (4200+6000)/3650`).
+
+So: the banner reads capture state (store A); the chart reads model params JSON + hardcoded literals (store B); they are never reconciled. **Fixing only RC1 makes the banner disappear but the chart still shows 80, not 88** — both must be fixed.
+
+### Investigation answers (A–E)
+- **A.1/A.2** — Chart values: raw `parameterValues` via `num()` with literal fallbacks. Narrative is **recomputed in-component** (`VehicleCapacityUpliftChart.tsx:300–323`), NOT static prose — so capturing WOULD update the sentence **once the chart is fed resolved values**. The separate "What the model shows" summary IS reconciled (`resolveTemplateString` over `resolvedValues`, `artifact-template-render.tsx:137`) and honestly prints `[Label]` for empties — divergent honesty from the chart.
+- **B.3** — `TemplateParameter` (`lib/artifact-template.ts:13–45`) has: key, label, type, options, required, default, min, max, helper, value, computed, computation, source_factor_id. **No** dedicated definition/unit/format field (`helper` is the only prose hook, sparsely populated; unit/format are implied by `type`). `min`/`max` exist but are **read by no render or validation code** (grep-confirmed; only one populated instance, TEMPLATE-007 `max:25000`).
+- **B.4** — **No render-blocking-vs-enrichment concept exists.** `required` is the only flag and it drives a CTA, not a render gate; the chart renders regardless.
+- **C.5/C.6** — Missing list computed in `artifact-template-render.tsx:122–134, 147–170` against the FactorCapture-overlay + banker-param emptiness. The "banker estimate" buttons/tags (`SourceParamFillInRow`, lines 460–545; `captureModeByKey` flag, `:781–788`) read the **same** store — so when wired (shell path) they reconcile; the sidebar path leaves the store empty.
+- **E** — Per the brief's §3.6 characterization (rendered values must validate against `parameter_schema` before display), the current silent literal-substitution (80) is **inconsistent**: an unvalidated, untagged value that contradicts the captured 88 is displayed as fact. No min/max/type validation runs at render.
+
+### Parameter audit (all three Models) — full table in the report-back this turn.
+- **Northland (TEMPLATE-010, `vehicle_capacity_uplift`)** — 15 params; chart consumes 9; 3 source-linked (purchase_price/FACTOR-033, capacity_utilization_now/FACTOR-006, demand_exceeding_capacity/FACTOR-007). `demand_exceeding_capacity` is **required + source-linked but read by no chart code** (dead required param). Most params: no helper, no unit, no min/max, several required without defaults.
+- **Jenny (seasonal)** — renders the **preserved v1 `SeasonalSmoothingChart()` no-arg, fixture-hardcoded** component (`artifact-preview-dialog.tsx:171–173`). Consumes **zero** schema params → no missing banner, no reconciliation issue. (TEMPLATE-009 schema exists and is used by **Riverside** via `cashflow_projection` → `SectionListRender`, which DOES reconcile.)
+- **Cygnus (capital event map)** — schematic/roadmap (static structural stages, not parametric); the roadmap portion has no source-linked params and no silent-default issue. Any paired comparison chart (`Sba504StructureComparison`) shares the raw-`parameterValues` pattern but the headline is structural, so the defect is largely N/A for the schematic itself.
+
+### Build proposal — three coordinated workstreams (full detail in the report-back).
+1. **Single source of truth for rendered values (~M).** Feed Sprint 9 charts the reconciled values + a per-key capture-mode/missing map (extend `renderStructuralVisualization` to pass `resolvedValues`/`computedValues` + `captureModeByKey`/`missingByKey`); strip hardcoded literals from `num()` call-sites so an absent value renders as a tagged estimate or a gap, never a hidden number. Wire `factorCapturesById` + `onMissingParameterCapture` from shell → Sidebar → its dialog (or hoist sidebar preview to the shell dialog) so the two instances behave identically.
+2. **Per-parameter input definitions (~M).** Add definition + unit + format + range to `parameter_schema` (work backward from each visualization's consumed keys); surface them in the capture form and as tooltips. Decide whether to add explicit `unit`/`definition`/`format`/`render_role` fields or overload `helper`.
+3. **Panel reframing + render-role gating (~S, design-gated).** Reframe the red "MISSING/error" banner to "using estimates — capture to firm up"; introduce render-blocking vs enrichment classification to decide hard-gate vs soft-tag.
+
+### Escalated (NOT decided this turn) → OPEN_QUESTIONS
+- **Q-051** panel reframing wording + color (compliance-adjacent tone).
+- **Q-052** render-blocking vs enrichment classification per Model.
+- **Q-053** confirm the direction on removing silent chart literals (display treatment of an absent value).
+- Also **resolved Q-050** this session — Francisco: leave the Insight-type "Reframe / Implication" label as-is.
+
+### Files inspected (no edits)
+`artifact-template-render.tsx`, `artifact-visualizations/VehicleCapacityUpliftChart.tsx` + `shared.ts`, `lib/artifact-template.ts`, `artifact-preview-dialog.tsx` (v2), `sidebar.tsx`, `workstation-shell.tsx`, `seed-artifact-templates.ts`, `seed-matrix.ts`, `app/v2/members/[id]/page.tsx`.
+
+---
+
+## 2026-06-03 — Sprint 4/9 Build Prompt 1: Model render/capture reconciliation (correctness only)
+
+**Session type:** Correctness build (no schema/enum/identifier/seed changes). Implements the dispatch-level reconciliation + dialog-wiring fix from the prior investigation. 4 files, +57/−9.
+
+### What was built
+- **Task 1 — dispatch reconciliation (`artifact-template-render.tsx`).** The Sprint 9 visualizations now consume the RESOLVED map instead of raw `parameterValues`. One-line-of-logic change at the `renderStructuralVisualization` call: feed `computedValues` (= params JSON base + FactorCapture overlay + computed/static; precedence capture > JSON > default) into the slot every visualization reads. Honors the MERGE INVARIANT — a JSON param with no competing capture passes through unchanged. `SectionListRender` already consumed `computedValues` (untouched), so Riverside's `cashflow_projection` path is unaffected by construction.
+- **Task 2 — strip the source-linked literal (`VehicleCapacityUpliftChart.tsx`).** Removed `num(parameterValues, "capacity_utilization_now", 80)` → no literal. Added an absent-guard: utilization renders `not captured` when the source value is absent, never a fabricated %. **Scope call (escalated, see Q-053):** only the SOURCE-LINKED captured-fact literal was stripped — that's the documented compliance lie (an 80 masking captured 88). The remaining `num()` literals across the 9 charts are NON-source-linked modeling assumptions (rates/terms/horizon); relocating them to a single source of truth requires schema `default`s (a SEED CHANGE forbidden in Prompt 1), and stripping them to bare `0` would swap one unmarked number for another. Deferred to Prompt 2/3, logged under Q-053.
+- **Task 3 — dialog wiring (RC1) (`sidebar.tsx` + `workstation-shell.tsx`).** Threaded `factorCapturesById` + `onMissingParameterCapture` from the shell → `V2Sidebar` → its own `ArtifactPreviewDialog` (additive, lowest-risk; the shell's popup dialog already had them). The sidebar "MODELS" click now resolves source-linked params instead of flagging captured data as missing. Two dialog instances, now identical behavior.
+
+### Verification (build + deterministic merge proof; interactive screenshot blocked by environment)
+- `pnpm build` — **green** (compiled successfully, TypeScript passed, all 11 routes). No identifier/enum/schema rename slipped in (build would fail).
+- **Interactive Playwright run was blocked** by a Next dev Fast-Refresh reload loop (the documented iCloud file-churn — see [[project_icloud_eviction_risk]]; `next start` also hit a MODULE_NOT_FOUND on an evicted `.next` chunk). Environment, not code.
+- **Pivoted to a deterministic proof** running the REAL `computeAllValues` + the real overlay logic against the LIVE DB fixtures (temp `tsx` script, deleted after). Result **ALL PASS**:
+  - **Northland** (`/v2/members/northland`, TEMPLATE-010): JSON omits `capacity_utilization_now`; FACTOR-006 = 88; **resolved chart input = "88"** (was the 80 literal); both source-linked params (FACTOR-006/007) resolve → **no missing banner**.
+  - **Cygnus HARD GATE** (TEMPLATE-008 `sba_504_paired`): every consumed key resolves **=== raw JSON** — property `$5.5M`, rates 7.25/5.25/8.5, amortization 25, **current_stage = 3** ("Cygnus is here" on stage 3). FACTOR-035 IS captured but AGREES with JSON → **byte-for-byte unchanged**.
+  - **Jenny** (v1 hardcoded, bypasses the renderer) + **Riverside** (`SectionListRender`, still gets `computedValues`) — unaffected by construction.
+- **Data correction:** Cygnus's live SBA 504 property value is **$5.5M** (the `migrateCygnusModelToTemplate` value), not the $2.2M I cited in the prior investigation turn (a stale `LEGACY_MODEL_PARAMS` block). The byte-for-byte gate still holds — capture and JSON agree at $5.5M.
+
+### Canonical-value question — CLOSED (not open)
+88% is the canonical Northland utilization (FACTOR-006, member_confirmed). The visible "80%" was a component literal fallback, not authored prose (the narrative interpolates the value dynamically). 88% lands in the "85%+ severely constrained" band, so "at capacity" reads correctly. **Fix is code, not data — no seed edit.**
+
+### Out of scope (Prompts 2–3, open): Q-051 panel reframe wording/color · Q-052 render-role classification · Q-053 non-source-linked assumption-default literals + richer absent-value treatment.
+
+### Pre-flight note
+Tree was NOT clean at start — the prior Artifact→Model/Reframe rename + investigation doc edits are still uncommitted (never asked to commit). This build's 4 files are additive on top; recommend committing the rename + investigation + this build as separate commits.
+
+### Files changed (this build)
+- `app/v2/members/[id]/artifact-template-render.tsx` — dispatch feeds resolved values
+- `app/v2/members/[id]/artifact-visualizations/VehicleCapacityUpliftChart.tsx` — strip source-linked literal + absent guard
+- `app/v2/members/[id]/sidebar.tsx` — accept + forward `factorCapturesById`/`onMissingParameterCapture`
+- `app/v2/members/[id]/workstation-shell.tsx` — pass both to `V2Sidebar`
+
+---
+
 *Next session entry will be appended below.*

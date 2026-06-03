@@ -442,6 +442,52 @@ Resolved entries are **never deleted** — they form the institutional memory of
 - **Conservative default:** Demo treats the conversion as in-place. Pilot may extend `FactorCapture` with a `confirmed_at DateTime?` column or a separate `FactorCaptureModeHistory` table.
 - **Status (2026-05-12):** **Deferred to Pilot.**
 
+### Q-049 · Doc-sync: "Artifact" → "Model" and "reframe" → "Key Understanding" in the design docs
+
+- **Date logged:** 2026-06-03
+- **Question:** The Sprint 4 interstitial rename surfaced two entity/concept renames in banker-facing copy: `Artifact` → "Model" and the Artifact's "reframe" editorial concept → "Key Understanding". The `.docx` design docs (binary, human-owned) still use the old wording and were intentionally not edited. Specifically: Semantic Discipline §3.1 and Data Framework §3.6 guidance ("...the reframe it supports...") should become "...the key understanding it supports...", and any banker-facing "Artifact" prose in the design docs should read "Model". 
+- **Why it matters:** Source-of-truth drift. CLAUDE.md §5 now says "Model" / "Key Understanding" are the banker-facing terms, but the Tier-2 design docs still say "Artifact" / "reframe". A future reader consulting the docs will see stale vocabulary.
+- **Affects:** Documentation consistency only; the demo code is already renamed.
+- **Conservative default:** Code + CLAUDE.md §5 carry the new vocabulary now. The `.docx` edits are deferred to a human-owned doc-sync pass (Claude does not edit binary design docs).
+- **Status:** Awaiting doc-sync pass.
+
+### Q-050 · Should the Insight-type label "Reframe" also move to "Key Understanding"?
+
+- **Date logged:** 2026-06-03
+- **Question:** The word "reframe" has three lives in the codebase: (1) the `insight_type` enum value `"reframe"` (schema identifier — never changes); (2) the banker-facing Insight-type **chip/dropdown label "Reframe"**, paired with "Implication", in `objective-popup.tsx` and `insight-form.tsx`; (3) the Artifact/Model editorial "reframe" concept ("The reframe: …" description lead-ins). The Sprint 4 interstitial renamed **only #3** → "Key Understanding". It deliberately left **#2** untouched. Should #2 ("Reframe / Implication") also become "Key Understanding / Implication"?
+- **Why it matters:** #2 is a distinct, well-established banker-facing concept (the Reframe-vs-Implication dichotomy used throughout the Insight authoring flow, popup chips, and Featured-deal tile). Renaming only "Reframe" to "Key Understanding" would leave an incoherent "Key Understanding / Implication" pairing and half-rename a concept tied to the `insight_type` enum. Renaming both halves is a larger semantic decision about the Insight feature, outside this rename's stated scope.
+- **Affects:** Insight authoring UI (`insight-form.tsx` dropdown), popup/Pattern chips (`objective-popup.tsx`), Featured-deal tile (`FeaturedDealTile.tsx`), and `DEMO_RUNBOOK.md` talking points.
+- **Conservative default (in effect):** Left the Insight-type "Reframe / Implication" label **unchanged**. Only the Artifact/Model "reframe" editorial concept was renamed to "Key Understanding".
+- **Resolution (2026-06-03):** **RESOLVED — leave it.** Francisco: "we can leave reframe / implications. That is fine." The Insight-type "Reframe / Implication" label stays as-is; no further rename. Only the Artifact/Model editorial concept moved to "Key Understanding" (Q-049 doc-sync still pending for the docs).
+- **Status:** **Resolved** (Francisco, 2026-06-03). Retained in Open list inline per the file's existing inline-resolution precedent.
+
+### Q-051 · "MISSING" panel reframing — wording + tone on the Model render surface
+
+- **Date logged:** 2026-06-03
+- **Question:** The render/capture reconciliation investigation (Sprint 4 scoped discovery) proposes reframing the red `⚠ Missing — N parameters not yet captured` banner (`artifact-template-render.tsx` `MissingParametersBanner`, line 366–369) from an error treatment into a softer "using estimates — capture to firm up" affordance. What exact wording + visual tone does Francisco want? Candidate: header "Using estimates for N input(s)" with sub-text "These values are working assumptions until confirmed with the Member — capture to firm up." Color shifts from `blaze-danger` to a neutral/amber informational treatment.
+- **Why it matters:** Tone is a compliance-adjacent EVP-facing choice. "MISSING/error" reads as "the system is broken"; "using estimates" reads as "transparent provenance." But over-softening could hide that real Member confirmation is still owed. Banker-facing copy discipline (CLAUDE.md §5) + BLAZE_STYLE_GUIDE color semantics apply.
+- **Affects:** `MissingParametersBanner` copy + classes; the per-value inline provenance tags.
+- **Conservative default (pending decision):** Propose the reframed wording in the build prompt; do not ship copy/color until Francisco approves the exact string + tone.
+- **Status:** Awaiting Francisco's decision (wording + color).
+
+### Q-052 · Render-blocking vs. enrichment parameter classification
+
+- **Date logged:** 2026-06-03
+- **Question:** Today there is **no** concept distinguishing parameters that a Model genuinely cannot render without (render-blocking) from parameters that merely enrich/refine the picture (enrichment). Every `required: true` param is treated identically by the missing-banner, yet the chart renders regardless using silent defaults. The proposal introduces a classification (e.g., a `render_role: "blocking" | "enrichment"` convention on `TemplateParameter`, or a per-template list). Which parameters on each of the three Models are render-blocking vs. enrichment? (Example judgment call: is `capacity_utilization_now` blocking — the chart hardcodes 80 — or enrichment? Is `demand_exceeding_capacity`, which the chart reads nowhere, even relevant to keep `required`?)
+- **Why it matters:** This classification decides which uncaptured params show a hard "capture before showing" gate vs. a soft "estimate in use" tag. Getting it wrong either blocks a legitimately-showable Model or lets a Model display a number it has no basis for. It is a per-Model design judgment, not a mechanical default.
+- **Affects:** `lib/artifact-template.ts` `TemplateParameter` type (possible new optional field — schema-shaped but it lives in `parameter_schema` JSON, not a Prisma migration); all three Models' `parameter_schema`; the banner/gate logic.
+- **Conservative default (pending decision):** Propose the field + a first-pass classification per Model in the build prompt; Francisco confirms the blocking/enrichment split before implementation.
+- **Status:** Awaiting Francisco's classification sign-off.
+
+### Q-053 · Silent hardcoded chart defaults vs. provenance-tagged estimates
+
+- **Date logged:** 2026-06-03
+- **Question:** The Sprint 9 visualization components contain hardcoded literal fallbacks (e.g., `VehicleCapacityUpliftChart.tsx:81` `num(parameterValues, "capacity_utilization_now", 80)` → renders 80% when uncaptured, masking the real captured 88%). The proposal removes silent literals so uncaptured values render as visibly-tagged estimates (or are gated per Q-052), never as an unmarked confident number. Confirm the direction: (a) the chart must receive **resolved** values (captures overlaid) + a per-key capture-mode map, not raw `parameterValues`; (b) where a value is genuinely absent, it renders as a tagged estimate or a gap, never a hidden literal.
+- **Why it matters:** Compliance §3.6 (per the brief) requires rendered values to validate against `parameter_schema` before display; a hardcoded 80 that contradicts a captured 88 is both unvalidated and misleading. This is the core of the two-sources-of-truth defect.
+- **Affects:** All Sprint 9 visualization components (`artifact-visualizations/*.tsx`), `renderStructuralVisualization` dispatch (`artifact-template-render.tsx:197–342`), the chart prop contract.
+- **Conservative default (pending decision):** This is largely a correctness fix (not a taste call), but the *display treatment* of an absent value (tagged-estimate vs. gap vs. gate) ties to Q-051/Q-052 and should be confirmed together.
+- **Status:** Direction proposed; display treatment bundled with Q-051/Q-052.
+
 ---
 
 ## Resolved

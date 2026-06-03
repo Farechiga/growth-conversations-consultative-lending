@@ -1236,7 +1236,7 @@ export default async function MemberProfilePage({
           <section id="band-history">
             <SectionLabel
               label="History"
-              meta="conversations and Artifact share record"
+              meta="conversations and Model share record"
             />
             <ol className="relative mt-5 space-y-3 pl-6">
               {/* Continuous timeline thread — connects the orange dots into a
@@ -1334,11 +1334,11 @@ export default async function MemberProfilePage({
 
             <div className="mt-6 border-t border-blaze-rule pt-4">
               <p className="text-xs font-semibold text-blaze-grey-body">
-                Artifact share record
+                Model share record
               </p>
               {artifactShareRows.length === 0 ? (
                 <p className="mt-2 text-sm italic text-blaze-grey-body">
-                  No Artifacts shown to this member yet.
+                  No Models shown to this member yet.
                 </p>
               ) : (
                 <ul className="mt-2 space-y-2">
