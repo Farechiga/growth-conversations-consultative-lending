@@ -25,6 +25,64 @@ Resolved entries are **never deleted** — they form the institutional memory of
 
 ## Open
 
+### Q-058 · Cygnus SBA model dual-naming (feed vs sidebar)
+
+- **Date logged:** 2026-06-03 (BUILD 2a, branch `build/2a-curate-trim`)
+- **Question:** Cygnus's migrated SBA model (template-008) renders as "SBA 504 transaction roadmap" in the feed (template title) but "Capital event partnership map" in the sidebar tile (`m.artifact?.title`, the stale pre-rename legacy Artifact name). This is the mirror of the §5b fleet fix but on a member outside the 5-step scope. Fix by renaming the Cygnus capital-event `Artifact.title` to "SBA 504 transaction roadmap" (seed) — or leave as a known artifact name?
+- **Why it matters:** Cygnus is the SBA 504 walkthrough; a stale "Capital event partnership map" label in the sidebar reads as an inconsistency next to the SBA-504 feed card.
+- **Conservative default:** left as-is pending confirmation (one-line seed rename when approved).
+- **Status:** **RESOLVED 2026-06-03 (Francisco: fix it).** Renamed the legacy Artifact's
+  `title` → "SBA 504 transaction roadmap" (`prisma/seed.ts:1340`); feed card and sidebar
+  tile now match on Cygnus. Dispatch key `template:"capital_event_map_v1"` unchanged.
+
+### Q-059 · `+Model` builder renders all template params — DEMO-CRITICAL, sequenced to BUILD 2c
+
+- **Date logged:** 2026-06-03 (BUILD 2a)
+- **Question:** BUILD 2a trimmed `required` to the genuinely-needed set (010 → 5 required), but the `+Model` builder still renders every template param as an input (010 → 15 rows, 5 asterisked). Un-requiring only relabels the 15-field form — it does not fix the "this 12-step questionnaire can't be demoed" problem the banker actually hits.
+- **Why it matters:** **Demo-critical, NOT optional.** The real fix is field *reduction* — show the essentials, collapse the rest into an "advanced" disclosure — which lives in the builder work.
+- **Resolution path:** **BUILD 2c (builder reconciliation).** Real field reduction + advanced-disclosure, single template-driven flow. Removing params from the schema is rejected (breaks template-010's computed `loan_amount` + output-summary prose), so this is a form-render change, not a schema change.
+- **Status:** **OPEN — sequenced into BUILD 2c.** Do not close.
+
+### Q-060 · `Model.parameters` double-encoding (root of the silent `.name` bug)
+
+- **Date logged:** 2026-06-03 (BUILD 2a, noted by Francisco)
+- **Question:** `Model.parameters` is a Prisma `Json` column, but the fixture seed writes `JSON.stringify(...)` into it, double-encoding it so Prisma returns a string. Every `.name`/`.rows` read was silently returning `undefined` (not just on the fleet card). BUILD 2a added a `parseModelParameters()` read guard (`app/v2/members/[id]/page.tsx`) — the right compensating fix, but it papers over the root on read; the seed still double-encodes.
+- **Why it matters:** Latent inconsistency (some Models stored as objects, some as double-encoded strings); a future reader that doesn't go through the guard will hit the same silent-undefined trap.
+- **Resolution path:** one-line cleanup — store `parameters` as the object (drop `JSON.stringify`) in the seed write paths, then the guard becomes belt-and-suspenders. **Not now** (fine for the demo).
+- **Status:** OPEN — low-priority cleanup, post-demo.
+
+### Q-054 · `current_monthly_revenue` resolution precedence + semantics (Vehicle template 010)
+
+- **Date logged:** 2026-06-03 (source-inventory diagnosis, branch `diagnosis/required-field-audit`)
+- **Question:** The `vehicle_capacity_uplift` chart's `current_monthly_revenue` has two candidate sources: derive from `FACTOR-019` annual revenue ÷ 12 (Northland → ~$200K/mo) **or** the hand-seeded literal ($50K/mo). They disagree ~4×, and "current monthly revenue" for a capacity-baseline chart may not mean *total* business revenue. Which wins, and what does the value actually denote?
+- **Why it matters:** Sets the resolve-loop precedence (derivation vs literal) and whether this is a member-fact (shared) or a per-product banker input.
+- **Conservative default:** treat as a PROMPT (`member_confirmed`) until precedence is decided; do not silently derive.
+- **Status:** Awaiting Francisco.
+
+### Q-055 · Loan-amount source: "sized" factor vs `Recommendation.size_proposed`
+
+- **Date logged:** 2026-06-03
+- **Question:** `loan_amount` / `proposed_limit` / `requested_credit_limit` (templates 002/004/006/007/009) can resolve from a "sized" FactorCapture (FACTOR-036/037 — captured for no demo member) **or** from `Recommendation.size_proposed` (populated, but unread today, and the member's Rec product may differ from the template's product). Which is the canonical source, and how is product-mismatch handled?
+- **Why it matters:** Decides whether the resolve loop reads Recommendation (mechanical wiring) and how to handle a model whose product ≠ the member's active Recommendation.
+- **Conservative default:** prefer the Recommendation when its product matches the template; else PROMPT.
+- **Status:** Awaiting Francisco.
+
+### Q-056 · One factor → many template keys (incl. `annual_operational_spend` mis-wire)
+
+- **Date logged:** 2026-06-03
+- **Question:** `FACTOR-035` feeds `property_value`/`acquisition_price`/`purchase_price` (001/003/008) and `FACTOR-019` feeds `annual_revenue_band`/`current_annual_revenue`/`annual_operational_spend` (002/006/009). The last is a **semantic mis-wire** — operational spend ≠ annual revenue. Confirm the shared-factor fan-out is intended, and fix/flag the spend↔revenue mapping.
+- **Why it matters:** A shared evidence ledger keys on the factor; a wrong source_factor_id silently populates a wrong number (Business Visa headroom math).
+- **Conservative default:** leave wiring as-is (read-only); flag the spend mapping as a defect to fix in a build prompt.
+- **Status:** Awaiting Francisco.
+
+### Q-057 · Schema gap: recurring monthly operating measures, loan term/rate, roadmap position have no home
+
+- **Date logged:** 2026-06-03
+- **Question:** Several essential values have no entity to resolve from: recurring monthly measures (`current_monthly_maintenance`, `monthly_downtime_cost`, `monthly_(declined_revenue|rent|operating_expenses|energy_savings)`, `current_monthly_rent`, `expected_monthly_spend`); loan `term_months`/`interest_rate` (Recommendation carries amount only); and SBA-504 `current_stage`/`you_are_here_label` (no roadmap-position entity). Do these get new BusinessFactors / SizingDimensions / Recommendation fields, or do they live permanently as `Model.template_parameters` banker inputs (i.e., always PROMPT)?
+- **Why it matters:** Determines whether the per-product evidence tab can ever populate these, or whether they are forever forward-estimate PROMPT rows.
+- **Conservative default for demo:** keep them as Model-level banker inputs (PROMPT); do not add schema in the demo phase.
+- **Status:** Awaiting Francisco.
+
 ### Q-001 · HubSpot tier commitment
 
 - **Date logged:** Pre-build (carried over from design phase)
