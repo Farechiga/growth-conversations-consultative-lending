@@ -4677,4 +4677,32 @@ Branched off `build/2b1-write-fixes`. Localhost (Playwright) verify; build green
 
 ---
 
+## BUILD 2d — Gate the model outcome behind supplied essentials · branch `build/2d-gate-outcome`
+
+Branched off `main` (post 2a–2c merge). Localhost (Playwright) verify; build green. No schema change. Reuses 2b's resolve engine + 2b.1 writeback (render-condition + gated empty-state, no new resolve logic). NOT main.
+
+### Behavior
+In the model popup the outcome (chart + decision framing + "what the model shows") is hidden until EVERY essential is supplied; until then the EssentialsPanel stands alone, prompting the banker to supply each number. Restores the "supply the numbers to generate the model" motion.
+
+- **Supplied** = tier `captured` (a source FactorCapture OR a banker-confirmed value via `__confirmed`) OR tier `product` (recommended amount — real data, not a guess). A banker-estimate literal or a blank does NOT count.
+- `allSupplied = every essential supplied`. `allSupplied` → render the outcome as before; else hide it and render the panel with a **"Supply these numbers with the Member to generate the model"** header + **"{n} of {total} supplied"** progress + orange-accented border. Supplied essentials show "captured ✓" (no action); estimates show value + **Capture with Member** (Confirm).
+- Confirming an estimate flips it to member_confirmed via the existing 2b.1 writeback (`updateModelParameter(mark_confirmed)`), so forward estimates (e.g. `projected_induced_demand`) are suppliable and never permanently block the gate.
+
+### Live reveal (no reopen)
+The open dialog's `parametersJson` is a frozen snapshot, so a confirm wouldn't advance THIS dialog without reopening. Added **optimistic local-confirmed state** in `ArtifactTemplateRender`: `CaptureWithMemberControl` fires `onConfirmed(key, value)` on a successful write; the component merges it into `confirmedKeys` + values, so the gate advances and the outcome reveals live. The DB write still persists (`__confirmed`), so it survives reload (and `pnpm db:reset` restores the gated start state for the next rehearsal).
+
+### Sidebar
+The sidebar preview dialog renders the same `ArtifactTemplateRender`, so the gate applies there automatically.
+
+### Verify (Playwright, fresh seed)
+- **Northland Vehicle (010):** gated, outcome hidden, "1 of 5 supplied" (utilization captured ✓); confirm the 4 estimates → 2→3→4→5 → outcome appears, gate header gone.
+- **Cygnus SBA 504 (008):** "1 of 2" (property supplied); confirm current_stage → outcome appears.
+- **Jenny Unsecured (007):** "0 of 2" (both estimates); confirm both → outcome appears.
+- `tsc` + `pnpm build` green.
+
+### Files
+`artifact-template-render.tsx` (gate computation, outcome wrapped in `allSupplied`, EssentialsPanel gated header/progress, optimistic `localConfirmed` + `onConfirmed` plumb).
+
+---
+
 *Next session entry will be appended below.*
