@@ -571,10 +571,10 @@ function EssentialsPanel({
                 <span className="flex items-center gap-2">
                   <ProvenanceChip res={res} />
                   {res.tier === "estimate" && modelId && memberId && (
-                    <CaptureWithMemberButton
+                    <CaptureWithMemberControl
+                      param={res.param}
                       modelId={modelId}
                       memberId={memberId}
-                      paramKey={res.param.key}
                       value={res.value}
                     />
                   )}
@@ -588,46 +588,87 @@ function EssentialsPanel({
   );
 }
 
-// "Capture with Member" upgrades a banker_estimate essential to
-// member_confirmed: writes the (unchanged) value back to
-// template_parameters and records the key in __confirmed (provenance),
-// via the same updateModelParameter action used for inline fill-ins.
-function CaptureWithMemberButton({
+// BUILD 2b.1 — "Capture with Member" upgrades a banker_estimate essential
+// to member_confirmed. Clicking reveals an input pre-filled with the
+// current estimate; the banker enters/edits the value the Member actually
+// confirmed (override allowed), then Confirm writes value + provenance
+// (__confirmed) to template_parameters via updateModelParameter. On reload
+// the chip flips to "captured ✓" and the chart re-renders with the value.
+function CaptureWithMemberControl({
+  param,
   modelId,
   memberId,
-  paramKey,
   value,
 }: {
+  param: TemplateParameter;
   modelId: string;
   memberId: string;
-  paramKey: string;
   value: string;
 }) {
   const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  return (
-    <span className="inline-flex items-center gap-1.5">
+
+  function confirm() {
+    setError(null);
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setError("Enter the value the Member confirmed.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateModelParameter({
+        member_id: memberId,
+        model_id: modelId,
+        parameter_key: param.key,
+        parameter_value: trimmed,
+        mark_confirmed: true,
+      });
+      if (result.ok) {
+        setEditing(false);
+        router.refresh();
+      } else {
+        setError(result.error);
+      }
+    });
+  }
+
+  if (!editing) {
+    return (
       <button
         type="button"
-        disabled={isPending}
-        onClick={() =>
-          startTransition(async () => {
-            setError(null);
-            const result = await updateModelParameter({
-              member_id: memberId,
-              model_id: modelId,
-              parameter_key: paramKey,
-              parameter_value: value,
-              mark_confirmed: true,
-            });
-            if (result.ok) router.refresh();
-            else setError(result.error);
-          })
-        }
-        className="rounded border border-blaze-orange-deep bg-white px-2 py-0.5 text-[10px] font-medium text-blaze-orange-deep transition-colors hover:bg-blaze-orange-deep hover:text-white disabled:opacity-60"
+        onClick={() => {
+          setDraft(value);
+          setEditing(true);
+        }}
+        className="rounded border border-blaze-orange-deep bg-white px-2 py-0.5 text-[10px] font-medium text-blaze-orange-deep transition-colors hover:bg-blaze-orange-deep hover:text-white"
       >
-        {isPending ? "Capturing…" : "Capture with Member"}
+        Capture with Member
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="w-32">{renderParamInput(param, draft, setDraft)}</span>
+      <button
+        type="button"
+        onClick={confirm}
+        disabled={isPending}
+        className="rounded border border-blaze-orange-deep bg-blaze-orange-deep px-2 py-0.5 text-[10px] font-medium text-white transition-colors hover:bg-blaze-orange-burnt disabled:opacity-60"
+      >
+        {isPending ? "Confirming…" : "Confirm"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setEditing(false);
+          setError(null);
+        }}
+        className="text-[10px] text-blaze-grey-body hover:text-blaze-charcoal"
+      >
+        cancel
       </button>
       {error && <span className="text-[10px] text-blaze-danger">{error}</span>}
     </span>

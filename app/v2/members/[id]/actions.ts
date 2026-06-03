@@ -129,11 +129,31 @@ export async function saveModel(
         rows: input.parameters,
       };
 
+      // BUILD 2b.1 fix — the +Model form passes the selected dropdown id
+      // as BOTH template_id and artifact_id. For a template option that id
+      // is an ArtifactTemplate id, NOT an Artifact id, so Model.artifact_id
+      // (FK -> Artifact) was violated on every template save. Resolve
+      // artifact_id to a real Artifact only: drop it when it matches the
+      // template_id (template attach) or doesn't reference an existing
+      // Artifact row. Templates link via template_id; they carry no
+      // Artifact, so the auto-ShowEvent below is correctly skipped.
+      let resolvedArtifactId: string | null = input.artifact_id;
+      if (resolvedArtifactId && resolvedArtifactId === input.template_id) {
+        resolvedArtifactId = null;
+      }
+      if (resolvedArtifactId) {
+        const artifactExists = await tx.artifact.findUnique({
+          where: { id: resolvedArtifactId },
+          select: { id: true },
+        });
+        if (!artifactExists) resolvedArtifactId = null;
+      }
+
       const model = await tx.model.create({
         data: {
           member_id: input.member_id,
           conversation_id: conversationId,
-          artifact_id: input.artifact_id,
+          artifact_id: resolvedArtifactId,
           built_with_member: input.built_with_member,
           parameters: parametersWithName,
           assumptions: input.assumptions,
@@ -163,12 +183,12 @@ export async function saveModel(
       // ShowEvent to point at. Banker can still record a Show via
       // the sidebar artifact preview "Record show" button (Block H).
       let showEventId: string | null = null;
-      if (input.built_with_member && input.artifact_id) {
+      if (input.built_with_member && resolvedArtifactId) {
         const showEvent = await tx.showEvent.create({
           data: {
             member_id: input.member_id,
             conversation_id: conversationId,
-            artifact_id: input.artifact_id,
+            artifact_id: resolvedArtifactId,
             model_id: model.id,
             shown_by_banker_id: input.banker_id,
             context_note: "Auto-created on + Model save with Member provenance",
