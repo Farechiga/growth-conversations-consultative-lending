@@ -90,7 +90,11 @@ export type StructuralContent =
         // Sprint 9 Patch G — Business Visa capability matrix. Replaces
         // the cashback-chart framing for TRACK-010 with a four-card
         // operational-infrastructure view.
-        | "business_visa_capability";
+        | "business_visa_capability"
+        // TRACK-001 Working Capital LOC — parameterized 12-month seasonal
+        // cashflow projection (with-LOC vs without-LOC). Fills the Sprint 9
+        // gap for TRACK-001; supersedes the legacy hardcoded chart.
+        | "seasonal_smoothing";
     }
   // Sprint 9 — paired roadmap + structure comparison for TRACK-008
   // SBA 504. Renders the existing partnership-map roadmap above the
