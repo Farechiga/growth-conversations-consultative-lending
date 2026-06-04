@@ -31,13 +31,14 @@ export default function InsightEngineLayout({
         <nav className="border-t border-blaze-rule">
           <div className="mx-auto flex max-w-6xl gap-6 px-8 py-2 text-sm">
             {/* Sprint 7a — dashboard at /v2/insight-engine is the
-                default landing; the four legacy surface labels stay
-                for routes that link here directly. */}
+                default landing. Nav trimmed (2026-06): the
+                "Lending product performance" (/tracks) and "Members who
+                skipped earlier work" (/stage-skip) surfaces are hidden
+                from the nav for now — the routes/pages still exist and
+                work if linked directly; only the nav links are removed. */}
             <NavLink href="/v2/insight-engine">Dashboard</NavLink>
-            <NavLink href="/v2/insight-engine/tracks">Lending product performance</NavLink>
             <NavLink href="/v2/insight-engine/portfolio">Member portfolio</NavLink>
             <NavLink href="/v2/insight-engine/coverage">Open threads</NavLink>
-            <NavLink href="/v2/insight-engine/stage-skip">Members who skipped earlier work</NavLink>
             <span className="ml-auto text-xs text-blaze-grey-soft">
               Demo phase: all bankers see all surfaces (Pilot adds RBAC)
             </span>

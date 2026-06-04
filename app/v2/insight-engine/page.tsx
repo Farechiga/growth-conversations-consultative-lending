@@ -18,11 +18,12 @@ import { DashboardClient } from "./dashboard/components/DashboardClient";
 
 export const dynamic = "force-dynamic";
 
+// Nav trimmed (2026-06): "Lending product performance" (/tracks) and
+// "Members who skipped earlier work" (/stage-skip) are hidden from the
+// dashboard for now — the routes/pages still exist if linked directly.
 const LEGACY_LINKS: Array<{ href: string; title: string }> = [
-  { href: "/v2/insight-engine/tracks", title: "Lending product performance" },
   { href: "/v2/insight-engine/portfolio", title: "Member portfolio" },
   { href: "/v2/insight-engine/coverage", title: "Open threads" },
-  { href: "/v2/insight-engine/stage-skip", title: "Members who skipped earlier work" },
 ];
 
 export default function InsightEngineDashboard() {
