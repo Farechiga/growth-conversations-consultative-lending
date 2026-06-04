@@ -405,13 +405,15 @@ export default async function V2MemberWorkstationPage({
       const templateStr = m.artifact?.template ?? m.template_id ?? null;
       const trackId = m.template?.track_id ?? null;
       const shownAt = showEventByModelId.get(m.id) ?? null;
-      // Sprint 9 — only Jenny's TRACK-001 seasonal smoothing chart is
-      // preserved as a legacy chart renderer per spec. All other legacy
-      // renderers (fleet_roi, capital_event) are REPLACED by the new
-      // business-impact visualizations via templateData → Sprint 9
-      // chart components.
+      // The legacy seasonal-smoothing chart renderer is only used as a
+      // fallback when the Model has no structured ArtifactTemplate to
+      // route through. Jenny's TRACK-001 Model now carries
+      // template_id=ARTIFACT-TEMPLATE-009, so — like Northland's fleet
+      // and Cygnus's SBA 504 Models — it renders via the standard
+      // template path (resolve-then-prompt gate + provenance chips +
+      // 2e copy/currency) instead of the static fixture-baked chart.
       const hasLegacyRenderer =
-        templateStr === "seasonal_smoothing_chart_v1";
+        templateStr === "seasonal_smoothing_chart_v1" && !m.template_id;
       const template_data =
         m.template && !hasLegacyRenderer
           ? {
@@ -1122,11 +1124,13 @@ export default async function V2MemberWorkstationPage({
     const hasTemplate = !!mod.template;
     const previewTemplate =
       mod.artifact?.template ?? mod.template_id ?? null;
-    // Sprint 9 — only Jenny's TRACK-001 seasonal smoothing chart is
-    // preserved as a legacy renderer. fleet_roi + capital_event are
-    // replaced by Sprint 9 business-impact visualizations.
+    // Legacy seasonal-smoothing chart is a fallback only — a Model with
+    // a structured template_id (e.g. Jenny's TRACK-001 →
+    // ARTIFACT-TEMPLATE-009) routes through the standard template path
+    // so the feed-card preview inherits the gate, provenance chips, and
+    // 2e copy/currency like every other Model.
     const hasLegacyRenderer =
-      previewTemplate === "seasonal_smoothing_chart_v1";
+      previewTemplate === "seasonal_smoothing_chart_v1" && !mod.template_id;
     const artifactPreview =
       hasLegacyArtifact || hasTemplate
         ? {
