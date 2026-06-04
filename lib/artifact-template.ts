@@ -285,5 +285,13 @@ function formatValueForString(v: string, p: TemplateParameter | undefined): stri
     const n = Number(stripFormatting(v));
     if (Number.isFinite(n)) return formatCurrencyShort(n);
   }
+  // BUILD 2e follow-up — captured/string percentage values carry their units
+  // already (e.g. "28" = 28%); append "%" if absent so summary prose reads
+  // "variance 28%" not "variance 28". Mirrors formatDisplayValue (render side).
+  // Template strings never hard-code a literal "%", so this can't double up.
+  if (p.type === "percentage") {
+    const trimmed = v.replace(/\s+/g, "");
+    return trimmed.endsWith("%") ? trimmed : `${trimmed}%`;
+  }
   return v;
 }
