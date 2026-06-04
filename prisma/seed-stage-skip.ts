@@ -135,40 +135,11 @@ export async function seedStageSkipFixture({
     },
   });
 
-  // Model — banker draft of a seasonal cashflow projection. No artifact
-  // attached; no template_id (Working Capital LOC has no parameterized
-  // template in the demo's Sprint 5d Block B template seed).
-  const model = await prisma.model.create({
-    data: {
-      member_id: riverside.id,
-      conversation_id: conversation.id,
-      built_with_member: true,
-      parameters: { seasonal_variance_pct: 25, peak_months: ["May", "Jun", "Jul", "Aug", "Sep"] },
-      assumptions: { collection_lag_days: 35, average_event_billing: 4500 },
-      output_summary:
-        "Seasonal cashflow projection for Riverside. Variance ~25% peak-to-trough; slow-season gap concentrates in late winter. A modest LOC could smooth the gap, but the sizing isn't yet anchored.",
-      built_at: conversationDate,
-      built_by_banker_id: bankerId,
-      active: true,
-    },
-  });
+  // Demo-data cleanup — the free-form "Untitled model" (no artifact /
+  // no template, surfaced as "Untitled model" in the feed) and Daniel's
+  // skeptical Reaction were removed. Riverside's seasonal LOC is now
+  // represented solely by the ARTIFACT-TEMPLATE-009 Model seeded in
+  // seedFixtureMultiTrack, keeping the stage-skip feed clean.
 
-  // Reaction — Daniel's response. `skeptical` is the closest enum value
-  // to the spec's "hesitant"; primary_concern uses `timing_concern` from
-  // the open-thread taxonomy (skeptical is non-terminal). The Member
-  // quote signals he wants to step back and revisit discovery work.
-  await prisma.reaction.create({
-    data: {
-      member_id: riverside.id,
-      conversation_id: conversation.id,
-      response_value: "skeptical",
-      member_quote:
-        "I hear you on the gap — I just want to look at last year's numbers more carefully before I commit to a number.",
-      primary_concern: "timing_concern",
-      captured_at: conversationDate,
-      captured_by_banker_id: bankerId,
-    },
-  });
-
-  return { riverside, conversation, model };
+  return { riverside, conversation };
 }
