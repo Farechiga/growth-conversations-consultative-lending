@@ -1278,7 +1278,11 @@ async function seedMembers(industryFamilies: IndustryFamilies, memberTypes: Memb
 async function seedArtifacts(reviewedByBankerId: string) {
   const seasonalSmoothing = await prisma.artifact.create({
     data: {
-      title: "Seasonal cash flow smoothing chart",
+      // Standardized to match the ArtifactTemplate-009 title so the
+      // feed, sidebar tile, and model-preview header all read the same
+      // name ("Seasonal cashflow smoothing"). The LEGACY_MODEL_RETAG
+      // matcher in seed-artifact-templates.ts matches on this title.
+      title: "Seasonal cashflow smoothing",
       description:
         "Compares twelve months of business cash flow with and without a working capital line of credit, parameterized by the member's own revenue band and seasonal pattern. Designed to make the seasonal smoothing benefit visually obvious without claiming any specific outcome. Key understanding: a properly-sized LOC turns lumpy revenue into smooth cash flow, at a cost typically far below the cost of declined opportunities or stress-driven decisions during slow months.",
       type: "chart",
@@ -2127,6 +2131,14 @@ async function seedJennyConversations(
     },
   });
 
+  // Demo-data cleanup — the standalone indecision Signal ("Needs another
+  // decision-maker's input") was a redundant feed card alongside the
+  // Recommendation's co_decision_maker_household concern and the
+  // follow-up ActionCard (the open thread). It is seeded `active: false`
+  // (resolved into the leaning-yes outcome) so it no longer shows in the
+  // captured feed, while still serving as the source Signal for Jenny's
+  // FACTOR-014 capture (seedFactorCapturesForFixtures resolves it by
+  // member+type+topic, independent of the active flag).
   const jennyIndecisionSignal = await prisma.signal.create({
     data: {
       conversation_id: apr8.id,
@@ -2135,21 +2147,15 @@ async function seedJennyConversations(
       type: "indecision",
       topic_id: topics.indecisionAuthority.id,
       severity: "manageable",
-      // Sprint 4.7 Block P — quote enrichment per Q-P1.
       their_words:
         "I'd want Mike to look at the numbers before I sign anything that big. He handles the books with me.",
       recency: "recent",
       confidence: "member_stated",
-      active: true,
+      active: false,
       captured_at: daysAgo(17),
     },
   });
 
-  // Wire the freshly-created indecision Signal back into the Recommendation's
-  // responds_to_signals. The Resolve step runs after the Show step, so the
-  // Recommendation already exists; update it now that the indecision Signal
-  // is queryable. The growth_step_execution_id is @unique, so this is a safe
-  // single-row lookup.
   await prisma.recommendation.update({
     where: { growth_step_execution_id: showExec.id },
     data: { responds_to_signals: { connect: [{ id: jennyIndecisionSignal.id }] } },
@@ -3167,7 +3173,11 @@ async function seedV2Entities(
     select: { id: true },
   });
 
-  const jennyModel = await prisma.model.create({
+  // Jenny's seasonal Model — retagged to ARTIFACT-TEMPLATE-009 by
+  // seedFixtureMultiTrack (matched by the linked Artifact title). No
+  // local binding needed; the ShowEvent that referenced it was removed
+  // in the demo-data cleanup.
+  await prisma.model.create({
     data: {
       member_id: members.jenny.id,
       conversation_id: jennyApr8.id,
@@ -3194,23 +3204,14 @@ async function seedV2Entities(
     },
   });
 
-  const jennyShowEvent = await prisma.showEvent.create({
-    data: {
-      member_id: members.jenny.id,
-      conversation_id: jennyApr8.id,
-      artifact_id: artifacts.seasonalSmoothing.id,
-      model_id: jennyModel.id,
-      shown_by_banker_id: bankers.scott.id,
-      context_note: "Walked through during in-person check-in",
-      shown_at: daysAgo(17),
-    },
-  });
-
+  // Demo-data cleanup — the explicit "Shared" ShowEvent was a stale-named
+  // duplicate of the with-Member Model card (and the Reaction below
+  // already captures Jenny's response to the seasonal model), so it is no
+  // longer seeded. The Reaction stands on its own against the conversation.
   await prisma.reaction.create({
     data: {
       member_id: members.jenny.id,
       conversation_id: jennyApr8.id,
-      show_event_id: jennyShowEvent.id,
       response_value: "leaning_yes",
       // Sprint 4.7 Block P — quote enrichment per Q-P1 (Francisco's E4
       // memorability pick: the moment Jenny sees the smoothing logic).

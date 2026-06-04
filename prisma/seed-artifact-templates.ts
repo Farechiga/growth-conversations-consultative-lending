@@ -867,21 +867,18 @@ const FIXTURE_MODEL_SEEDS: Record<Slug, Record<string, ModelSeedSpec | null>> = 
         // capacity_utilization_now → FACTOR-006 (88% captured).
         // demand_exceeding_capacity → FACTOR-007 (banker_estimate).
         expected_capacity_uplift: "22",
-        // Sprint 9 Patch F Block 3 — drives the declined-revenue
-        // annotation on the today row + captured-revenue annotation
-        // on the month-1 row. Sized so captured revenue ($4,200/mo)
-        // exceeds the monthly debt service ($3,650/mo), telling the
-        // "loan funds itself" story cleanly.
-        current_declined_revenue_monthly: "4200",
-        // Sprint 9 Patch G Block 6 — three-row temporal-progression
-        // parameters. Anchors Row 1 at $50K/mo current revenue and
-        // adds a $6K/mo induced-demand uplift over 12 months that
-        // surfaces in Row 3. Combined month-12 revenue ($60.2K/mo) is
-        // ~16.5× the monthly debt service ($3,650), so the "loan
-        // funds itself many times over" reading lands clearly.
+        // Sprint 9 Patch G Block 6 — anchors Row 1 at $50K/mo current
+        // revenue for the three-row temporal visualization.
         current_monthly_revenue: "50000",
-        projected_induced_demand_monthly: "6000",
         induced_demand_realization_months: 12,
+        // Gate-demo pin (3 of 5 supplied): capacity utilization resolves
+        // from FACTOR-006 (captured); monthly debt service + current
+        // monthly revenue are member-confirmed here (`__confirmed`).
+        // current_declined_revenue_monthly and
+        // projected_induced_demand_monthly are intentionally omitted so
+        // they read blank — the banker fills those two with the Member
+        // to unlock the capacity-uplift outcome.
+        __confirmed: '["monthly_debt_service","current_monthly_revenue"]',
       },
     },
     // TRACK-007 covered by the legacy fleet_roi Model — retagged below
@@ -908,8 +905,23 @@ const FIXTURE_MODEL_SEEDS: Record<Slug, Record<string, ModelSeedSpec | null>> = 
     },
   },
   jenny: {
-    // TRACK-001 covered by the legacy seasonal-smoothing Model.
-    "TRACK-001": null,
+    // TRACK-001 — Jenny's seasonal LOC Model (the retagged legacy
+    // seasonal-smoothing Model). Gate-demo pin (4 of 6 supplied):
+    // annual revenue + seasonal variance resolve from captured factors
+    // (FACTOR-019 / FACTOR-001); draw pattern + repayment are member-
+    // confirmed here (`__confirmed`); requested credit limit +
+    // slow-season gap are intentionally omitted so they read blank and
+    // the model opens gated, ready for the banker to fill the last two.
+    "TRACK-001": {
+      templateId: "ARTIFACT-TEMPLATE-009",
+      parameters: {
+        draw_pattern: "Q1 heavy",
+        repayment_window: 6,
+        // Stored as a JSON-string array (the renderer parses it via
+        // parseConfirmedKeys); a raw array would break under String(v).
+        __confirmed: '["draw_pattern","repayment_window"]',
+      },
+    },
     "TRACK-010": {
       templateId: "ARTIFACT-TEMPLATE-006",
       // Sprint 9 Block H + Patch G — Business Visa capability-matrix
@@ -1180,7 +1192,9 @@ function paramsFor(
 const LEGACY_MODEL_RETAG: Record<Slug, Array<{ artifactTitle: string; templateId: string }>> = {
   jenny: [
     {
-      artifactTitle: "Seasonal cash flow smoothing chart",
+      // Must match the Artifact.title set in prisma/seed.ts (renamed to
+      // "Seasonal cashflow smoothing" so feed names are consistent).
+      artifactTitle: "Seasonal cashflow smoothing",
       templateId: "ARTIFACT-TEMPLATE-009",
     },
   ],
