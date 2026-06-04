@@ -296,7 +296,9 @@ function MatrixCellTd({
         } ${active ? "ring-2 ring-blaze-orange-deep" : ""}`}
         style={{ background: fill, color: labelDark ? "#1c1917" : "#fff" }}
       >
-        <span className="font-medium">{label}</span>
+        <span className={active ? "text-[13px] font-bold" : "font-medium"}>
+          {label}
+        </span>
       </button>
     </td>
   );

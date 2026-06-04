@@ -152,10 +152,10 @@ export function BankerActivityHeatmapView({
                       onClick={() =>
                         toggleBanker(isFiltered ? undefined : b.id)
                       }
-                      className={`block w-full truncate text-left text-[12px] leading-[22px] transition-colors ${
-                        isFiltered
-                          ? "font-semibold text-blaze-orange-deep"
-                          : "text-blaze-charcoal hover:text-blaze-orange-deep"
+                      className={`block w-full truncate text-left leading-[22px] transition-colors ${
+                        isFiltered || selected?.bankerId === b.id
+                          ? "text-[13px] font-bold text-blaze-orange-deep"
+                          : "text-[12px] text-blaze-charcoal hover:text-blaze-orange-deep"
                       }`}
                       title={`${b.name} · ${totalActivity} events in 90 days`}
                     >
