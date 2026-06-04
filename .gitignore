@@ -56,6 +56,10 @@ next-env.d.ts
 # whenever the verify/probe scripts run; not source-of-truth.
 scripts/.*-out/
 
+# Working/review diagnosis + audit docs — local scratch area, not tracked
+# (kept out of the design-doc set per CLAUDE.md §12).
+docs/diagnosis/
+
 # Claude Code user-local settings
 .claude/settings.local.json
 
