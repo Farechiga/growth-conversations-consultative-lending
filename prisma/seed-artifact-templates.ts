@@ -564,13 +564,12 @@ const TEMPLATES: TemplateSeed[] = [
     },
     output_summary_template:
       "Annual revenue ${annual_revenue_band}. Seasonal variance {seasonal_variance}. Slow-season cashflow gap reaches ${slow_season_gap}. Proposed LOC of ${requested_credit_limit} smooths the cycle: draw during {draw_pattern} months, repay over {repayment_window} months as strong-season revenue flows in.",
+    // TRACK-001 outcome — parameterized 12-month seasonal cashflow chart
+    // (with-LOC vs without-LOC), driven by the resolved essentials so it
+    // regenerates when the banker enters the numbers. Replaces the prior
+    // cashflow_projection section list.
     structural_content: {
-      type: "cashflow_projection",
-      sections: [
-        { label: "Business profile", fields: ["annual_revenue_band", "seasonal_variance"] },
-        { label: "Cashflow gap", fields: ["slow_season_gap"] },
-        { label: "LOC structure", fields: ["requested_credit_limit", "draw_pattern", "repayment_window"] },
-      ],
+      type: "seasonal_smoothing",
     },
   },
 

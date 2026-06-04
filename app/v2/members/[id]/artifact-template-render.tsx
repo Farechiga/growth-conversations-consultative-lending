@@ -47,6 +47,7 @@ import { BusinessVisaCapabilityMatrix } from "./artifact-visualizations/Business
 import { PaceMonthlySavingsChart } from "./artifact-visualizations/PaceMonthlySavingsChart";
 import { CashbackOpportunityChart } from "./artifact-visualizations/CashbackOpportunityChart";
 import { UnsecuredOpportunityChart } from "./artifact-visualizations/UnsecuredOpportunityChart";
+import { SeasonalSmoothingChart } from "./artifact-visualizations/SeasonalSmoothingChart";
 // BUILD 2e (Part B) — single currency convention shared with the charts.
 import { fmtUSD } from "./artifact-visualizations/shared";
 
@@ -387,6 +388,10 @@ function renderStructuralVisualization(args: {
   // replaces the cashback-opportunity chart for TRACK-010.
   if (t === "business_visa_capability") {
     return <BusinessVisaCapabilityMatrix parameterValues={parameterValues} />;
+  }
+  // TRACK-001 Working Capital LOC — parameterized seasonal cashflow chart.
+  if (t === "seasonal_smoothing") {
+    return <SeasonalSmoothingChart parameterValues={parameterValues} />;
   }
 
   return null;
