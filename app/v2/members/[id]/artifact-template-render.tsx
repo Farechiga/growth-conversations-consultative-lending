@@ -47,6 +47,8 @@ import { BusinessVisaCapabilityMatrix } from "./artifact-visualizations/Business
 import { PaceMonthlySavingsChart } from "./artifact-visualizations/PaceMonthlySavingsChart";
 import { CashbackOpportunityChart } from "./artifact-visualizations/CashbackOpportunityChart";
 import { UnsecuredOpportunityChart } from "./artifact-visualizations/UnsecuredOpportunityChart";
+// BUILD 2e (Part B) — single currency convention shared with the charts.
+import { fmtUSD } from "./artifact-visualizations/shared";
 
 export type FactorCaptureValue = {
   display_value: string;
@@ -139,6 +141,23 @@ export function ArtifactTemplateRender({
     captures,
   );
 
+  // BUILD 2e (A3) — render the SBA 504 stage as its NAME, not a bare index.
+  // Inject `stage_name` so the output summary's {stage_name} resolves, and
+  // build a display override so the essentials panel shows e.g.
+  // "CDC partner introduction (stage 3 of 8)" instead of "3".
+  const stageDisplayOverrides: Record<string, string> = {};
+  const stageList =
+    structuralContent && "stages" in structuralContent
+      ? (structuralContent as { stages?: Array<{ title: string }> }).stages
+      : undefined;
+  if (stageList && stageList.length && resolvedValues.current_stage) {
+    const stageTitle = stageList[Number(resolvedValues.current_stage) - 1]?.title;
+    if (stageTitle) {
+      resolvedValues.stage_name = stageTitle;
+      stageDisplayOverrides.current_stage = `${stageTitle} (stage ${resolvedValues.current_stage} of ${stageList.length})`;
+    }
+  }
+
   const computedValues = computeAllValues(schema, resolvedValues);
   const resolvedSummary = resolveTemplateString(
     outputSummaryTemplate,
@@ -174,6 +193,7 @@ export function ArtifactTemplateRender({
       {essentials.length > 0 && (
         <EssentialsPanel
           essentials={essentials}
+          displayOverrides={stageDisplayOverrides}
           onMissingParameterCapture={onMissingParameterCapture}
           modelId={canEditBankerParams ? modelId ?? null : null}
           memberId={canEditBankerParams ? memberId ?? null : null}
@@ -533,11 +553,15 @@ export function ProvenanceChip({ res }: { res: EssentialResolution }) {
 // the tier-4 residual gaps. Replaces the prior missing-only banner.
 function EssentialsPanel({
   essentials,
+  displayOverrides,
   onMissingParameterCapture,
   modelId,
   memberId,
 }: {
   essentials: EssentialResolution[];
+  // BUILD 2e (A3) — per-key value-display override (e.g. SBA 504 stage
+  // rendered as its name instead of a bare index).
+  displayOverrides?: Record<string, string>;
   onMissingParameterCapture?: (args: {
     factor_id: string;
     parameter_label: string;
@@ -590,7 +614,8 @@ function EssentialsPanel({
                 <span className="text-sm text-blaze-charcoal">
                   {res.param.label}
                   <span className="ml-2 font-medium text-blaze-charcoal">
-                    {formatDisplayValue(res.value, res.param)}
+                    {displayOverrides?.[res.param.key] ??
+                      formatDisplayValue(res.value, res.param)}
                   </span>
                 </span>
                 <span className="flex items-center gap-2">
@@ -693,7 +718,7 @@ function CaptureWithMemberControl({
         }}
         className="text-[10px] text-blaze-grey-body hover:text-blaze-charcoal"
       >
-        cancel
+        Cancel
       </button>
       {error && <span className="text-[10px] text-blaze-danger">{error}</span>}
     </span>
@@ -811,8 +836,7 @@ function SourceParamFillInRow({
         <div className="mt-2 space-y-1.5">
           {mode === "banker_estimate" && (
             <p className="text-[11px] italic text-blaze-grey-body">
-              Recording your working assumption. Will be flagged as banker
-              estimate pending Member confirmation.
+              Saved as a banker estimate until the Member confirms.
             </p>
           )}
           {renderParamInput(param, value, setValue)}
@@ -1153,7 +1177,7 @@ function SectionInlineFillIn({
           onClick={() => setEditing(true)}
           className="text-[11px] font-medium text-blaze-orange-deep hover:underline"
         >
-          + fill in
+          + Fill in
         </button>
       </span>
     );
@@ -1202,7 +1226,7 @@ function SectionInlineFillIn({
         disabled={isPending}
         className="text-[11px] font-medium text-blaze-orange-deep hover:underline disabled:opacity-60"
       >
-        {isPending ? "saving…" : "save"}
+        {isPending ? "Saving…" : "Save"}
       </button>
       <button
         type="button"
@@ -1212,7 +1236,7 @@ function SectionInlineFillIn({
         }}
         className="text-[11px] text-blaze-grey-body hover:text-blaze-charcoal"
       >
-        cancel
+        Cancel
       </button>
       {error && (
         <span className="text-[11px] text-blaze-danger">{error}</span>
@@ -1291,7 +1315,7 @@ function formatDisplayValue(
   if (!param) return raw;
   if (param.type === "currency") {
     const n = Number(raw.replace(/[$,\s]/g, ""));
-    if (Number.isFinite(n)) return `$${n.toLocaleString("en-US")}`;
+    if (Number.isFinite(n)) return fmtUSD(n);
   }
   if (param.type === "percentage") {
     const trimmed = raw.replace(/\s+/g, "");

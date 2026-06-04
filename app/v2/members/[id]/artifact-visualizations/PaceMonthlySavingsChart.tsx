@@ -161,7 +161,7 @@ export function PaceMonthlySavingsChart({
                 tick={{ fontSize: 11, fill: ARTIFACT_PALETTE.axis }}
                 width={72}
                 label={{
-                  value: "Annual cashflow ($)",
+                  value: "Annual cashflow",
                   position: "insideLeft",
                   angle: -90,
                   offset: 4,
@@ -222,7 +222,7 @@ export function PaceMonthlySavingsChart({
         <strong>{fmtUSDLong(annualSavings)}</strong>. The annual PACE
         assessment of{" "}
         <strong>{fmtUSDLong(annualAssessment)}</strong> is taken from the
-        top of those savings (paid through your property tax for{" "}
+        top of those savings (paid through property tax for{" "}
         {paceTermYears} years), leaving net annual benefit of{" "}
         <strong>{fmtUSDLong(annualNetBenefit)}</strong>. After year{" "}
         {paceTermYears}, the assessment ends — the full{" "}

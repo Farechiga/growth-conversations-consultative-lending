@@ -156,7 +156,7 @@ async function seedBankers() {
   const scott = await prisma.banker.create({
     data: {
       external_user_id: "scott.b",
-      display_name: "Scott Brynjolffson",
+      display_name: "Scott Brynjolfsson",
       roles: ["primary_banker"],
       status: "active",
     },
@@ -1303,7 +1303,7 @@ async function seedArtifacts(reviewedByBankerId: string) {
 
   const fleetROI = await prisma.artifact.create({
     data: {
-      title: "Fleet expansion ROI projection",
+      title: "Fleet expansion financing",
       description:
         "Compares 3 years of projected cash position under two paths: continuing to buy used vehicles with cash, versus financing two new vehicles to expand dispatch capacity. Shows captured-vs-declined revenue as a stacked overlay. The key understanding is that revenue captured from previously-declined service calls outweighs the debt service cost of the financing — typically by year 2.",
       type: "chart",
@@ -1582,7 +1582,7 @@ async function seedGrowthSteps(
     data: {
       title: "Render fleet expansion ROI",
       description:
-        "Render the Fleet expansion ROI projection Model parameterized to the member's current fleet, average call value, and proposed addition. The composed chart shows captured-vs-declined revenue against debt service, demonstrating that fleet financing typically pays for itself by year 2 in growing trades.",
+        "Render the Fleet expansion financing Model parameterized to the member's current fleet, average call value, and proposed addition. The composed chart shows captured-vs-declined revenue against debt service, demonstrating that fleet financing typically pays for itself by year 2 in growing trades.",
       step_shape: "show",
       content:
         "Let me show you what financing two more trucks would look like against the work you've been turning down. This isn't a pitch; it's the math.",
@@ -2373,7 +2373,7 @@ async function seedNorthlandConversations(
       size_proposed: 180000,
       structure: "standard",
       rationale_summary:
-        "Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season. Existing Equipment Loan demonstrates payment discipline.",
+        "Two service vehicles at $90K each, financed over 60 months at $3.6K/mo — well below the $49K of declined work per peak season. Existing Equipment Loan demonstrates payment discipline.",
       rationale_text:
         "Member showed capacity constraint quantified at approximately 70 declined service calls per peak season (roughly $49K of annual lost revenue), against a stated objective of fleet expansion. Two new service vehicles at approximately $90K each, financed over 60 months at current rates, produce monthly debt service of approximately $3,600 — well below the lost revenue from declined calls. Member's existing Equipment Loan demonstrates payment discipline.",
       confidence_band: "high",
@@ -2716,7 +2716,7 @@ their_words: "Bring me the specialist. We'll work through structure together.",
       rationale_summary:
         "$4M-$7M SBA 504 financing for the owner-occupied capacity expansion. SBA specialist + CDC partner engaged early; relationship coordination by Scott.",
       rationale_text:
-        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Owner-occupancy confirmed, which makes SBA 504 structurally stronger than conventional CRE (longer-term fixed CDC piece, lower equity requirement). Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. SBA specialist + CDC partner engaged; relationship coordination by Scott Brynjolffson.",
+        "Member is evaluating a major capacity expansion driven by anchor customer volume growth commitments and a long-running customer-growth objective. Owner-occupancy confirmed, which makes SBA 504 structurally stronger than conventional CRE (longer-term fixed CDC piece, lower equity requirement). Current capacity at ~85% utilization on primary production line; expansion estimated at $4M-$7M including facility, equipment qualification, and validation. Member explicitly receptive to Blaze handling the deal. SBA specialist + CDC partner engaged; relationship coordination by Scott Brynjolfsson.",
       confidence_band: "medium",
       response: "leaning_yes",
       // Sprint 4.6 Block A — value migrated from "bank_capability" to
@@ -2737,7 +2737,7 @@ their_words: "Bring me the specialist. We'll work through structure together.",
       rule_id_that_fired: rules.rule3Id,
       // Sprint 2 Prompt 2 §C — Cygnus's CRE opportunity is owned by Marcus
       // Webb (CRE specialist), distinct from the Member's primary banker
-      // (Scott Brynjolffson). The architecturally important demo case:
+      // (Scott Brynjolfsson). The architecturally important demo case:
       // ownership routes specialty product opportunities to the right
       // expert while the relationship banker remains the primary contact.
       owned_by_id: bankers.marcus.id,
@@ -3234,7 +3234,7 @@ async function seedV2Entities(
       artifact_id: artifacts.fleetROI.id,
       built_with_member: true,
       parameters: {
-        name: "Fleet expansion ROI projection",
+        name: "Fleet expansion financing",
         rows: [
           { key: "current_fleet_size", value: "8 trucks" },
           { key: "proposed_addition", value: "2 trucks" },
@@ -3249,7 +3249,7 @@ async function seedV2Entities(
         "Technician hiring keeps pace with truck delivery",
       ],
       output_summary:
-        "Two service vehicles at $90K each, financed over 60 months at $3.6K/month — well below the $49K of declined work per peak season.",
+        "Two service vehicles at $90K each, financed over 60 months at $3.6K/mo — well below the $49K of declined work per peak season.",
       built_by_banker_id: bankers.scott.id,
       built_at: daysAgo(18),
     },

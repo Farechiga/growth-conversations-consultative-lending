@@ -5,7 +5,7 @@
  * without specifying a Member. Renders the Member lookup; selecting a
  * Member navigates to /growth-conversations/[slug] (the prefilled entry).
  *
- * The simulated current banker is Scott Brynjolffson for the demo. The
+ * The simulated current banker is Scott Brynjolfsson for the demo. The
  * lookup is scoped to Members where Scott is the primary_banker. Sprint
  * 6 will add a banker-identity dropdown that changes the scoping.
  */
@@ -27,7 +27,7 @@ function getPrisma() {
   });
 }
 
-const SIMULATED_CURRENT_BANKER_NAME = "Scott Brynjolffson";
+const SIMULATED_CURRENT_BANKER_NAME = "Scott Brynjolfsson";
 
 export default async function GrowthConversationsLandingPage() {
   const prisma = getPrisma();

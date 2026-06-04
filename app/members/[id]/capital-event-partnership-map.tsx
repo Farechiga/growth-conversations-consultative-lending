@@ -49,7 +49,7 @@ type Milestone = {
 };
 
 const MILESTONES: Milestone[] = [
-  { label: "Initial conversation", specialist: "Scott Brynjolffson", state: "completed" },
+  { label: "Initial conversation", specialist: "Scott Brynjolfsson", state: "completed" },
   { label: "Specialist introduction", specialist: "Marcus Webb", state: "current" },
   { label: "Capital event planning", specialist: "Marcus + Scott", state: "upcoming" },
   { label: "Site & underwriting", specialist: "CRE team", state: "upcoming" },

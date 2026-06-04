@@ -258,9 +258,22 @@ function stripFormatting(v: string): string {
   return v.replace(/[$,%\s]/g, "");
 }
 
+// BUILD 2e (Part B) — output-summary currency convention. Returns NO leading
+// "$" (the output_summary_template supplies it). ≥$1M → "X.XM" (trim .0);
+// $100K–999K → "XXXK"; <$100K → exact with commas.
+function formatCurrencyShort(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) {
+    return `${sign}${(abs / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (abs >= 100_000) return `${sign}${Math.round(abs / 1_000)}K`;
+  return `${sign}${Math.round(abs).toLocaleString("en-US")}`;
+}
+
 function formatComputedNumber(n: number, p: TemplateParameter): string {
   if (p.type === "percentage") return `${(n * 100).toFixed(1).replace(/\.0$/, "")}%`;
-  if (p.type === "currency") return `${Math.round(n).toLocaleString("en-US")}`;
+  if (p.type === "currency") return formatCurrencyShort(n);
   if (p.type === "integer") return `${Math.round(n)}`;
   if (p.type === "decimal") return n.toFixed(2).replace(/\.?0+$/, "");
   return String(n);
@@ -270,7 +283,7 @@ function formatValueForString(v: string, p: TemplateParameter | undefined): stri
   if (!p) return v;
   if (p.type === "currency") {
     const n = Number(stripFormatting(v));
-    if (Number.isFinite(n)) return n.toLocaleString("en-US");
+    if (Number.isFinite(n)) return formatCurrencyShort(n);
   }
   return v;
 }

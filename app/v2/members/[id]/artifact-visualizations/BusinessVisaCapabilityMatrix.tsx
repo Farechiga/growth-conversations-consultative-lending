@@ -38,9 +38,10 @@ export function BusinessVisaCapabilityMatrix({
   const integration =
     parameterValues.expense_management_integration?.toString().trim() ||
     "Not yet configured";
+  // BUILD 2e (A5) — no fallback: when unset, hide the row rather than
+  // printing a banker process note in a member-facing card.
   const authorizedUsers =
-    parameterValues.authorized_users?.toString().trim() ||
-    "Banker to capture during conversation";
+    parameterValues.authorized_users?.toString().trim() || "";
   const rewardStructure =
     parameterValues.reward_structure?.toString().trim() ||
     `${cashbackRate}% cashback on supplies and fuel`;
@@ -149,12 +150,14 @@ export function BusinessVisaCapabilityMatrix({
             header="Operational flexibility"
             description="Spend without disrupting cash reserves. Fund opportunities as they arise."
             primaryDatum={
-              <>
-                Authorized users:{" "}
-                <strong className="text-blaze-charcoal">
-                  {authorizedUsers}
-                </strong>
-              </>
+              authorizedUsers ? (
+                <>
+                  Authorized users:{" "}
+                  <strong className="text-blaze-charcoal">
+                    {authorizedUsers}
+                  </strong>
+                </>
+              ) : null
             }
             secondaryDatum={
               <>
