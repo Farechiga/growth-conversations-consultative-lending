@@ -182,7 +182,7 @@ export function UnsecuredOpportunityChart({
                 tick={{ fontSize: 11, fill: ARTIFACT_PALETTE.axis }}
                 width={72}
                 label={{
-                  value: "Dollar value ($)",
+                  value: "Dollar value",
                   position: "insideLeft",
                   angle: -90,
                   offset: 4,
