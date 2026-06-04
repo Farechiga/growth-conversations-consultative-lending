@@ -189,9 +189,16 @@ function TreemapCell({
   const payload = props as unknown as TreemapCellPayload;
   if (!payload.name || width <= 0 || height <= 0) return null;
   const base = TRACK_COLORS[payload.trackId] ?? "#94a3b8";
-  // When a Track is filter-pinned, darken slightly for a "selected" cue.
-  const fill = activeTrackId === payload.trackId ? shade(base, -0.18) : base;
+  const isActive = activeTrackId === payload.trackId;
+  const hasSelection = activeTrackId != null;
+  // Selection now reads via a HEAVY white outline on the selected cell and
+  // by dimming the others — the prior darken-on-select was counterintuitive
+  // (darker read as "more", not "selected"). Selected cell keeps full color.
+  const fill = base;
   const isFuture = !payload.isBlazeOffered;
+  let cellOpacity = isFuture ? 0.78 : 1;
+  if (hasSelection && !isActive) cellOpacity = 0.3; // grey the unselected back
+  const cellStrokeWidth = isActive ? 5 : 2;
   const showLabel = width > 90 && height > 50;
   const showSub = width > 110 && height > 80;
   // Label color flips dark on light fills (the lightest palette cells
@@ -211,8 +218,8 @@ function TreemapCell({
         height={height}
         fill={fill}
         stroke="#fff"
-        strokeWidth={2}
-        opacity={isFuture ? 0.78 : 1}
+        strokeWidth={cellStrokeWidth}
+        opacity={cellOpacity}
       >
         <title>
           {payload.label} · ${(payload.size / 1_000_000).toFixed(1)}M · {payload.members} Members
@@ -248,18 +255,4 @@ function isLightFill(hex: string): boolean {
   // Rec. 601 luma (good-enough for label-contrast decisions).
   const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luma > 0.55;
-}
-
-/** Linear lighten/darken on a #rrggbb hex string. amount in [-1, 1]. */
-function shade(hex: string, amount: number): string {
-  const num = parseInt(hex.replace("#", ""), 16);
-  let r = (num >> 16) & 0xff;
-  let g = (num >> 8) & 0xff;
-  let b = num & 0xff;
-  const t = amount < 0 ? 0 : 255;
-  const p = Math.abs(amount);
-  r = Math.round((t - r) * p + r);
-  g = Math.round((t - g) * p + g);
-  b = Math.round((t - b) * p + b);
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
 }

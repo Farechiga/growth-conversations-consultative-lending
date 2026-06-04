@@ -95,7 +95,13 @@ export function PhaseFunnelView({
                   }`}
                   aria-pressed={selectedPhase === phase}
                 >
-                  <span className="w-24 shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-blaze-grey-soft">
+                  <span
+                    className={`w-24 shrink-0 uppercase tracking-[0.08em] ${
+                      selectedPhase === phase
+                        ? "text-[12px] font-bold text-blaze-charcoal"
+                        : "text-[10px] font-semibold text-blaze-grey-soft"
+                    }`}
+                  >
                     {PHASE_LABELS[phase]}
                   </span>
                   <span

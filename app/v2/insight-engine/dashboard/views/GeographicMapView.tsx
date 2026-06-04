@@ -176,7 +176,13 @@ export function GeographicMapView({
                               : "hover:bg-blaze-cream/20"
                           }`}
                         >
-                          <span className="w-44 shrink-0 text-[12px] font-medium text-blaze-charcoal">
+                          <span
+                            className={`w-44 shrink-0 text-blaze-charcoal ${
+                              isSelected
+                                ? "text-[13px] font-bold"
+                                : "text-[12px] font-medium"
+                            }`}
+                          >
                             {b.name}
                           </span>
                           <span className="relative h-3 flex-1 overflow-hidden rounded bg-blaze-rule/30">
