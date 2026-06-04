@@ -168,7 +168,7 @@ export function VehicleCapacityUpliftChart({
                 domain={[0, yMax]}
                 width={72}
                 label={{
-                  value: "Monthly revenue ($)",
+                  value: "Monthly revenue",
                   position: "insideLeft",
                   angle: -90,
                   offset: 4,
@@ -307,8 +307,8 @@ export function VehicleCapacityUpliftChart({
       <p className={annotationLineClass()}>
         Today, the fleet of {vehicleCount} {vehicleLabel} serves
         approximately{" "}
-        <strong>{fmtUSDLong(currentRevenue)}/month</strong>, with another{" "}
-        <strong>{fmtUSDLong(declined)}/month</strong> declined because
+        <strong>{fmtUSDLong(currentRevenue)}/mo</strong>, with another{" "}
+        <strong>{fmtUSDLong(declined)}/mo</strong> declined because
         the fleet is at capacity (utilization:{" "}
         <strong>
           {utilizationKnown ? `${Math.round(utilization)}%` : "not captured"}
@@ -317,11 +317,11 @@ export function VehicleCapacityUpliftChart({
         <strong>{vehicleCount}</strong> new {vehicleLabel} expands
         capacity by <strong>{Math.round(uplift)}%</strong>. Immediate
         effect (month 1): the{" "}
-        <strong>{fmtUSDLong(declined)}/month</strong> previously declined
+        <strong>{fmtUSDLong(declined)}/mo</strong> previously declined
         is now serviceable. Over the next{" "}
         <strong>{horizonMonths}</strong> months: expanded capacity
         unlocks new growth — banker estimate of approximately{" "}
-        <strong>{fmtUSDLong(induced)}/month</strong> in new revenue from
+        <strong>{fmtUSDLong(induced)}/mo</strong> in new revenue from
         larger contracts, geographic reach, and contracts previously not
         pursued. Monthly debt service of{" "}
         <strong>{fmtUSDLong(monthlyDebtService)}</strong> is covered by

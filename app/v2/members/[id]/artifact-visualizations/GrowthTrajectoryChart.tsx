@@ -144,10 +144,11 @@ export function GrowthTrajectoryChart({
         </div>
       </div>
       <p className={annotationLineClass()}>
-        Over {termYears} years: cumulative revenue uplift over organic ={" "}
-        <strong>{fmtUSDLong(cumulativeUplift)}</strong>. Total debt service ={" "}
-        <strong>{fmtUSDLong(cumulativeDebtService)}</strong>. Net gain ={" "}
-        <strong>{fmtUSDLong(netGain)}</strong>.
+        Over {termYears} years the loan adds{" "}
+        <strong>{fmtUSDLong(cumulativeUplift)}</strong> in cumulative revenue
+        over organic growth against{" "}
+        <strong>{fmtUSDLong(cumulativeDebtService)}</strong> in debt service — a
+        net gain of <strong>{fmtUSDLong(netGain)}</strong>.
       </p>
     </div>
   );

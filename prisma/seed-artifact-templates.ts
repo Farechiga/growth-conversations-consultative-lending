@@ -31,9 +31,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-001",
     track_id: "TRACK-003",
-    title: "CRE acquisition financing summary",
-    description:
-      "A summary showing how Blaze structures a commercial real estate term loan against the property and the borrower's operating cashflow. Used during Consult to show the Member how the loan fits both the property's cashflow profile and their broader operating cashflow.",
+    title: "CRE acquisition financing",
+    description: "",
     member_type_applicability: JSON.stringify([
       "specialty_manufacturer",
       "maintenance_services",
@@ -64,13 +63,13 @@ const TEMPLATES: TemplateSeed[] = [
         },
         { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "current_monthly_rent", label: "Current monthly rent", type: "currency", required: true },
-        { key: "annual_rent_escalation", label: "Annual rent escalation %", type: "percentage", default: 3 },
-        { key: "annual_appreciation", label: "Property appreciation %", type: "percentage", default: 3 },
+        { key: "annual_rent_escalation", label: "Annual rent escalation", type: "percentage", default: 3 },
+        { key: "annual_appreciation", label: "Property appreciation", type: "percentage", default: 3 },
       ],
     },
     // Sprint 9 Block B — lease-vs-own wealth visualization.
     output_summary_template:
-      "{property_type} at ${acquisition_price}. Mortgage of ${loan_amount} at {interest_rate}, {amortization_years}-year term. Current rent ${current_monthly_rent}/month vs. owning. Crossover to ownership advantage around year 6-8; substantial equity built by year 15.",
+      "{property_type} at ${acquisition_price}. Mortgage of ${loan_amount} at {interest_rate}, {amortization_years}-year term. Current rent ${current_monthly_rent}/mo vs. owning. Crossover to ownership advantage around year 6-8; substantial equity built by year 15.",
     structural_content: {
       type: "lease_vs_own",
     },
@@ -82,9 +81,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-002",
     track_id: "TRACK-004",
-    title: "Growth trajectory with SBA 7(a) financing",
-    description:
-      "A projection showing how SBA 7(a) financing accelerates the business's growth trajectory. The chart compares revenue under organic growth (no loan) vs. expansion-fueled growth (with SBA 7(a)) over the loan term. Used during Consult to walk through how the financing pays for itself many times over.",
+    title: "SBA 7(a) growth financing",
+    description: "",
     member_type_applicability: JSON.stringify([
       "event_services",
       "maintenance_services",
@@ -128,9 +126,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-003",
     track_id: "TRACK-006",
-    title: "Investment property cashflow projection",
-    description:
-      "A projection showing rental income, operating expenses, debt service, and net cashflow on an investment property. Used during Consult to walk through how the property pays for itself and what the operating business contributes.",
+    title: "Investment property cashflow",
+    description: "",
     member_type_applicability: "broad",
     parameter_schema: {
       parameters: [
@@ -152,7 +149,7 @@ const TEMPLATES: TemplateSeed[] = [
         { key: "monthly_operating_expenses", label: "Monthly operating expenses", type: "currency", required: true },
         { key: "interest_rate", label: "Interest rate", type: "percentage" },
         { key: "term_years", label: "Term (years)", type: "integer", default: 30 },
-        { key: "annual_appreciation", label: "Annual appreciation %", type: "percentage", default: 4 },
+        { key: "annual_appreciation", label: "Annual appreciation", type: "percentage", default: 4 },
       ],
     },
     // Sprint 9 Block D — cashflow + equity dual visualization.
@@ -169,9 +166,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-004",
     track_id: "TRACK-007",
-    title: "Equipment financing ROI projection",
-    description:
-      "A projection showing how new equipment generates revenue, the financing structure, and the payback timeline. Used during Consult to walk through whether the equipment pays for itself within the loan term.",
+    title: "Equipment financing",
+    description: "",
     member_type_applicability: JSON.stringify([
       "maintenance_services",
       "specialty_manufacturer",
@@ -203,7 +199,7 @@ const TEMPLATES: TemplateSeed[] = [
     },
     // Sprint 9 Block E — cost-of-doing-nothing visualization.
     output_summary_template:
-      "{equipment_type} at ${loan_amount} financed over {term_months} months at {interest_rate}. Aging equipment costs maintenance + downtime + declined-job revenue every month. New equipment breakeven shows the month from which acting is cheaper than waiting.",
+      "{equipment_type} at ${loan_amount} financed over {term_months} months at {interest_rate}. Aging equipment costs maintenance + downtime + declined-job revenue every month. Breakeven is the month financing becomes cheaper than waiting.",
     structural_content: {
       type: "cost_of_doing_nothing",
     },
@@ -215,9 +211,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-005",
     track_id: "TRACK-009",
-    title: "PACE energy improvement projection",
-    description:
-      "A projection showing how a solar, EV charging, or energy-efficiency improvement is financed through PACE assessment and how the long-term fixed terms protect against future energy price changes. Used during Consult.",
+    title: "PACE energy improvement",
+    description: "",
     member_type_applicability: JSON.stringify([
       "maintenance_services",
       "specialty_manufacturer",
@@ -252,7 +247,7 @@ const TEMPLATES: TemplateSeed[] = [
     // net benefit at the bottom (the keeper), assessment on top (the
     // subtraction).
     output_summary_template:
-      "{improvement_type} at ${improvement_cost} financed via PACE over {pace_term_years} years. Annual energy savings fund the property-tax assessment — assessment is taken from the top, and net benefit flows to your cashflow each year during the PACE term. After year {pace_term_years}, no more assessment; the full annual savings is yours.",
+      "{improvement_type} at ${improvement_cost} financed via PACE over {pace_term_years} years. Annual energy savings fund the property-tax assessment — assessment is taken from the top, and net benefit flows to the member's cashflow each year during the PACE term. After year {pace_term_years}, no more assessment; the full annual savings is theirs.",
     structural_content: {
       type: "pace_monthly_savings",
     },
@@ -264,7 +259,7 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-006",
     track_id: "TRACK-010",
-    title: "Business credit card limit and use plan",
+    title: "Business Visa — limit & use plan",
     // Patch G follow-up — description blanked. Operating-benefits
     // header + card grid carry the framing; the prior summary
     // paragraph competed with that content visually.
@@ -307,7 +302,7 @@ const TEMPLATES: TemplateSeed[] = [
           label: "Authorized users",
           type: "text",
           helper:
-            "Banker captures during conversation. E.g., 'Jenny (owner), Mike (co-decision-maker spouse)'.",
+            "Who's on the card — e.g. \"Jenny (owner), Mike (co-decision-maker)\".",
         },
         {
           key: "reward_structure",
@@ -319,7 +314,7 @@ const TEMPLATES: TemplateSeed[] = [
     },
     // Sprint 9 Block H + Patch G — operational-capability framing.
     output_summary_template:
-      "Business Visa with ${proposed_limit} credit limit for {primary_spend_categories} spend. Expected monthly use: ${expected_monthly_spend}. Authorized users: {authorized_users}. Integration: {expense_management_integration}. Provides expense visibility, working-capital cushion, business credit profile, and operational flexibility for ongoing operations.",
+      "Business Visa with ${proposed_limit} credit limit for {primary_spend_categories} spend. Expected monthly use: ${expected_monthly_spend}. Authorized users: {authorized_users}. Integration: {expense_management_integration}.",
     structural_content: {
       type: "business_visa_capability",
     },
@@ -331,9 +326,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-007",
     track_id: "TRACK-011",
-    title: "Unsecured loan terms summary",
-    description:
-      "A summary of the unsecured loan structure, use of proceeds, and how it preserves collateral capacity for larger commitments. Used during Consult for bounded financing needs under $25K.",
+    title: "Unsecured loan",
+    description: "",
     member_type_applicability: "broad",
     parameter_schema: {
       parameters: [
@@ -384,7 +378,7 @@ const TEMPLATES: TemplateSeed[] = [
     track_id: "TRACK-008",
     title: "SBA 504 transaction roadmap",
     description:
-      "A roadmap showing how Blaze and the CDC partner work together to complete an SBA 504 financing for an owner-occupied commercial property. Used during Consult to show the Member how all the pieces fit together — the bank's first-lien piece, the CDC's second-lien piece with longer fixed-rate terms, and the borrower's 10% equity. Also shows the people involved on Blaze's side and the CDC's side.",
+      "How the bank, the CDC, and the member each fund the deal — 50% first lien, 40% CDC second lien, 10% equity.",
     member_type_applicability: JSON.stringify(["specialty_manufacturer"]),
     parameter_schema: {
       parameters: [
@@ -415,37 +409,37 @@ const TEMPLATES: TemplateSeed[] = [
     },
     // Sprint 9 Block F — paired roadmap + structure comparison.
     output_summary_template:
-      "SBA 504 transaction roadmap. {you_are_here_label} — at stage {current_stage} of 8. CDC handles the second-lien piece (40%); Blaze finances the first-lien piece (50%); Member contributes 10% equity. Comparison below shows the structural advantage vs. conventional CRE.",
+      "SBA 504 transaction roadmap. {you_are_here_label} — at the {stage_name} stage (stage {current_stage} of 8). CDC handles the second-lien piece (40%); Blaze finances the first-lien piece (50%); Member contributes 10% equity.",
     structural_content: {
       type: "sba_504_paired",
       stages: [
         {
           stage_number: 1,
           title: "Initial conversation",
-          roles: [{ name: "Scott Brynjolffson", role: "Relationship banker" }],
+          roles: [{ name: "Scott Brynjolfsson", role: "Relationship banker" }],
           description:
-            "The starting point. Banker captures business context and confirms owner-occupancy intent.",
+            "Ask about the business and confirm they'll occupy the property.",
         },
         {
           stage_number: 2,
           title: "Specialist introduction",
           roles: [
             { name: "SBA specialist (Blaze)", role: "SBA specialist" },
-            { name: "Scott Brynjolffson", role: "Relationship banker" },
+            { name: "Scott Brynjolfsson", role: "Relationship banker" },
           ],
           description:
-            "The SBA specialist joins to walk through SBA 504 structure and confirm fit.",
+            "Bring in the SBA specialist to walk the member through the 504 structure and confirm fit.",
         },
         {
           stage_number: 3,
           title: "CDC partner introduction",
           roles: [
-            { name: "Certified Development Company partner contact", role: "CDC partner" },
+            { name: "CDC partner", role: "CDC partner" },
             { name: "SBA specialist (Blaze)", role: "SBA specialist" },
-            { name: "Scott Brynjolffson", role: "Relationship banker" },
+            { name: "Scott Brynjolfsson", role: "Relationship banker" },
           ],
           description:
-            "The CDC handles the SBA 504 second-lien piece. The Member meets the CDC partner during this stage.",
+            "Introduce the CDC partner, who handles the 504 second-lien piece.",
         },
         {
           stage_number: 4,
@@ -457,7 +451,7 @@ const TEMPLATES: TemplateSeed[] = [
             { name: "CPA", role: "External advisor" },
           ],
           description:
-            "All parties review the project economics, the 50/40/10 structure, and SBA 504 documentation requirements.",
+            "Walk through the project economics, the 50/40/10 structure, and the SBA 504 docs together.",
         },
         {
           stage_number: 5,
@@ -467,7 +461,7 @@ const TEMPLATES: TemplateSeed[] = [
             { name: "CDC underwriting", role: "Second-lien underwriting" },
           ],
           description:
-            "Two parallel underwriting tracks coordinated through the SBA specialist.",
+            "Blaze and the CDC underwrite in parallel, coordinated by the SBA specialist.",
         },
         {
           stage_number: 6,
@@ -478,24 +472,24 @@ const TEMPLATES: TemplateSeed[] = [
             { name: "CDC", role: "Second-lien approval" },
           ],
           description:
-            "Member's board reviews and approves on their side. Blaze loan committee approves the first-lien piece. CDC approves the second-lien piece.",
+            "The member's board, Blaze's loan committee, and the CDC each approve their piece.",
         },
         {
           stage_number: 7,
           title: "Closing",
           roles: [{ name: "All parties", role: "Closing session" }],
           description:
-            "Bank funds first-lien piece. CDC funds second-lien piece (with SBA debenture). Member funds 10% equity. Property transfer.",
+            "Close: Blaze funds the first lien, the CDC the second (SBA debenture), the member the 10% equity; the property transfers.",
         },
         {
           stage_number: 8,
           title: "Post-close relationship",
           roles: [
-            { name: "Scott Brynjolffson", role: "Relationship banker" },
+            { name: "Scott Brynjolfsson", role: "Relationship banker" },
             { name: "Treasury team", role: "Treasury services" },
           ],
           description:
-            "Treasury services, working capital, and ongoing operating support carry forward.",
+            "Carry the relationship forward — treasury, working capital, and operating support.",
         },
       ],
       you_are_here_marker: true,
@@ -513,9 +507,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-009",
     track_id: "TRACK-001",
-    title: "Seasonal cashflow smoothing summary",
-    description:
-      "Working Capital line of credit sized to bridge slow-season cashflow gaps. The summary shows the historical seasonal pattern and how the LOC drawdown/repayment cycle smooths revenue troughs.",
+    title: "Seasonal cashflow smoothing",
+    description: "",
     member_type_applicability: JSON.stringify([
       "event_services",
       "food_services",
@@ -534,7 +527,7 @@ const TEMPLATES: TemplateSeed[] = [
         },
         {
           key: "seasonal_variance",
-          label: "Seasonal variance %",
+          label: "Seasonal variance",
           type: "percentage",
           required: true,
           source_factor_id: "FACTOR-001",
@@ -587,9 +580,8 @@ const TEMPLATES: TemplateSeed[] = [
   {
     id: "ARTIFACT-TEMPLATE-010",
     track_id: "TRACK-002",
-    title: "Business Vehicle Loan financing summary",
-    description:
-      "Vehicle financing structured to match the operational pattern of the business. The summary shows monthly debt service against operational revenue trajectory and demonstrates how the vehicle accelerates capacity expansion.",
+    title: "Business Vehicle Loan",
+    description: "",
     member_type_applicability: JSON.stringify([
       "maintenance_services",
       "construction",
@@ -725,7 +717,7 @@ const TEMPLATES: TemplateSeed[] = [
     // Sprint 9 Patch G Block 6 — output summary aligned to the new
     // three-row temporal-progression framing.
     output_summary_template:
-      "{vehicle_count} {vehicle_type} at ${purchase_price}, financed at ${loan_amount} after ${down_payment} down. Monthly debt service ${monthly_debt_service}. Immediate effect: ${current_declined_revenue_monthly}/month previously-declined revenue captured. Projected effect over {induced_demand_realization_months} months: additional ${projected_induced_demand_monthly}/month from growth opportunities the expanded capacity enables. Combined revenue impact substantially exceeds debt service.",
+      "{vehicle_count} {vehicle_type} at ${purchase_price}, financed at ${loan_amount} after ${down_payment} down. Monthly debt service ${monthly_debt_service}. Immediate effect: ${current_declined_revenue_monthly}/mo previously-declined revenue captured. Projected effect over {induced_demand_realization_months} months: additional ${projected_induced_demand_monthly}/mo from growth opportunities the expanded capacity enables. Combined revenue impact substantially exceeds debt service.",
     // Sprint 9 Patch F Block 2 — replaces the legacy section-list
     // financing summary with a business-impact visualization.
     structural_content: {
@@ -1000,10 +992,10 @@ const LEGACY_MODEL_PARAMS: Partial<Record<Slug, Record<string, Record<string, st
     // JSON, which carried its display name; without `name` the feed card
     // falls back to template-004's generic "Equipment financing ROI
     // projection" title. Re-assert the real name so the card reads
-    // "Fleet expansion ROI projection" (the sidebar tile already does,
+    // "Fleet expansion financing" (the sidebar tile already does,
     // via the linked Artifact.title).
     "ARTIFACT-TEMPLATE-004": {
-      name: "Fleet expansion ROI projection",
+      name: "Fleet expansion financing",
       equipment_type: "Vehicles (commercial)",
       loan_amount: "180000",
       term_months: 60,
@@ -1194,7 +1186,7 @@ const LEGACY_MODEL_RETAG: Record<Slug, Array<{ artifactTitle: string; templateId
   ],
   northland: [
     {
-      artifactTitle: "Fleet expansion ROI projection",
+      artifactTitle: "Fleet expansion financing",
       templateId: "ARTIFACT-TEMPLATE-004",
     },
   ],

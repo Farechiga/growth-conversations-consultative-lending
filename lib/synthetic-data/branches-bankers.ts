@@ -41,7 +41,7 @@ export const BRANCHES: Branch[] = [
 ];
 
 export const BANKERS: Banker[] = [
-  { id: "BANKER-001", name: "Scott Brynjolffson", primary_branch_id: "BRANCH-001", additional_branch_ids: [], tenure_years: 12, specialty: "general", activity_level: "high", target_member_count: 18 },
+  { id: "BANKER-001", name: "Scott Brynjolfsson", primary_branch_id: "BRANCH-001", additional_branch_ids: [], tenure_years: 12, specialty: "general", activity_level: "high", target_member_count: 18 },
   { id: "BANKER-002", name: "Margot Desandre", primary_branch_id: "BRANCH-004", additional_branch_ids: [], tenure_years: 8, specialty: "cre_focused", activity_level: "high", target_member_count: 22 },
   { id: "BANKER-003", name: "Marcus Johansson", primary_branch_id: "BRANCH-002", additional_branch_ids: [], tenure_years: 18, specialty: "general", activity_level: "high", target_member_count: 24 },
   { id: "BANKER-004", name: "Linnea Petersen", primary_branch_id: "BRANCH-003", additional_branch_ids: [], tenure_years: 6, specialty: "sba_focused", activity_level: "medium", target_member_count: 16 },

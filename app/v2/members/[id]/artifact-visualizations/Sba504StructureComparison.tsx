@@ -207,8 +207,7 @@ export function Sba504StructureComparison({
         On a <strong>{fmtUSDLong(propertyValue)}</strong> property: SBA 504
         saves <strong>{fmtUSDLong(cashSavings)}</strong> in cash at closing
         and <strong>~{fmtUSDLong(interestSavings)}</strong> in interest over
-        10 years vs. conventional CRE. The roadmap above shows where you are
-        in the three-party process.
+        10 years vs. conventional CRE.
       </p>
     </div>
   );

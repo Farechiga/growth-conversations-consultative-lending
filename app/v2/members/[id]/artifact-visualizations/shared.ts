@@ -24,16 +24,27 @@ export function num(
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export function fmtUSD(v: number): string {
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${v < 0 ? "-" : ""}$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${v < 0 ? "-" : ""}$${Math.round(abs / 1_000)}K`;
-  if (abs === 0) return "$0";
-  return `${v < 0 ? "-" : ""}$${Math.round(abs).toLocaleString("en-US")}`;
+// BUILD 2e (Part B) — abbreviation core for the single currency convention.
+function abbrevAbs(abs: number): string {
+  if (abs >= 1_000_000) {
+    return `${(abs / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (abs >= 100_000) return `${Math.round(abs / 1_000)}K`;
+  return Math.round(abs).toLocaleString("en-US");
 }
 
+// One currency convention used EVERYWHERE — essentials panel, chart bar
+// labels, chart annotations, tooltips — so a value reads identically across
+// surfaces. ≥$1M → "$X.XM" (trim trailing .0 → "$5.5M", "$1M"); $100K–999K
+// → "$180K"; <$100K → exact with commas ("$50,000", "$3,650"). Replaces the
+// prior split between an abbreviated fmtUSD (bars) and a full fmtUSDLong.
+export function fmtUSD(v: number): string {
+  return `${v < 0 ? "-" : ""}$${abbrevAbs(Math.abs(v))}`;
+}
+
+// Retained name for callers (annotations/tooltips); now the same convention.
 export function fmtUSDLong(v: number): string {
-  return `${v < 0 ? "-" : ""}$${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+  return fmtUSD(v);
 }
 
 /**

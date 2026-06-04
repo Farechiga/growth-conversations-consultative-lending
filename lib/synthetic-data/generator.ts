@@ -257,7 +257,7 @@ const NAME_WORDS: Record<MemberType, { prefixes: string[]; suffixes: string[] }>
     suffixes: ["Precision", "Industrial", "Manufacturing", "Fabrication", "Production Co."],
   },
   professional_services: {
-    prefixes: ["Brynjolffson", "Lakeshore", "Skyline", "Citizens", "Headwaters"],
+    prefixes: ["Brynjolfsson", "Lakeshore", "Skyline", "Citizens", "Headwaters"],
     suffixes: ["& Associates", "Accounting Group", "Engineering Partners", "Tax Advisory", "Legal Group"],
   },
   healthcare_services: {
