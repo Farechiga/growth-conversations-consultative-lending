@@ -126,7 +126,7 @@ export function ArtifactTemplateRender({
   //                          the member's primary recommended model) used
   //                          for the tier-2 "from product" provenance tag
   // Strip both before anything reaches the chart / output summary.
-  const confirmedKeys = parseConfirmedKeys(parameterValues["__confirmed"]);
+  const persistedConfirmed = parseConfirmedKeys(parameterValues["__confirmed"]);
   const recommendedProduct = parseRecommendedProduct(
     parameterValues["__recommended_product"],
   );
@@ -135,9 +135,24 @@ export function ArtifactTemplateRender({
     if (!k.startsWith("__")) cleanValues[k] = v;
   }
 
+  // BUILD 2d — optimistic confirmations. The popup's parametersJson is a
+  // frozen snapshot from when the dialog opened, so a banker confirming an
+  // estimate wouldn't progress THIS open dialog without reopening. Track
+  // just-confirmed essentials locally (value + member_confirmed) so the
+  // gate advances and the outcome reveals live; updateModelParameter still
+  // persists the change so it survives reload.
+  const [localConfirmed, setLocalConfirmed] = useState<Record<string, string>>(
+    {},
+  );
+  const confirmedKeys = new Set<string>([
+    ...persistedConfirmed,
+    ...Object.keys(localConfirmed),
+  ]);
+  const baseValues = { ...cleanValues, ...localConfirmed };
+
   const { resolvedValues, captureModeByKey, missingByKey } = overlayCaptures(
     schema,
-    cleanValues,
+    baseValues,
     captures,
   );
 
@@ -188,11 +203,28 @@ export function ArtifactTemplateRender({
   void title;
   void description;
 
+  // BUILD 2d — gate the outcome behind SUPPLIED essentials. An essential
+  // is supplied when its value is real evidence, not an unconfirmed
+  // banker guess: tier "captured" (a source FactorCapture OR a value the
+  // banker confirmed via __confirmed) or tier "product" (the recommended
+  // amount). A banker-estimate literal or a blank does NOT count until the
+  // banker confirms it (which flips it to member_confirmed → captured).
+  const suppliedCount = essentials.filter(
+    (e) => e.tier === "captured" || e.tier === "product",
+  ).length;
+  const allSupplied =
+    essentials.length === 0 || suppliedCount === essentials.length;
+
   return (
     <div className="space-y-4">
       {essentials.length > 0 && (
         <EssentialsPanel
           essentials={essentials}
+          gated={!allSupplied}
+          suppliedCount={suppliedCount}
+          onConfirmed={(key, value) =>
+            setLocalConfirmed((prev) => ({ ...prev, [key]: value }))
+          }
           displayOverrides={stageDisplayOverrides}
           onMissingParameterCapture={onMissingParameterCapture}
           modelId={canEditBankerParams ? modelId ?? null : null}
@@ -200,42 +232,37 @@ export function ArtifactTemplateRender({
         />
       )}
 
-      {/* Sprint 9 — dispatch by structural_content.type. Each Track's
-          business-impact visualization renders here; the legacy
-          section-list types (financing_summary, cashflow_projection,
-          roi_projection, use_plan) continue to use SectionListRender. */}
-      {structuralContent && renderStructuralVisualization({
-        structuralContent,
-        schema,
-        // Sprint 4/9 reconciliation — visualizations now consume the
-        // RESOLVED map (params JSON base + FactorCapture overlay +
-        // computed/static), honoring the merge invariant
-        // (capture > JSON value > schema default). Previously they
-        // received raw `parameterValues`, which bypassed FactorCaptures
-        // and let chart-local literals fabricate captured facts (an 80%
-        // utilization default masking a captured 88%). A param present in
-        // the JSON with no competing capture passes through unchanged —
-        // which keeps Cygnus's SBA 504 view byte-for-byte stable. Fed
-        // under the existing `parameterValues` key so the per-chart prop
-        // contract is unchanged this sprint (richer treatment = Prompt 3).
-        parameterValues: computedValues,
-        computedValues,
-        captureModeByKey,
-        missingByKey,
-        onMissingParameterCapture,
-        modelId: canEditBankerParams ? modelId ?? null : null,
-        memberId: canEditBankerParams ? memberId ?? null : null,
-        youAreHereLabel,
-      })}
+      {/* BUILD 2d — the outcome (chart + decision framing + "what the model
+          shows") renders only once EVERY essential is supplied. Until then
+          the EssentialsPanel above stands alone, prompting the banker to
+          supply each number with the Member ("supply the numbers to
+          generate the model"). Reusing the 2b render path means the same
+          gate applies to the sidebar preview dialog. */}
+      {allSupplied && (
+        <>
+          {structuralContent && renderStructuralVisualization({
+            structuralContent,
+            schema,
+            parameterValues: computedValues,
+            computedValues,
+            captureModeByKey,
+            missingByKey,
+            onMissingParameterCapture,
+            modelId: canEditBankerParams ? modelId ?? null : null,
+            memberId: canEditBankerParams ? memberId ?? null : null,
+            youAreHereLabel,
+          })}
 
-      <div className="rounded border-l-[3px] border-blaze-orange bg-blaze-cream/30 px-3 py-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-soft">
-          What the model shows
-        </p>
-        <p className="mt-1 text-sm leading-relaxed text-blaze-charcoal">
-          {resolvedSummary}
-        </p>
-      </div>
+          <div className="rounded border-l-[3px] border-blaze-orange bg-blaze-cream/30 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-soft">
+              What the model shows
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-blaze-charcoal">
+              {resolvedSummary}
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -553,12 +580,23 @@ export function ProvenanceChip({ res }: { res: EssentialResolution }) {
 // the tier-4 residual gaps. Replaces the prior missing-only banner.
 function EssentialsPanel({
   essentials,
+  gated,
+  suppliedCount,
+  onConfirmed,
   displayOverrides,
   onMissingParameterCapture,
   modelId,
   memberId,
 }: {
   essentials: EssentialResolution[];
+  // BUILD 2d — when gated, the outcome is hidden and this panel is the
+  // primary surface: it leads with a "supply the numbers" header + a
+  // "{supplied} of {total} supplied" progress hint.
+  gated: boolean;
+  suppliedCount: number;
+  // BUILD 2d — fired after a confirm persists, so the parent can advance
+  // the gate optimistically (live reveal without reopening).
+  onConfirmed: (key: string, value: string) => void;
   // BUILD 2e (A3) — per-key value-display override (e.g. SBA 504 stage
   // rendered as its name instead of a bare index).
   displayOverrides?: Record<string, string>;
@@ -572,15 +610,32 @@ function EssentialsPanel({
 }) {
   const promptCount = essentials.filter((e) => e.tier === "prompt").length;
   return (
-    <div className="rounded border border-blaze-rule bg-blaze-cream/30 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-soft">
-        Evidence &amp; assumptions behind these numbers
-        {promptCount > 0 && (
-          <span className="ml-1.5 font-medium text-blaze-danger">
-            · {promptCount} still to capture
-          </span>
-        )}
-      </p>
+    <div
+      className={
+        gated
+          ? "rounded border border-blaze-orange-deep/40 bg-blaze-cream/40 p-3"
+          : "rounded border border-blaze-rule bg-blaze-cream/30 p-3"
+      }
+    >
+      {gated ? (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <p className="text-xs font-semibold text-blaze-orange-deep">
+            Supply these numbers with the Member to generate the model
+          </p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-body">
+            {suppliedCount} of {essentials.length} supplied
+          </p>
+        </div>
+      ) : (
+        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-blaze-grey-soft">
+          Evidence &amp; assumptions behind these numbers
+          {promptCount > 0 && (
+            <span className="ml-1.5 font-medium text-blaze-danger">
+              · {promptCount} still to capture
+            </span>
+          )}
+        </p>
+      )}
       <ul className="mt-2 space-y-2">
         {essentials.map((res) => (
           <li
@@ -626,6 +681,7 @@ function EssentialsPanel({
                       modelId={modelId}
                       memberId={memberId}
                       value={res.value}
+                      onConfirmed={onConfirmed}
                     />
                   )}
                 </span>
@@ -649,11 +705,15 @@ function CaptureWithMemberControl({
   modelId,
   memberId,
   value,
+  onConfirmed,
 }: {
   param: TemplateParameter;
   modelId: string;
   memberId: string;
   value: string;
+  // BUILD 2d — let the parent advance the gate optimistically (live
+  // reveal) the moment the confirm persists.
+  onConfirmed?: (key: string, value: string) => void;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -678,6 +738,7 @@ function CaptureWithMemberControl({
       });
       if (result.ok) {
         setEditing(false);
+        onConfirmed?.(param.key, trimmed);
         router.refresh();
       } else {
         setError(result.error);
